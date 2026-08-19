@@ -133,6 +133,9 @@ scn_<module>_<feature>_001: <concrete scenario from user perspective>
 |------|--------|-------------|
 | ... | CREATE/MODIFY | ... |
 
+### Diagrams
+Mermaid diagram(s) inline: a flowchart per main flow + a lifecycle/state flowchart when there are states. **`flowchart` ONLY** (the viewer fails on sequenceDiagram/stateDiagram); ASCII only (`->`, `=>`, no unicode); parens only inside quoted labels. The diagram MUST show: every state's exit, destructive/irreversible transitions (delete vs tombstone), identity/uniqueness & collision points, dependency direction (what breaks on disable/remove), and create/undo pairs with data fate. If it can't, the design is incomplete.
+
 ### Invariants
 - INV-1: <testable, precise statement>
 - INV-2: ...
@@ -183,9 +186,8 @@ Update the status at the top of the file to `Status: REVIEW`.
 
 **Goal:** Show the approved plan to the user.
 
-1. Run `markdown-view <plan-path>` if the command exists. This opens the approved
-   markdown plan in a readable terminal viewer; inside Zellij it appears in a
-   floating pane.
+1. Publish the approved plan with `mdurl <plan-path>` and give the user the
+   returned URL (renders in the browser, mermaid included).
 2. Present a summary:
    - Task (1-2 sentences)
    - Key decisions from spec

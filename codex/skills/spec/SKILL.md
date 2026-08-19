@@ -132,6 +132,9 @@ scn_<module>_<feature>_001: <concrete scenario from user perspective>
 |------|--------|-------------|
 | ... | CREATE/MODIFY | ... |
 
+### Diagrams
+Mermaid diagram(s) inline: a flowchart per main flow + a lifecycle/state flowchart when there are states. **`flowchart` ONLY** (the viewer fails on sequenceDiagram/stateDiagram); ASCII only (`->`, `=>`, no unicode); parens only inside quoted labels. The diagram MUST show: every state's exit, destructive/irreversible transitions (delete vs tombstone), identity/uniqueness & collision points, dependency direction (what breaks on disable/remove), and create/undo pairs with data fate. If it can't, the design is incomplete.
+
 ### Invariants
 - INV-1: <testable, precise statement>
 - INV-2: ...

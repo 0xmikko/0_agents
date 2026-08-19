@@ -262,8 +262,9 @@ Skills are user-invocable slash commands like `/spec`, `/plan`, `/dispatch-to-li
 
 When you change a skill, check both directories before assuming you're done. There are 5 deliberately-divergent pairs (`spec`, `plan`, `review-plan`, `review-implementation`, `verify-frontend`) — they share most of the body but reference `CLAUDE.md` vs `AGENTS.md` and use Codex via MCP vs directly. Future cleanup may merge them with parameter substitution; for now, sync manually.
 
-Notable shared skills:
-- **`/markdown-view`** — open any `.md` file in a separate Zellij pane (preferred over pasting long markdown into chat)
+Notable skills:
+- **`/mdurl`** (Claude + Codex) — publish Markdown and return a browser URL
+- **`/markdown-view`** (Claude only) — open Markdown in a separate Zellij pane
 - **`/start-work`** — implement an approved plan locally with worktree + TDD discipline
 - **`/dispatch-to-linear`** + **`/execute-from-linear`** — handoff a plan to Cyrus's bot for autonomous implementation
 
