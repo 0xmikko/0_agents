@@ -190,7 +190,8 @@ export function installStack(rootArg: string, sourceRoot = import.meta.dir): Sta
   writeManifest(root, sourceRoot, files);
   mkdirSync(join(root, "docs/plans"), { recursive: true });
   ensureWorktreeIgnore(root);
-  git(root, ["config", "core.hooksPath", ".githooks"]);
+  git(root, ["config", "extensions.worktreeConfig", "true"]);
+  git(root, ["config", "--worktree", "core.hooksPath", ".githooks"]);
   return { root, files: files.map((file) => file.target), scripts: Object.keys(contract.scripts) };
 }
 
@@ -207,7 +208,7 @@ export function checkStack(rootArg: string, sourceRoot = import.meta.dir): Stack
     }
   }
   if (mismatches.length > 0) throw new Error(`managed stack is missing or stale: ${mismatches.join(", ")}`);
-  if (git(root, ["config", "--get", "core.hooksPath"]) !== ".githooks") {
+  if (git(root, ["config", "--worktree", "--get", "core.hooksPath"]) !== ".githooks") {
     throw new Error("core.hooksPath must be .githooks");
   }
   return { root, files: files.map((file) => file.target), scripts: Object.keys(contract.scripts) };

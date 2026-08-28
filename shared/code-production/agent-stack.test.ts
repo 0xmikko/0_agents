@@ -49,7 +49,7 @@ describe("agent-stack", () => {
     const installed = installStack(root);
 
     expect(installed.files).toHaveLength(7);
-    expect(git(root, "config", "--get", "core.hooksPath")).toBe(".githooks");
+    expect(git(root, "config", "--worktree", "--get", "core.hooksPath")).toBe(".githooks");
     expect(readFileSync(join(root, ".gitignore"), "utf8")).toContain("/.worktrees/");
     expect(readFileSync(join(root, ".gitignore"), "utf8")).toContain("/.tmp/code-production/");
     expect(readFileSync(join(root, ".agents/code-production/manifest.json"), "utf8")).toContain("dltxperts/0_agents");

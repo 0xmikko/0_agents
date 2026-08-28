@@ -60,5 +60,5 @@ agent-stack check /path/to/repository
 ```
 
 The installer vendors the small deterministic runtime, installs managed hooks
-and a GitHub workflow, and selects `.githooks` for the clone. It refuses to
-overwrite an unmanaged hook or workflow.
+and a GitHub workflow, and selects `.githooks` for the current worktree only.
+It refuses to overwrite an unmanaged hook or workflow.
