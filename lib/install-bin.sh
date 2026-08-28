@@ -40,6 +40,8 @@ install_bin_item() {
 install_bin_item agent-session-name
 install_bin_item frogmouth-tuned
 install_bin_item markdown-view
+install_bin_item planctl
+install_bin_item agent-stack
 
 # Backward-compat: keep `plan-view` as a symlink to `markdown-view` so
 # existing aliases / muscle memory / older skill references continue to

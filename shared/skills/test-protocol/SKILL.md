@@ -1,142 +1,60 @@
 ---
 name: test-protocol
-description: Testing and traceability protocol. Canonical test ID format, scenario IDs, metadata blocks, traceability comments, determinism rules, bug-to-test rule. Auto-invokes when writing or reviewing tests.
-user-invocable: true
-disable-model-invocation: false
+description: Portable TypeScript/JavaScript TDD and traceability rules. Auto-use when writing or reviewing tests.
 ---
 
-# Testing & Traceability Protocol
+# Test protocol
 
-Every non-trivial invariant must map to a numbered test case. Tests and code must be bidirectionally traceable.
+Every non-trivial invariant maps to a deterministic behavior test.
 
-## Canonical Test IDs
+## IDs
 
-Format: `tst_<layer>_<area>_<nnn>`
-
-Examples:
-- `tst_core_canon_001`
-- `tst_kernel_sync_014`
-- `tst_src_tg_023`
-- `tst_fe_contacts_004`
-- `tst_agent_pol_002`
-
-Rules:
-- Lowercase `snake_case`, immutable once assigned
-- The canonical ID should be the **first stable token** in the test name
-- Must be grep-friendly across Rust, TypeScript, Markdown, and scripts
-
-### Rust naming
-
-```rust
-fn tst_kernel_sync_014_bootstrap_transitions_to_catchup() { ... }
-```
-
-### TypeScript naming
+- Scenario: `scn_<domain>_<nnn>`
+- Test: `tst_<layer>_<area>_<nnn>`
+- Lowercase snake case; immutable; first stable token in the test name.
 
 ```typescript
-it("tst_fe_detail_003 renders detail after list selection", ...)
+it("tst_api_session_003 rejects a second active session", async () => { /* ... */ });
 ```
 
-## Scenario IDs
+Near a non-trivial test, record:
 
-Format: `scn_<domain>_<nnn>`
-
-- Scenarios describe **behavior**. Test IDs describe **implementation of coverage**.
-- One scenario can map to many tests. One test covering many scenarios should be rare.
-
-## Test Metadata
-
-Every new non-trivial test must carry a metadata block near the definition:
-
-```
-@test-id: tst_src_tg_023
-@scenario: scn_tg_sync_003
-@covers: backend/src/services/sync/scheduler.rs::track_envelope_coverage
+```text
+@test-id: tst_api_session_003
+@scenario: scn_session_002
+@covers: src/session/admission.ts::admitSession
 @deterministic: yes
-@fixtures: tests/fixtures/telegram/bootstrap-three-chats.json
+@fixtures: test/fixtures/two-active-sessions.json
 ```
 
-For Playwright / app-visible tests, also include:
+## TDD receipt
 
-```
-@video-mode: showcase
-@manual-flow: yes
-```
+1. Run `planctl start-task` and use the Task's exact
+   `bun run agent:test:<backend|frontend|e2e> -- <target>` command.
+2. Add the smallest behavior test. Observe it RED for the expected missing
+   behavior, not syntax, environment or stale dependency failure.
+3. Implement the minimum and rerun the same command GREEN.
+4. Run the Stage's 1–3 named behavior files. The commit hook owns other fast
+   checks; the Delivery boundary owns the complete PR gate.
 
-## Code Traceability
+A test that passes before the implementation does not prove the new invariant.
+Rewrite it or explicitly show why the production code already satisfies the
+requirement and amend the plan.
 
-Every non-trivial invariant branch or state-machine edge must link back to at least one test:
+## Determinism
 
-```
-@tested-by: tst_src_tg_023
-@invariant: coverage for each chat must remain independent across gaps
-```
+Automated suites may use real in-process services, temporary databases and
+captured fixtures. They may not use live provider accounts, real OAuth, network
+dependencies, unbounded wall-clock sleeps, unseeded randomness or writes
+outside test-owned temp roots.
 
-Annotate: state transitions, merge rules, routing rules, approval gates, sync loops, normalization logic.
-Do NOT annotate: trivial getters, obvious formatting helpers.
+For a user-visible web change, typecheck/unit tests are supporting evidence.
+The behavior receipt is an isolated browser journey through
+`agent:test:e2e`.
 
-## Determinism Rules
+Do not add permanent inventory/file-layout pin tests. A one-shot acceptance
+command may prove a migration or absence; product behavior tests survive the
+implementation layout.
 
-### Forbidden in automated suites
-- Live Gmail, Telegram, or any real provider sessions
-- Real OAuth flows or live internet calls
-- Wall-clock timing without bounded harness
-- Random data without fixed seeds
-- Filesystem writes outside temporary test-owned paths
-
-### Allowed in automated suites
-- Real SQLite in temporary directories
-- Real migrations
-- Real in-process routers and service wiring
-- Fake/scripted/fixture-backed source runtimes and agent engines
-- Captured provider payload fixtures
-
-### Manual class
-Tests hitting live systems must be marked `manual`. Never used as main correctness signal.
-
-## Bug-to-Test Rule
-
-If a bug is found during user testing, QA, MCP walkthrough, or showcase:
-
-1. A regression test MUST be added at the closest valid layer
-2. Preferred order: unit/deterministic layer > app-visible scenario > backend layer
-3. If bug spans layers: cheapest deterministic regression at root cause + app-visible scenario if the flow was broken
-4. Do NOT close a bug as "fixed" on code inspection alone
-
-## Test Infrastructure
-
-### Clients (NOT mocks)
-| Client | Layer | Purpose |
-|--------|-------|---------|
-| Playwright | Frontend E2E | Browser automation |
-| WsRpcClient | Frontend/Backend E2E | WebSocket RPC |
-| reqwest | Backend integration | HTTP requests |
-| Direct calls | Backend unit | Rust function calls via TestCore |
-
-### Mocks
-| Mock | Replaces |
-|------|----------|
-| MockChatSource | Telegram API |
-| MockMailSource | Gmail API (MailSurface) |
-| MockSourceRuntime | Any generic source |
-| MockAgentSidecar | Agent engine/API responses |
-
-### Test comment format
-```
-Test environment: <which backend modules>
-Clients: <Playwright | WsRpcClient | direct calls>
-Mocks: <MockChatSource | MockAgentSidecar | none>
-Data: <which fixtures/seeds>
-```
-
-## Testing Layers
-
-`core`, `kernel`, `module`, `src_iso`, `src_int`, `fe_unit`, `fe_scn`, `agent_unit`, `agent_beh`, `agent_pol`, `eval_scn`, `eval_qual`, `cert`
-
-See `docs/testing/layers.md` for exact meanings and allowed seams.
-
-## Canonical References
-
-- `docs/testing/policy.md` — full testing policy
-- `docs/testing/e2e-standard.md` — E2E standard (Phase 1-3)
-- `docs/backend/testing.md` — backend test seams, TestCore, harnesses
+Every discovered bug gets a regression test at the cheapest deterministic
+layer before the fix. Do not close a bug from code inspection alone.

@@ -1,0 +1,49 @@
+# Managed by 0_agents code-production. Do not edit in the consumer repository.
+name: Code production
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: code-production-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+      - name: Require staging as PR base
+        run: test "${{ github.base_ref }}" = staging
+      - name: Install exact workspace
+        run: bun run agent:install
+      - name: Verify process and documentation
+        run: bun run agent:verify:docs
+      - name: Verify changed plan locks
+        shell: bash
+        run: |
+          git diff --name-only "origin/${{ github.base_ref }}"...HEAD -- 'docs/plans/*.md' |
+            while IFS= read -r plan; do
+              [ -n "$plan" ] || continue
+              bun .agents/code-production/runtime/planctl.ts verify "$plan"
+            done
+
+  product:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+      - name: Install exact workspace
+        run: bun run agent:install
+      - name: Verify published PR SHA
+        run: bun run agent:verify:pr

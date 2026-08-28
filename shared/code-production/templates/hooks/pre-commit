@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Managed by 0_agents code-production. Do not edit in the consumer repository.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+PLANCTL="$ROOT/.agents/code-production/runtime/planctl.ts"
+GATE="$ROOT/.agents/code-production/runtime/plan-gate.ts"
+
+PLANS="$(git diff --cached --name-only --diff-filter=ACMR -- 'docs/plans/*.md')"
+if [ -n "$PLANS" ]; then
+  # Canonical plan names are kebab-case and contain no whitespace.
+  # shellcheck disable=SC2086
+  bun "$GATE" --freeze $PLANS
+  while IFS= read -r plan; do
+    [ -n "$plan" ] || continue
+    state="$(git show ":$plan" | sed -n 's/^Status: //p' | head -1)"
+    if [ "$state" != "SPEC_DRAFT" ]; then
+      bun "$PLANCTL" verify-staged "$plan"
+      bun "$PLANCTL" verify "$plan"
+    fi
+  done <<EOF
+$PLANS
+EOF
+fi
+
+bun run agent:verify:docs
+bun run agent:verify:commit

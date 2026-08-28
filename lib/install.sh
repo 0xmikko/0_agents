@@ -145,6 +145,7 @@ link_item "~/.claude/lang" "$SHARED_SRC/lang" "$CLAUDE_DST/lang"
 # Codex skills live next to system skills in ~/.codex/skills/.system, so link
 # individual skill directories instead of replacing ~/.codex/skills. Project
 # skills with the same name are resolved by Codex's normal project override.
+link_item "~/.codex/AGENTS.md" "$CODEX_SRC/AGENTS.md" "$CODEX_DST/AGENTS.md"
 mkdir -p "$CODEX_DST/skills"
 for skill_dir in "$CODEX_SRC"/skills/*; do
   [ -d "$skill_dir" ] || continue

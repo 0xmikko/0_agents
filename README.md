@@ -23,10 +23,14 @@ Three top-level entry points; every other installer is a helper inside `lib/`.
 - [x] **Claude-only skills** — `dispatch-to-linear`, `execute-from-linear`, `mdurl`, `plan`, `review-implementation`, `review-plan`, `spec`, `verify-frontend`
 - [x] **Claude background agents** (subagents) — `coherence-cop`, `coverage-cop`, `simplicity-cop`
 - [x] **Per-language guides** loaded on demand — `rust.md`, `typescript.md`
+- [x] **Portable code-production stack** — shared Git/PR/TDD laws, `planctl`,
+  managed hooks/CI, timing receipts and one `package.json` command contract
 - [x] **Codex sandbox profile** — workspace-write; auto-discovers `.git` / `.worktrees` writable roots in `~/Coding`, `~/.cyrus/repos`, `~/.cyrus/worktrees`
 - [x] **Linear MCP** registered for both Claude and Codex (search, comment, ship issues from agent)
 - [x] **`markdown-view <path>`** — open `.md` in a Zellij pane (frogmouth → glow → less fallback)
 - [x] **`agent-session-name <name>`** — set Zellij session label
+- [x] **`agent-stack install <repo>`** — apply the same private production
+  process to a TypeScript project without framework paths in hooks or skills
 - [x] **Neovim ≥ 0.11 + LazyVim** starter at `~/.config/nvim`
 - [x] **`Cmd-Shift-3` → screenshot uploaded to u3775 mdurl server** (via Hammerspoon)
 - [x] **Zellij keybindings work on Russian (ЙЦУКЕН) layout** — every `Ctrl-P x` shortcut has a sibling on the matching Russian letter (`Ctrl-P ч`, etc.), so shortcuts keep working without switching keyboard layout
