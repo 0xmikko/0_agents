@@ -1,9 +1,13 @@
-model = "gpt-5.5"
-model_reasoning_effort = "high"
+model = "gpt-5.6-sol"
+model_reasoning_effort = "xhigh"
 
 approval_policy = "never"
 sandbox_mode = "workspace-write"
 web_search = "disabled"
+service_tier = "default"
+
+[agents]
+max_concurrent_threads_per_session=8
 
 [sandbox_workspace_write]
 network_access = true
@@ -16,15 +20,40 @@ writable_roots = [
   "/srv/markdown",
   "/run/user/1003",
   "/home/marketing/Coding/0_agents/.git",
+  "/home/marketing/Coding/0_agents/.git/.git",
+  "/home/marketing/Coding/0_agents/.git/.git/.git",
+  "/home/marketing/Coding/agent/.git",
+  "/home/marketing/Coding/.codex-agent-smoke/.tmp/plugins/.git",
   "/home/marketing/Coding/content-os/.git",
+  "/home/marketing/Coding/content-os/.git/.git",
+  "/home/marketing/Coding/content-os/.git/.git/.git",
   "/home/marketing/Coding/content-os/.worktrees",
+  "/home/marketing/Coding/content-os/.worktrees/.git",
+  "/home/marketing/Coding/content-os/.worktrees/.git/.git",
+  "/home/marketing/Coding/content-os/.worktrees/magnis-visitor-analytics/.git",
+  "/home/marketing/Coding/content-os/.worktrees/magnis-visitor-analytics/.git/.git",
   "/home/marketing/Coding/.git",
+  "/home/marketing/Coding/.git/.git",
+  "/home/marketing/Coding/.git/.git/.git",
   "/home/marketing/Coding/magnis-app/.git",
+  "/home/marketing/Coding/magnis-app/.git/.git",
+  "/home/marketing/Coding/magnis-app/.git/.git/.git",
   "/home/marketing/Coding/magnis-app/.worktrees",
+  "/home/marketing/Coding/magnis-app/.worktrees/embedded-postgres-m3-cutover/.worktrees",
+  "/home/marketing/Coding/magnis-app/.worktrees/.git",
+  "/home/marketing/Coding/magnis-app/.worktrees/.git/.git",
   "/home/marketing/Coding/magnis-landing/.git",
+  "/home/marketing/Coding/magnis-landing/.git/.git",
+  "/home/marketing/Coding/magnis-landing/.git/.git/.git",
   "/home/marketing/Coding/magnis-landing/.worktrees",
+  "/home/marketing/Coding/magnis-landing/.worktrees/.git",
+  "/home/marketing/Coding/magnis-landing/.worktrees/.git/.git",
   "/home/marketing/Coding/mikko_build/.git",
+  "/home/marketing/Coding/mikko_build/.git/.git",
+  "/home/marketing/Coding/mikko_build/.git/.git/.git",
   "/home/marketing/.cyrus/repos/content-os/.git",
+  "/home/marketing/.cyrus/repos/content-os/.git/.git",
+  "/home/marketing/.cyrus/repos/content-os/.git/.git/.git",
 ]
 
 [shell_environment_policy]
@@ -35,13 +64,25 @@ experimental_use_profile = true
 [projects."/home/marketing"]
 trust_level = "trusted"
 
-[projects."/home/marketing/Coding/content-os"]
+[projects."/home/marketing/Coding/magnis-app"]
+trust_level = "trusted"
+
+[projects."/home/marketing/Coding"]
 trust_level = "trusted"
 
 [projects."/home/marketing/Coding/0_agents"]
 trust_level = "trusted"
+
 [mcp_servers.linear]
 url = "https://mcp.linear.app/mcp"
 
+[mcp_servers.majordomo-1779949087354]
+command = "node"
+args = ["/home/marketing/Coding/magnis-app/.worktrees/codex-engine-app-server/agent/src/mcp-stdio-proxy.mjs", "http://localhost:0"]
+
+[mcp_servers.axiom]
+url = "https://mcp.axiom.co/mcp"
+
 [tui.model_availability_nux]
-"gpt-5.5" = 2
+"gpt-5.5" = 4
+"gpt-5.6-sol" = 4

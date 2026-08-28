@@ -41,6 +41,29 @@ Break each scenario into testable layers per `docs/testing/e2e-standard.md`.
 ### Step 4: File change map
 List EVERY file — path, CREATE/MODIFY, what and why. Group by layer.
 
+### Step 4.5: Flow & lifecycle diagrams (mermaid — IN the plan)
+If the change has a non-trivial flow, lifecycle, or multi-actor interaction, put
+mermaid diagram(s) directly in the plan (not a separate file): a lifecycle/state
+diagram when the thing has states (created/enabled/disabled/deleted/orphaned/...),
+and a flow diagram per main operation with the decision points — validation
+gates, guards, conflict/collision checks — drawn as explicit branches.
+
+Rendering rules: **`flowchart` only** — the markdown viewer (markdown-view/mdurl)
+renders `flowchart` but FAILS on `sequenceDiagram`/`stateDiagram-v2`; draw a
+sequence as a top-down flowchart and a state machine as a flowchart of stadium
+nodes `id(["State"])`. ASCII only inside diagrams (`->`, `=>`, `subset of`,
+`JOIN`, `!=` — no unicode arrows/operators). No parentheses in node IDs; parens
+only inside quoted labels; quote any label with spaces/punctuation.
+
+Why it's mandatory — the diagram must answer what prose hides (verify each before
+writing the invariants): every state has an exit (no orphaned/dead states);
+destructive/irreversible transitions are explicit (delete vs tombstone; data fate
+on remove); identity & uniqueness are shown (who can collide;
+one-owner-per-namespace; folder/name == id); dependency direction is visible (who
+depends on whom; what breaks on disable/remove); every create has a matching undo
+(install/uninstall, enable/disable). If the diagram can't answer these, the
+design is incomplete — fix the design, not the diagram.
+
 ### Step 5: Invariants
 `INV-1: <testable, precise statement>`
 
@@ -58,7 +81,7 @@ The TDD loop, verification commands, review gate, no-merge rule.
 
 ## Output format
 
-Present the plan as a single document with sections 1-9. Do NOT start implementation.
+Present the plan as a single document with sections 1-9 (the Step 4.5 diagrams live inline, in the relevant sections). Do NOT start implementation.
 After writing or updating the plan file, run `markdown-view <plan-path>` if the
 command exists. This opens the markdown in a readable terminal viewer; inside
 Zellij it appears in a floating pane. If `markdown-view` is missing, continue with

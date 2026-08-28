@@ -147,6 +147,16 @@ link_item "~/.claude/lang" "$SHARED_SRC/lang" "$CLAUDE_DST/lang"
 # skills with the same name are resolved by Codex's normal project override.
 link_item "~/.codex/AGENTS.md" "$CODEX_SRC/AGENTS.md" "$CODEX_DST/AGENTS.md"
 mkdir -p "$CODEX_DST/skills"
+
+# markdown-view is retired everywhere: mdurl is the single markdown-viewing
+# command for both agents. Remove the old repo-managed Codex skill link.
+retired_codex_markdown_view="$CODEX_DST/skills/markdown-view"
+if [ -L "$retired_codex_markdown_view" ] \
+  && [ "$(readlink "$retired_codex_markdown_view")" = "$CODEX_SRC/skills/markdown-view" ]; then
+  rm "$retired_codex_markdown_view"
+  echo "✓ removed retired Codex skill: ~/.codex/skills/markdown-view"
+fi
+
 for skill_dir in "$CODEX_SRC"/skills/*; do
   [ -d "$skill_dir" ] || continue
   skill_name="$(basename "$skill_dir")"

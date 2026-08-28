@@ -53,6 +53,34 @@ For non-deterministic code (UI state, user-driven flows), `HashMap` is fine.
 - Match exhaustively. Avoid `_ =>` arms unless the type is genuinely open
   (e.g. an external enum or a `#[non_exhaustive]` upstream type).
 
+### Imports and type paths
+
+- Put `use` declarations at the top of their module, after module docs and
+  attributes and before item definitions. Do not add `use` declarations inside
+  functions, `impl` blocks, or other executable scopes. A nested module (for
+  example, `mod tests`) has its own import block at the top of that module.
+- Import types at module scope and refer to them by their short names. Do not
+  repeat long absolute paths such as `crate::services::graph::error::ApplicationError`
+  in item definitions, trait implementations, function signatures, or bodies.
+- In particular, `impl From`, `impl Into`, `impl TryFrom`, and `impl TryInto`
+  declarations and their method signatures must use imported short type names.
+- When two imported types have the same name, alias one or both explicitly with
+  `use path::Type as DescriptiveType;` and use the alias consistently.
+- Keep a fully qualified path only when Rust requires it for disambiguation,
+  macro hygiene, or another concrete language constraint. Do not use full paths
+  merely to avoid adding an import; make any non-obvious exception clear in the
+  surrounding code.
+
+```rust
+use crate::services::graph::error::ApplicationError;
+
+impl From<ApplicationError> for ApiError {
+    fn from(err: ApplicationError) -> Self {
+        ApiError::Application(err)
+    }
+}
+```
+
 ## Tooling
 
 - `cargo fmt` on save (editor config).

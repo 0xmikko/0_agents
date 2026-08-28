@@ -97,10 +97,25 @@ done
 
 # ─── 3. ~/.codex symlinks (per-skill) ───────────────────────────────────────
 sect "Codex config (~/.codex/)"
+for item in AGENTS.md agents lang; do
+  expected="$REPO_DIR/codex/$item"
+  [ "$item" = "lang" ] && expected="$REPO_DIR/shared/lang"
+  dst="$HOME/.codex/$item"
+  if [ -L "$dst" ]; then
+    target="$(readlink "$dst")"
+    if [ "$target" = "$expected" ]; then
+      ok "~/.codex/$item → $expected"
+    else
+      fail "~/.codex/$item points at $target, expected $expected"
+    fi
+  else
+    fail "~/.codex/$item is not a symlink (or missing) — run install.sh"
+  fi
+done
 if [ -d "$HOME/.codex/skills" ]; then
   ok "~/.codex/skills exists"
   # Spot-check that the most-used shared skills are symlinked
-  for skill in start-work markdown-view bug fast-precommit; do
+  for skill in start-work mdurl bug fast-precommit; do
     src="$REPO_DIR/codex/skills/$skill"
     dst="$HOME/.codex/skills/$skill"
     if [ -L "$dst" ]; then
