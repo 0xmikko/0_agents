@@ -48,7 +48,7 @@ Delivery, then merge their commits into its single tree before publication.
 |---|---|
 | Task inner loop | exact `bun run agent:test:<lane> -- <file> [-t <ID>]` |
 | Stage commit | `agent:verify:docs` + `agent:verify:commit` from the managed hook |
-| Delivery pre-push | `agent:verify:docs` + `agent:verify:pr` |
+| Delivery pre-push | `.githooks/pre-push`: `agent:verify:docs` + `agent:verify:pr`, then an exact-HEAD receipt |
 | Draft PR CI | process/docs contract only |
 | Ready PR CI | process/docs + `agent:verify:pr` on the published SHA |
 | Final review | reuse exact-head receipts; rerun only after SHA changes |
@@ -61,7 +61,9 @@ by CI. It is not run after each edit, Task or Stage.
 - `pre-commit` permits free `SPEC_DRAFT` writing, freezes locked plan bytes,
   requires a `planctl` journal for mutations, then runs commit-level scripts.
 - `post-commit` consumes the spent plan mutation transaction.
-- `pre-push` verifies plan locks and runs the complete project gate.
+- `pre-push` rejects tracked uncommitted changes, verifies plan locks and runs
+  the complete project gate. A successful Git-local HEAD receipt makes the
+  actual push reuse that result; any new commit invalidates it.
 - `.github/workflows/code-production.yml` rejects PR bases other than
   `staging`, runs cheap control-plane checks on drafts, and runs the product
   gate on ready PRs.

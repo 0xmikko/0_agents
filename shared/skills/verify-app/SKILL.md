@@ -9,10 +9,10 @@ Record `git rev-parse HEAD`, then run:
 
 ```bash
 bun run agent:install
-bun run agent:verify:docs
-bun run agent:verify:pr
+.githooks/pre-push
 ```
 
-Report each command and the exact SHA. If the SHA remains unchanged, final
-review reuses this receipt and CI's receipt instead of rerunning the suite. If
-the SHA changes, the receipt is stale and the complete gate runs once again.
+The hook writes a Git-local receipt only after both verification commands pass.
+The actual `git push` and final review reuse it while `HEAD` is unchanged; a
+new commit invalidates it and buys the complete gate once again. Report the
+commands and exact SHA. CI independently repeats the gate on the published SHA.

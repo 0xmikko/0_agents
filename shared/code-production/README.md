@@ -43,7 +43,7 @@ fallback command.
 |---|---|---|
 | Task RED/GREEN | `planctl start-task` / `complete-task` | one named `agent:test:*` command with exact test arguments |
 | Stage commit | plan freeze + mutation-journal check | `agent:verify:docs`, then `agent:verify:commit` |
-| Delivery push / PR | plan gate | `agent:verify:pr` once |
+| Delivery push / PR | plan gate + exact-HEAD receipt | `.githooks/pre-push` buys `agent:verify:pr` once; `git push` reuses it |
 | GitHub PR head | same gates on published SHA | `agent:verify:docs`; full `agent:verify:pr` only when PR is ready |
 | Final review | reuse the exact PR-head receipts | no unchanged suite rerun |
 

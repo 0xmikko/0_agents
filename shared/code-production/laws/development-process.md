@@ -102,9 +102,11 @@ For each Task:
 8. Continue automatically to the next ready Stage.
 
 At the PR Delivery boundary, the integration Stage joins the Stage commits,
-refreshes dependencies with `agent:install`, then runs `agent:verify:pr` once.
-CI repeats that complete gate on the exact published ready-PR SHA. Final review
-reuses unchanged receipts instead of buying the same suite again.
+refreshes dependencies with `agent:install`, then invokes `.githooks/pre-push`.
+After a clean exact-head gate passes, the hook stores a Git-local SHA receipt;
+the following `git push` reuses it instead of running the suite twice. CI
+independently repeats the complete gate on the published ready-PR SHA. Final
+review reuses unchanged receipts instead of buying the same suite again.
 
 A green test is evidence only after the same test was observed RED against the
 incomplete behavior.

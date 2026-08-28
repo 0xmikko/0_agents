@@ -13,7 +13,7 @@ function git(root: string, ...args: readonly string[]): string {
   return execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
 }
 
-function packageJson(omit?: string): string {
+function packageJson(omit?: string, overrides: Readonly<Record<string, string>> = {}): string {
   const scripts: Record<string, string> = {
     "agent:install": "bun -e \"process.exit(0)\"",
     "agent:test:backend": "bun -e \"process.exit(0)\"",
@@ -22,6 +22,7 @@ function packageJson(omit?: string): string {
     "agent:verify:commit": "bun -e \"process.exit(0)\"",
     "agent:verify:pr": "bun -e \"process.exit(0)\"",
     "agent:verify:docs": "bun -e \"process.exit(0)\"",
+    ...overrides,
   };
   if (omit !== undefined) delete scripts[omit];
   return `${JSON.stringify({ name: "consumer", private: true, scripts }, null, 2)}\n`;
@@ -112,5 +113,38 @@ describe("agent-stack", () => {
     });
     expect(refused.status).not.toBe(0);
     expect(`${refused.stdout}${refused.stderr}`).toMatch(/plan-freeze|no journal|lock/i);
+  });
+
+  /**
+   * @test-id: tst_agent_stack_006
+   * @scenario: scn_delivery_gate_001
+   * @covers: shared/code-production/templates/hooks/pre-push
+   * @deterministic: yes
+   * @fixtures: temporary Git repository with counter-backed package scripts
+   *
+   * Test environment: installed portable stack in a temporary Git repository
+   * Clients: direct hook execution
+   * Mocks: package scripts replace product verification with deterministic counters
+   * Data: one unchanged clean commit
+   */
+  test("tst_agent_stack_006 reuses the complete gate receipt on an unchanged HEAD", () => {
+    const root = fixture();
+    writeFileSync(join(root, "package.json"), packageJson(undefined, {
+      "agent:verify:docs": "printf d >> docs-gate-count.txt",
+      "agent:verify:pr": "printf p >> pr-gate-count.txt",
+    }));
+    installStack(root);
+    git(root, "add", ".");
+    git(root, "commit", "-m", "test: install stack");
+    rmSync(join(root, "docs-gate-count.txt"), { force: true });
+
+    const first = spawnSync(join(root, ".githooks/pre-push"), [], { cwd: root, encoding: "utf8" });
+    const second = spawnSync(join(root, ".githooks/pre-push"), [], { cwd: root, encoding: "utf8" });
+
+    expect(first.status).toBe(0);
+    expect(second.status).toBe(0);
+    expect(second.stdout).toContain("reusing complete gate receipt");
+    expect(readFileSync(join(root, "docs-gate-count.txt"), "utf8")).toBe("d");
+    expect(readFileSync(join(root, "pr-gate-count.txt"), "utf8")).toBe("p");
   });
 });

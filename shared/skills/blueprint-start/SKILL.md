@@ -37,7 +37,8 @@ product code.
 
 8. Continue to the next ready Stage without asking for a routine handoff.
 9. The integration Stage merges parallel commits, cleans registered temp roots,
-   runs `bun run agent:install`, then `bun run agent:verify:pr` once.
+   runs `bun run agent:install`, then `.githooks/pre-push` once. The hook stores
+   the exact-head receipt, so the following `git push` does not repeat the gate.
 10. Push the exact green head, let CI repeat the gate, mark the PR ready, and
     hand over its Markdown URL plus plan `mdurl`. The owner merges.
 
