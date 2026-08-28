@@ -1,47 +1,59 @@
 ---
 name: blueprint-start
-description: Execute an approved portable plan through planctl, one Task-scoped TDD loop and one work commit per Stage. Use when implementation starts.
+description: Execute an approved plan Stage by Stage with TDD, scoped commits, optional disjoint parallel agents, and one complete gate per PR. Use when implementation begins.
 ---
 
 # Blueprint Start
 
-Read `../../code-production/laws/development-process.md` and the approved plan
-completely. Run `agent-stack check` and `planctl verify <plan>` before editing
-product code.
+This skill is self-contained and repository-agnostic. The approved Markdown
+plan defines scope; planctl owns its state; package.json scripts named agent:*
+own all project-specific commands.
 
-## Delivery loop
+## Start
 
-1. Work only in the plan's feature worktree/branch. Confirm its PR is open and
-   the Plan says `APPROVED`.
-2. Run `bun run agent:install` after merging `origin/staging`.
-3. Select only ready Stages. Parallelize exactly the Stages whose declared
-   writes are disjoint; otherwise serialize. Each child gets the same base,
-   Stage text and exact Task IDs, and returns commits/receipts without editing
-   the plan.
-4. Before each Task's RED, run:
+1. Work in the plan's existing feature worktree. Confirm the PR is open and the
+   plan is APPROVED. Run agent-stack check and planctl verify <plan>.
+2. Merge origin/staging into the feature branch without rewriting history,
+   then run bun run agent:install.
+3. Select only dependency-ready Stages. Different agents may implement Stages
+   in parallel only when the plan declares disjoint writes. Each returns one
+   commit and a typed result; child agents never edit the plan.
 
-   ```bash
-   planctl start-task <plan> --task <TASK_ID>
-   ```
+## Stage loop
 
-5. Run the printed exact test and observe expected RED. Implement the minimum,
-   rerun the same command GREEN, then the Stage's 1–3 behavior files.
-6. Micro-review scope and duplication. Commit once for the Stage; never bypass
-   hooks.
-7. Import the typed result after the work commit:
+1. Run planctl start-task <plan> --task <TASK_ID> and follow the printed frozen
+   scope.
+2. Add the named behavior test and run the exact agent:test command. Observe
+   RED for missing behavior, not syntax, dependencies or environment.
+3. Implement the minimum change, rerun the same command GREEN, then run only
+   the Stage's 1–3 named behavior-test files.
+4. Review the diff for exact declared writes, reuse, duplication and accidental
+   fallbacks. Remove the registered .tmp/code-production/... Stage root.
+5. Create one conventional work commit for the Stage. Never bypass hooks;
+   agent:verify:commit belongs to the managed pre-commit hook.
+6. Import the result:
 
-   ```bash
-   planctl complete-task <plan> --from <stage-result.json>
-   planctl close-stage <plan> --stage <D1-S1>
-   ```
+       planctl complete-task <plan> --from <stage-result.json>
+       planctl close-stage <plan> --stage <STAGE_ID>
 
-8. Continue to the next ready Stage without asking for a routine handoff.
-9. The integration Stage merges parallel commits, cleans registered temp roots,
-   runs `bun run agent:install`, then `.githooks/pre-push` once. The hook stores
-   the exact-head receipt, so the following `git push` does not repeat the gate.
-10. Push the exact green head, let CI repeat the gate, mark the PR ready, and
-    hand over its Markdown URL plus plan `mdurl`. The owner merges.
+   Checkbox/result changes ride the next work commit; the last ones use one
+   closure commit.
+7. Continue automatically to the next ready Stage.
 
-If scope changes, use owner-authorized `planctl amend`. Unattended, record a
-complete reversible decision and continue. Time overrun and ordinary shortfall
-are measurements/Deviations, not reasons to wait overnight.
+The integrator merges returned Stage commits into the Delivery tree and records
+their results. Never copy files between worktrees and never let child agents
+invent or mutate Tasks.
+
+If scope changes while the owner is available, use owner-authorized planctl
+amend. Unattended at night, make the smallest reversible decision, record a
+Deviation, commit it and continue. Time overrun alone is not a reason to stop.
+
+## Deliver
+
+1. Run bun run agent:install, then .githooks/pre-push once. Do not compose
+   framework commands or invoke another package manager directly.
+2. Push the exact green head. The push reuses its local receipt; CI independently
+   verifies the published SHA.
+3. Fix a real CI failure locally with its exact command before one new push.
+   When green, mark the PR ready.
+4. Return the PR as a Markdown URL plus the plan mdurl. The owner merges.

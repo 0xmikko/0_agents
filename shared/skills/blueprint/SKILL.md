@@ -1,66 +1,62 @@
 ---
 name: blueprint
-description: Create an owner-approved implementation plan through the portable planctl two-lock workflow. Use for non-trivial features and changes before implementation.
+description: Turn a rough product idea into an owner-approved, executable plan with one PR Delivery and commit-sized Stages. Use before non-trivial implementation.
 ---
 
 # Blueprint
 
-Build the plan through the deterministic writer; do not hand-author locked
-Markdown.
+Produce one plan at docs/plans/<slug>.md. This skill is repository-agnostic:
+project commands come only from package.json scripts named agent:*, and all
+plan mutations go through planctl.
 
-## Read first
+## SPEC
 
-Read these files completely:
+1. Create feat/<slug> from origin/staging in its own worktree. Run:
 
-1. `../../code-production/laws/development-process.md`
-2. `../../code-production/laws/plan-format.md`
-3. `../../code-production/laws/git-workflow.md`
-4. the current project's `AGENTS.md` or `CLAUDE.md`, architecture docs and
-   `package.json` agent scripts.
+       planctl init docs/plans/<slug>.md --title "<title>"
 
-## Phase 1 — SPEC
+   Commit the plan immediately.
+2. Explore existing code before proposing new mechanisms. Agree on the Goal,
+   user flows, success metrics, constraints, reuse and testable invariants.
+3. Write the SPEC with:
 
-1. Create a worktree and `feat/<slug>` branch from `origin/staging`.
-2. Run `planctl init docs/plans/<slug>.md --title "<title>"` and commit the
-   first draft.
-3. Explore existing code before choosing architecture. Write Goal, user flows,
-   metrics, constraints, reuse map and testable invariants in a temporary SPEC
-   input, then run `planctl set-spec <plan> --from <spec.md>`.
-4. When SPEC settles, open the draft PR and publish the plan with `mdurl`.
-5. Ask one question: whether the owner approves SPEC. Stop here until yes.
-6. On yes, run `planctl approve-spec <plan> --owner-word "<owner words>"`.
+       planctl set-spec <plan> --from <spec.md>
+
+4. Open the draft PR when the SPEC is coherent and publish the plan with mdurl.
+5. Ask whether the owner approves the SPEC. This is a hard stop.
+6. After an explicit yes, run planctl approve-spec with the owner's words.
 
 Bad Goal: “Make development faster.”
 
-Good Goal: “On the first Delivery, reduce full product gates from five to one;
-record predicted/actual active time, elapsed time, credits and rework; hand over
-one ready green PR with no files outside frozen Task writes.”
+Good Goal: “Deliver one ready PR while measuring predicted versus actual active
+time, elapsed time and credits; run the complete product gate once locally and
+once on the published CI SHA.”
 
-## Phase 2 — implementation contract
+## Implementation contract
 
-1. Split the product into sequential PR Deliveries. The current pilot normally
-   has one Delivery.
-2. Make each Stage one delegable result and one work commit. Declare dependencies,
-   symmetric parallel relations and exact non-overlapping writes.
-3. Run `planctl put-stage --help`. Supply the documented JSON shape; do not
-   invent another Markdown form.
-4. Every Task states an observable story, exact writes, active-minutes/credits
-   prediction, concrete How and exact RED command through
-   `bun run agent:test:<lane> -- <target>`.
-5. Include an integration Stage when parallel commits must be joined and the
-   complete PR gate bought once.
-6. Publish the updated `mdurl`, summarize Delivery critical path versus total
-   active work, then ask whether the owner approves implementation. Stop until
-   yes.
-7. On yes, run `planctl approve-plan <plan> --owner-word "<owner words>"`.
+1. One Delivery is one PR. Each Stage is one delegable result and one work
+   commit. Do not parallelize multiple Deliveries by default.
+2. A Task is an observable story with exact writes, a concrete method, one
+   exact RED command and predicted active minutes/credits. RED uses:
+
+       bun run agent:test:<backend|frontend|e2e> -- <exact-target>
+
+3. Independent Stages may run in parallel only when their writes do not
+   overlap. Declare dependencies and integration order.
+4. Add Stages through planctl put-stage using its --help JSON format. Do not
+   hand-author implementation Markdown.
+5. Check that every Goal, flow and invariant is covered; each Task is
+   independently executable; estimates and the critical path are explicit.
+6. Publish the updated mdurl and ask whether the owner approves the complete
+   plan. This is the second hard stop.
+7. After an explicit yes, run planctl approve-plan with the owner's words.
 
 Bad Task: “Refactor scheduler.”
 
-Good Task: “TASK_014 — reject a second active job for the same account by
+Good Task: “D1-S2-T1 — reject a second active job for the same account by
 extending the existing admission guard in the two named files; RED is
-`bun run agent:test:backend -- test/scheduler.test.ts -t tst_scheduler_014`;
-predict 12 active min / 3 credits.”
+bun run agent:test:backend -- test/scheduler.test.ts -t tst_scheduler_014;
+estimate 12 active min / 3 credits.”
 
-After approval, never directly edit the plan or manually flip its boxes. Use
-`planctl amend`, `start-task`, `complete-task`, `add-deviation` and
-`close-stage`.
+After approval, never edit the plan or checkboxes directly. Use planctl amend,
+start-task, complete-task, add-deviation and close-stage.

@@ -157,6 +157,21 @@ if [ -L "$retired_codex_markdown_view" ] \
   echo "✓ removed retired Codex skill: ~/.codex/skills/markdown-view"
 fi
 
+# Remove only stale links previously managed by this repository. This retires
+# superseded entrypoints such as spec without touching operator-owned skills.
+for stale_skill in "$CODEX_DST"/skills/*; do
+  [ -L "$stale_skill" ] || continue
+  stale_target="$(readlink "$stale_skill")"
+  case "$stale_target" in
+    "$CODEX_SRC"/skills/*)
+      if [ ! -e "$stale_target" ]; then
+        rm "$stale_skill"
+        echo "✓ removed retired Codex skill: ~/.codex/skills/$(basename "$stale_skill")"
+      fi
+      ;;
+  esac
+done
+
 for skill_dir in "$CODEX_SRC"/skills/*; do
   [ -d "$skill_dir" ] || continue
   skill_name="$(basename "$skill_dir")"

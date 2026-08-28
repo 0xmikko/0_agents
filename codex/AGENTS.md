@@ -14,15 +14,8 @@ conflicts.
 
 ## Shared code-production process
 
-For non-trivial planned work, read the laws in
-`~/Coding/0_agents/shared/code-production/laws/`:
-
-- `development-process.md` — lifecycle, metrics, parallelism and test cadence
-- `plan-format.md` — Plan → PR Delivery → Stage → Task contract
-- `git-workflow.md` — worktrees, staging PRs, hooks, CI and handoff
-
-Use `planctl`; after a plan lock, never edit its Markdown or checkboxes
-directly. Project verification is exposed only through the seven `agent:*`
-scripts in `~/Coding/0_agents/shared/code-production/package-contract.md`.
-A Stage buys `agent:verify:commit`; a PR Delivery buys `agent:verify:pr` once.
-Agents never merge to `staging` or `main`.
+The process has three self-contained entrypoints: `blueprint` plans,
+`blueprint-start` executes, and `end-work` closes a merged Delivery. Do not
+chain auxiliary process skills or require project-specific framework commands.
+Plans change only through `planctl`; projects expose verification only through
+the seven Bun `agent:*` scripts. Agents never merge to `staging` or `main`.

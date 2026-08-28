@@ -20,11 +20,13 @@ Three top-level entry points; every other installer is a helper inside `lib/`.
 - [x] **`claude` CLI** installed via Anthropic's native installer (`curl -fsSL https://claude.ai/install.sh | bash`) — no Node.js dependency; `update.sh` runs `claude update`
 - [x] **`codex` CLI** installed globally via npm (`@openai/codex`); `update.sh` upgrades it
 - [x] **Shared agent skills** in both Claude and Codex — `bug`, `cleanup-worktrees`, `completion-note`, `dictate`, `fast-precommit`, `git`, `mdurl`, `quick-fix`, `start-work`, `startup-pressure-test`, `test-protocol`, `verify-app`
-- [x] **Claude-only skills** — `dispatch-to-linear`, `execute-from-linear`, `plan`, `review-implementation`, `review-plan`, `spec`, `verify-frontend`
+- [x] **Claude-only utility skills** — `dispatch-to-linear`, `execute-from-linear`, `plan`, `review-implementation`, `review-plan`, `verify-frontend`
 - [x] **Claude background agents** (subagents) — `coherence-cop`, `coverage-cop`, `simplicity-cop`
 - [x] **Per-language guides** loaded on demand — `rust.md`, `typescript.md`
 - [x] **Portable code-production stack** — shared Git/PR/TDD laws, `planctl`,
   managed hooks/CI, timing receipts and one `package.json` command contract
+- [x] **Three production entrypoints** — `blueprint`, `blueprint-start`, and
+  `end-work`; each is self-contained and does not chain auxiliary skills
 - [x] **Codex sandbox profile** — workspace-write; auto-discovers `.git` / `.worktrees` writable roots in `~/Coding`, `~/.cyrus/repos`, `~/.cyrus/worktrees`
 - [x] **Linear MCP** registered for both Claude and Codex (search, comment, ship issues from agent)
 - [x] **`mdurl <path>`** — the single markdown-viewing command: publish `.md` to the u3775 server, get a browser URL (dark theme, mermaid renders)

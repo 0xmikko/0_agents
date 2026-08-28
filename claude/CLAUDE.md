@@ -31,13 +31,11 @@ For multi-language tasks, read all relevant files.
 
 ### Shared code-production process
 
-For non-trivial planned work, read the laws in
-`~/Coding/0_agents/shared/code-production/laws/`: `development-process.md`,
-`plan-format.md`, and `git-workflow.md`. Use `planctl`; after either lock,
-never edit Plan Markdown or checkboxes directly. Projects expose verification
-only through the standard `agent:*` package scripts. A Stage buys
-`agent:verify:commit`; a PR Delivery buys `agent:verify:pr` once. Agents never
-merge to `staging` or `main`.
+The process has three self-contained entrypoints: `blueprint` plans,
+`blueprint-start` executes, and `end-work` closes a merged Delivery. Do not
+chain auxiliary process skills. Plans change only through `planctl`; project
+verification runs only through the standard Bun `agent:*` scripts. Agents
+never merge to `staging` or `main`.
 
 For git operations (branching, commits, merges, history) — see
 ~/.claude/agents/git.md. The summary: never rewrite history.

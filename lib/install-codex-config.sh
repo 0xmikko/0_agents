@@ -124,6 +124,20 @@ if [ -d "$SKILLS_SRC" ]; then
     echo "✓ removed retired Codex skill: ~/.codex/skills/markdown-view"
   fi
 
+  # Remove only stale links previously managed by this repository.
+  for stale_skill in "$DST"/skills/*; do
+    [ -L "$stale_skill" ] || continue
+    stale_target="$(readlink "$stale_skill")"
+    case "$stale_target" in
+      "$SKILLS_SRC"/*)
+        if [ ! -e "$stale_target" ]; then
+          rm "$stale_skill"
+          echo "✓ removed retired Codex skill: ~/.codex/skills/$(basename "$stale_skill")"
+        fi
+        ;;
+    esac
+  done
+
   find "$SKILLS_SRC" -mindepth 1 -maxdepth 1 -type d | sort | while IFS= read -r skill_src; do
     skill_name="$(basename "$skill_src")"
     skill_dst="$DST/skills/$skill_name"

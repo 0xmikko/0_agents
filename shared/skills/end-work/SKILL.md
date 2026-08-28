@@ -1,23 +1,22 @@
 ---
 name: end-work
-description: Close a merged Delivery with metrics, PR retro, ledger update and safe worktree/temp cleanup. Use after the owner merges.
+description: Close an owner-merged Delivery with measured results, a compact retro, and safe temporary/worktree cleanup. Use after merge.
 ---
 
 # End Work
 
-Read `../../code-production/laws/development-process.md` and the completed plan.
-The owner merges; this skill records what actually happened.
+This skill needs only the completed plan, Git, planctl and the PR.
 
-1. Confirm the PR was merged and record PR URL, merge SHA and published head.
-2. Run
-   `bun .agents/code-production/runtime/plan-gate.ts <plan> --closure` and
-   refuse open Tasks/criteria or invalid receipts.
-3. Compare forecast with actual active minutes, elapsed/waits, credits, rework,
-   review rounds and full gates bought.
-4. Post the compact scorecard/retro to the PR: scope drift, estimate misses,
-   parallel critical-path effect, duplicated verification and one small process
-   experiment for the next Delivery.
-5. Update the plan ledger when the project has one.
-6. Confirm registered temp roots are absent. Remove only the explicit inactive
-   feature worktree after proving its branch is merged and clean.
-7. Return the clickable PR Markdown URL and cleanup outcome.
+1. Confirm the owner merged the PR. Record its Markdown URL, published head and
+   merge SHA; never perform the merge yourself.
+2. Run the vendored plan-gate with --closure. Refuse open Tasks, criteria,
+   invalid receipts or registered temp leftovers.
+3. Compare predicted with actual active time, elapsed time, credits, rework,
+   review rounds and complete gates bought. State whether parallelism shortened
+   the critical path.
+4. Post one compact PR retro: what shipped, scope drift, estimate misses,
+   duplicated work/testing and one small process experiment for the next PR.
+5. Update the project plan ledger if it has one.
+6. Prove the explicit feature worktree is clean and its branch merged, then
+   remove that worktree and only its registered temp roots.
+7. Return the clickable PR URL and cleanup result.
