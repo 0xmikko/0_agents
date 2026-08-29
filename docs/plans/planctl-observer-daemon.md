@@ -731,17 +731,17 @@ Predict: 180 active min / 70 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_015 — converge three simulated machines through outage, owner wait, stale recovery, plan drift and Telegram progress without data leakage
+- [x] PLCTL_015 — converge three simulated machines through outage, owner wait, stale recovery, plan drift and Telegram progress without data leakage — a3c1cb4d1b91756c4b9534a419685c2be1a3e91f
       Writes: `planctl/test/distributed-e2e.test.ts`.
       Predict: 70 active min / 28 credits.
       How: compose real machine/server Nest modules over temporary SQLite, fake only clocks/fetch/Telegram, drive sequence/reconnect transitions, and assert exact final progress/ETA/alerts from sanitized fixtures
       RED: `bun run agent:test:e2e -- test/distributed-e2e.test.ts -t tst_int_planctl_distributed_001`
-- [ ] PLCTL_016 — install validated machine or server roles idempotently without overwriting configuration or starting an invalid service
+- [x] PLCTL_016 — install validated machine or server roles idempotently without overwriting configuration or starting an invalid service — a3c1cb4d1b91756c4b9534a419685c2be1a3e91f
       Writes: `planctl/deploy/planctld.service`, `planctl/deploy/planctl-server.service`, `planctl/README.md`, `planctl/test/setup-planctl.test.ts`, `lib/setup-planctl.sh`, `lib/install-bin.sh`, `install-server-linux.sh`, `update.sh`, `README.md`, `shared/code-production/README.md`.
       Predict: 70 active min / 27 credits.
       How: generate role-specific systemd-user units from checked config, link all three binaries through the existing installer, refuse secret/config overwrite, and exercise install/update/restart against isolated fake home/systemctl fixtures
       RED: `bun run agent:test:backend -- test/setup-planctl.test.ts -t tst_int_planctl_install_001`
-- [ ] PLCTL_017 — measure deterministic 100-machine and 1000-agent ingest and progress costs as the optimization baseline for later Deliveries
+- [x] PLCTL_017 — measure deterministic 100-machine and 1000-agent ingest and progress costs as the optimization baseline for later Deliveries — a3c1cb4d1b91756c4b9534a419685c2be1a3e91f
       Writes: `planctl/bench/distributed-benchmark.ts`, `planctl/test/distributed-benchmark.test.ts`, `planctl/README.md`.
       Predict: 40 active min / 15 credits.
       How: build a fixed-seed synthetic snapshot generator, prove exact result cardinality without wall-time assertions, then run a separate host benchmark that records p50/p95 ingest and query timings in Stage Results
@@ -749,18 +749,21 @@ Predict: 180 active min / 70 credits.
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:e2e -- test/distributed-e2e.test.ts` exits 0 — three machines converge with exact ETA, stale/waiting/offline distinctions and deduplicated Telegram output
-- [ ] `cd planctl && bun run agent:test:backend -- test/setup-planctl.test.ts test/distributed-benchmark.test.ts` exits 0 — role installation is safe and the 100/1000 fixture produces exact cardinality
+- [x] `cd planctl && bun run agent:test:e2e -- test/distributed-e2e.test.ts` exits 0 — three machines converge with exact ETA, stale/waiting/offline distinctions and deduplicated Telegram output — a3c1cb4d1b91756c4b9534a419685c2be1a3e91f
+- [x] `cd planctl && bun run agent:test:backend -- test/setup-planctl.test.ts test/distributed-benchmark.test.ts` exits 0 — role installation is safe and the 100/1000 fixture produces exact cardinality — a3c1cb4d1b91756c4b9534a419685c2be1a3e91f
 - [ ] `cd planctl && bun run agent:verify:pr` exits 0 — typecheck, lint, all deterministic tests and package build pass once on the integrated Delivery
 - [ ] The Stage Results record host, p50/p95 ingest, p50/p95 progress query, snapshot bytes and the 100-machine/1000-agent optimization baseline
 - [ ] Both registered machine/server temp trees and every Stage temp root are absent before publication
-- [ ] Commit
+- [x] Commit — a3c1cb4d1b91756c4b9534a419685c2be1a3e91f
 
 ##### Results
 
 <!-- plan:results:D1-S7:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_015 | a3c1cb4d1b91756c4b9534a419685c2be1a3e91f | 2026-08-29T20:39:31.065Z–2026-08-29T21:30:40.000Z | 51 / 51.15 min | unavailable: runner did not expose usage | Three collectors converge through outage and recovery; validated role setup is idempotent; the 100-machine/1,000-agent baseline is measured. |
+| PLCTL_016 | a3c1cb4d1b91756c4b9534a419685c2be1a3e91f | 2026-08-29T20:39:31.065Z–2026-08-29T21:30:40.000Z | 51 / 51.15 min | unavailable: runner did not expose usage | Three collectors converge through outage and recovery; validated role setup is idempotent; the 100-machine/1,000-agent baseline is measured. |
+| PLCTL_017 | a3c1cb4d1b91756c4b9534a419685c2be1a3e91f | 2026-08-29T20:39:31.065Z–2026-08-29T21:30:40.000Z | 51 / 51.15 min | unavailable: runner did not expose usage | Three collectors converge through outage and recovery; validated role setup is idempotent; the 100-machine/1,000-agent baseline is measured. |
 <!-- plan:results:D1-S7:end -->
 <!-- plan:stage:D1-S7:end -->
 <!-- plan:delivery:D1:end -->
@@ -822,4 +825,10 @@ Predict: 180 active min / 70 credits.
 - close D1-S5 partial commit:02a7ca879f47e601dc91042a41fe9004013712cf
 
 - deviation D1-S7: The Delivery gate passed typecheck, lint, and 48 tests but Bun bundling still cannot resolve Nest optional peers @nestjs/microservices, @nestjs/websockets, class-transformer, and class-validator; planctl/package.json is outside the owner-approved D1-S7 writes.
+
+- record-result D1-S7 commit:a3c1cb4d1b91756c4b9534a419685c2be1a3e91f
+
+- close D1-S7 partial commit:a3c1cb4d1b91756c4b9534a419685c2be1a3e91f
+
+- deviation D1-S7: Benchmark evidence on u3775 (linux x64, Bun 1.3.13): 100 machines/1,000 agents; 521,500 total and 5,215 average snapshot bytes; ingest p50 0.095331 ms/p95 0.171315 ms; progress query p50 3.333644 ms/p95 4.172725 ms. The imported Stage result proof summarized the baseline without embedding these exact fields, so that criterion remains open pending an owner-authorized result correction.
 <!-- plan:execution:end -->
