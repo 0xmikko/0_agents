@@ -1,8 +1,8 @@
 # Planctl observer daemon
 
-Status: SPEC_LOCKED
+Status: APPROVED
 Spec lock: sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
-Implementation lock: unlocked
+Implementation lock: sha256:5301ecd18a44b5c0b0a5916590b9a5c4d3b095f1e78a762d9ff094e3b10d22a1 owner:$blueprint-start
 Active Delivery: D1
 Unattended decisions: allowed
 
@@ -772,4 +772,6 @@ Predict: 180 active min / 70 credits.
 - put-stage D1-S6
 
 - put-stage D1-S7
+
+- approve sha256:5301ecd18a44b5c0b0a5916590b9a5c4d3b095f1e78a762d9ff094e3b10d22a1 owner:$blueprint-start
 <!-- plan:execution:end -->
