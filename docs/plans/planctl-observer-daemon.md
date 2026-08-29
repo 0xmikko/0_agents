@@ -9,291 +9,458 @@ Unattended decisions: allowed
 <!-- plan:spec:start -->
 ## The Goal
 
-Give the owner one truthful answer to “how far is the approved plan, what work
-remains, and has an executing agent gone quiet?” without making the existing
-code-production workflow depend on a background service.
+Make long-running, multi-agent vibecoding robust and efficient across multiple
+machines: every agent stays tied to the approved long-term plan, the owner can
+see a defensible delivery estimate, and stalled or owner-blocked work becomes
+visible without manually opening terminals.
 
-The currency is **observable approved-Task coverage and detection latency**:
+The currency is **time to trustworthy intervention and forecast accuracy**:
 
-- `planctl progress <plan>` reports completed/total Tasks, completed/remaining
-  predicted active minutes and credits, active Task elapsed time, and agent
-  activity state from the canonical plan and Git-local Task receipts.
-- With the daemon online, an active Task whose matched session JSONL has not
-  appended an event for the configured stale interval is surfaced within one
-  scheduled scan and produces one Telegram alert per stale transition.
-- With the daemon offline, every existing `planctl` command keeps its current
-  exit behavior; `planctl progress` still returns the local plan-only snapshot
-  and explicitly reports `observer: unavailable` after a bounded 200 ms probe.
-- A daemon restart does not repeat an already-sent stale alert, and resumed
-  activity produces at most one recovery message before a future stale
-  transition can alert again.
-- No prompt text, assistant text, reasoning, tool input/output, bot token, or
-  other transcript payload is persisted by the daemon or sent to Telegram.
+- Every configured machine reports its active Codex and Claude sessions,
+  current repository/branch, bound plan/Delivery/Stage/Task, last activity and
+  machine health to one server.
+- Each plan reports completed work, remaining predicted active work, remaining
+  dependency critical path, calibrated ETA, calibration sample count, and
+  whether owner waits make the calendar ETA unavailable.
+- A session that stops updating becomes `stale` within one scan interval after
+  its configured threshold. An agent that explicitly needs the owner becomes
+  `awaiting_owner` immediately, with a safe one-line reason.
+- Telegram sends deduplicated alerts for `stale`, `awaiting_owner`, recovery and
+  machine-offline transitions. Authorized commands return portfolio progress,
+  one-plan progress, all agents, stale agents, and agents awaiting the owner.
+- An unavailable server never prevents local plan authoring or execution.
+  Each machine coalesces its latest unsent snapshot and catches up after the
+  connection returns; no agent waits on telemetry.
+- The first completed Deliveries establish forecast error as a measured
+  baseline. ETA responses always distinguish raw plan forecast from calibrated
+  forecast and never present owner-wait time as known.
 
 ## The target
 
-### Owner flows
+### Product roles
 
-1. **Check progress:** from any managed repository, the owner runs
-   `planctl progress docs/plans/<plan>.md`. The command prints the same plan
-   totals whether the daemon is present; an online daemon enriches active Tasks
-   with provider, last activity, idle duration and `running | stale | untracked`.
-2. **Receive a stale alert:** the daemon's Nest scheduler scans configured
-   Codex and Claude JSONL roots, correlates session metadata with versioned
-   `start-task` receipts, derives plan context, and sends a deduplicated Telegram
-   message containing plan/Stage/Task, progress, forecast versus elapsed time,
-   worktree, last event kind and idle duration.
-3. **Recover without ceremony:** when a stale JSONL appends again, the next
-   scan records the recovery and can notify once. Completing the Task removes
-   its start receipt, so it disappears from the active-agent view without a
-   daemon-owned lifecycle mutation.
-4. **Run without monitoring:** missing daemon, missing Telegram configuration,
-   or a Task receipt with no supported session ID is explicit status, never a
-   reason for plan authoring/execution commands to fail.
+There are three explicit runtime roles inside one dedicated root `planctl/`
+package:
+
+1. **`planctl` CLI — agent focus protocol.** Existing plan authoring/execution
+   commands remain canonical. `focus` shows the long-term Goal, current Task,
+   exact scope, next dependency-ready work and local progress. `needs-owner`
+   records a structured wait reason without mutating the approved plan;
+   `start-task`/`resume-task` clears it. `progress` can show local or aggregated
+   server state.
+2. **`planctld` — per-machine collector.** One systemd-user process on every
+   coding machine incrementally observes Codex/Claude JSONL metadata, live
+   session processes, Git worktrees, plans and Task receipts. It persists
+   cursors plus a coalescing outbox, computes local activity state, and sends
+   versioned snapshots/heartbeats to the server.
+3. **`planctl-server` — central control plane.** One NestJS service authenticates
+   machines, idempotently ingests snapshots, stores current/history state in
+   SQLite WAL, detects cross-machine transitions, calculates plan progress and
+   delivery ETA, and owns Telegram alerts plus commands.
+
+### Owner and agent flows
+
+1. **Keep an agent focused:** before work, the agent runs `planctl start-task`
+   and receives Goal → Delivery → Stage → Task, writes, forecast and RED. At any
+   time `planctl focus` reprints this contract and warns when the session is
+   unassigned, its plan revision differs from the server's canonical revision,
+   or its elapsed active time exceeds forecast.
+2. **Track existing agents:** `planctld` discovers live Codex/Claude processes
+   and their JSONL session IDs even when they were not launched by planctl.
+   Bound sessions contribute to plan progress and ETA; live sessions without a
+   Task receipt appear as `unassigned` so existing work is visible without being
+   falsely credited to a plan.
+3. **Aggregate many machines:** each collector sends a heartbeat every 15
+   seconds and a compact snapshot only when its content hash changes. Sequence
+   numbers make retries idempotent. When the server is unavailable, the local
+   SQLite outbox retains only the latest unacknowledged state per machine and
+   sends it after reconnect, avoiding an unbounded event queue.
+4. **Estimate delivery:** the server projects incomplete Tasks through the
+   declared Stage dependency DAG. Active Task remaining time is
+   `max(0, calibrated prediction - elapsed active time)`; queued work uses its
+   calibrated prediction. The longest remaining dependency path is the ETA
+   basis, while total remaining active minutes are reported separately. An
+   `awaiting_owner` Task makes `estimatedDeliveryAt` null and exposes
+   `blockedSince` plus active-work ETA instead of inventing owner response time.
+5. **Ask Telegram:** an authorized owner sends `/progress`,
+   `/progress <plan>`, `/agents`, `/stale`, or `/waiting`. The bot replies from
+   the server read model. It also pushes one alert per state transition with
+   machine, agent, plan/Task, elapsed versus predicted time, last safe activity
+   kind, and the explicit owner-wait reason when present.
+6. **Recover:** new JSONL activity changes `stale` to `working`; an agent calling
+   `resume-task` changes `awaiting_owner` to `working`; collector reconnect
+   changes `machine_offline` to online. Each recovery is persisted and notified
+   once. Completed Task receipts remove the session from active plan work while
+   retained history remains available for ETA calibration.
 
 ### Architectural decision
 
-The dedicated root `planctl/` package owns the CLI, reusable observation core,
-and NestJS daemon. Plan Markdown and Git-local Task receipts remain the only
-execution truth. The daemon is a read model over those sources plus session
-activity metadata; its only durable state is notification deduplication.
+Plans and typed Task receipts remain execution truth; collectors publish
+versioned observations, and the server owns only the distributed read model.
+No central component edits a plan, advances a checkbox, resumes an agent or
+guesses work completion.
 
 ```mermaid
 flowchart LR
-    P["Approved plan Markdown"] --> C["planctl observation core"]
-    R["Git-local Task receipts"] --> C
-    J["Codex and Claude JSONL metadata"] --> D["NestJS observer daemon"]
-    C --> D
-    C --> CLI["planctl progress with bounded daemon enrichment"]
-    D --> API["loopback progress API"]
-    D --> T["Telegram stale and recovery alerts"]
-    API --> CLI
+    subgraph M1["Coding machine A"]
+        A1["Codex and Claude JSONL"] --> D1["planctld collector"]
+        P1["Plans and Task receipts"] --> D1
+        C1["planctl focus and execution"] --> P1
+        D1 --> O1["SQLite cursor and coalescing outbox"]
+    end
+    subgraph M2["Coding machine B through N"]
+        A2["Existing agent sessions"] --> D2["planctld collector"]
+        P2["Plans and Task receipts"] --> D2
+        D2 --> O2["SQLite cursor and coalescing outbox"]
+    end
+    O1 --> S["planctl-server central read model"]
+    O2 --> S
+    S --> E["Progress and calibrated ETA"]
+    S --> T["Telegram alerts and commands"]
 ```
+
+### Identity and state model
+
+- `machineId` is an owner-assigned stable slug, unique at the server.
+- `agentId` is `<provider>:<sessionId>` within a machine. A restarted process
+  with the same session remains the same agent observation.
+- `repositoryId` is the normalized Git remote when present; a repository with
+  no remote uses an explicit configured ID—never a guessed filesystem name.
+- `planId` is `repositoryId + plan-relative-path`; `planRevision` is the locked
+  implementation hash. Two machines reporting different revisions are shown as
+  `plan_drift` and are not silently merged into one forecast.
+- Agent state is one of `working | awaiting_owner | stale | unassigned |
+  finished`; machine liveness is independently `online | offline`. An offline
+  machine never causes all of its agents to be mislabeled stale.
+- `awaiting_owner` requires the structured `planctl needs-owner` marker. A
+  terminal turn with an active Task but no marker becomes `stale` or
+  `attention_unknown`; transcript punctuation is never used to claim the owner
+  owes a response.
+
+### Delivery forecast
+
+The server returns both an uncalibrated plan forecast and an observed forecast:
+
+```ts
+interface DeliveryForecast {
+  readonly completionPercent: number;
+  readonly remainingActiveMinutes: number;
+  readonly remainingCriticalPathMinutes: number;
+  readonly calibratedCriticalPathMinutes: number;
+  readonly estimatedDeliveryAt: string | null;
+  readonly blockedByOwner: number;
+  readonly calibration: {
+    readonly factor: number;
+    readonly completedTaskSamples: number;
+    readonly confidence: "low" | "medium" | "high";
+  };
+}
+```
+
+Calibration uses the median `actualActiveMinutes / predictedActiveMinutes` from
+completed Tasks in the same repository, bounded to `0.5..3.0`. Fewer than three
+samples uses factor `1.0` and confidence `low`; 3–9 samples is `medium`; 10 or
+more is `high`. Total active work is never divided by machine/agent count.
+Parallelism affects only the dependency critical path actually declared by the
+plan.
+
+### Distributed contracts
+
+```ts
+type AgentProvider = "codex" | "claude";
+
+interface MachineHeartbeat {
+  readonly protocolVersion: 1;
+  readonly machineId: string;
+  readonly sequence: number;
+  readonly observedAt: string;
+  readonly snapshotHash: string;
+}
+
+interface AgentSnapshot {
+  readonly agentId: string;
+  readonly provider: AgentProvider;
+  readonly state: "working" | "awaiting_owner" | "stale" | "unassigned" | "finished";
+  readonly repositoryId: string | null;
+  readonly worktree: string | null;
+  readonly branch: string | null;
+  readonly planId: string | null;
+  readonly planRevision: string | null;
+  readonly taskId: string | null;
+  readonly lastActivityAt: string;
+  readonly idleSeconds: number;
+  readonly elapsedActiveMinutes: number | null;
+  readonly ownerWaitReason: string | null;
+}
+
+interface MachineSnapshot {
+  readonly heartbeat: MachineHeartbeat;
+  readonly agents: readonly AgentSnapshot[];
+  readonly plans: readonly PlanProgressSnapshot[];
+}
+```
+
+`POST /v1/machines/:machineId/snapshot` requires that machine's bearer token,
+validates the URL ID against the token subject, accepts only a sequence greater
+than the stored sequence, and returns the acknowledged sequence/hash. Server
+offline status uses server receipt time; per-agent idle time is calculated on
+the originating machine so cross-machine clock skew cannot create a stale
+transition.
+
+### Configuration
+
+Configuration is file-based TOML, validated before either service starts. No
+secret is stored directly in TOML: secret fields point to mode-`0600` files.
+There is no silent environment/default discovery beyond the documented default
+config paths.
+
+#### Every coding machine — `~/.config/planctl/machine.toml`
+
+```toml
+version = 1
+machine_id = "u3775"
+repository_ids = { "/home/marketing/Coding/private-repo" = "private-repo" }
+
+[server]
+url = "https://planctl.example.ts.net"
+token_file = "/home/marketing/.config/planctl/machine.token"
+connect_timeout_ms = 1000
+request_timeout_ms = 5000
+
+[collector]
+scan_seconds = 5
+heartbeat_seconds = 15
+stale_after_seconds = 900
+session_lookback_days = 7
+state_db = "/home/marketing/.local/state/planctl/machine.sqlite"
+watch_roots = ["/home/marketing/Coding"]
+codex_sessions = "/home/marketing/.codex/sessions"
+claude_sessions = "/home/marketing/.claude/projects"
+```
+
+`watch_roots` limits Git/worktree discovery. JSONL roots must be explicit
+absolute paths. `repository_ids` is required only for repositories without a
+usable normalized remote. A collector refuses duplicate machine IDs, a token
+file with broader permissions, `heartbeat_seconds >= stale_after_seconds`, or
+paths outside configured roots.
+
+#### Central host — `~/.config/planctl/server.toml`
+
+```toml
+version = 1
+bind = "127.0.0.1:4789"
+external_url = "https://planctl.example.ts.net"
+database = "/home/planctl/.local/state/planctl/server.sqlite"
+machine_offline_after_seconds = 60
+history_retention_days = 90
+
+[telegram]
+bot_token_file = "/home/planctl/.config/planctl/telegram.token"
+allowed_user_ids = [123456789]
+default_chat_id = 123456789
+long_poll_seconds = 30
+```
+
+The central Nest service binds the configured address; multi-machine transport
+is expected to be protected by Tailscale Serve or an HTTPS reverse proxy.
+Non-loopback plain HTTP `external_url` is rejected. Telegram uses long polling,
+so no public bot webhook is required. Unknown users receive no plan data.
+
+#### Bootstrap and validation
+
+- `planctl config init --role machine|server` writes a commented template but
+  never invents IDs, URLs or secrets.
+- `planctl config check --role machine|server` validates schema, paths,
+  permissions, endpoint security and connectivity without starting a service.
+- `planctl-server machine create <machineId>` stores a hashed credential and
+  prints the raw enrollment token once; that token is copied to the machine's
+  configured token file.
+- `lib/setup-planctl.sh --role machine|server` installs dependencies, binaries
+  and the corresponding systemd-user unit only after `config check` succeeds.
+- Config changes require an explicit service restart in Delivery 1; there is no
+  partial hot reload.
+
+### Telegram behavior
+
+| Command/alert | Result |
+|---|---|
+| `/progress` | all active plans ordered by attention state, then ETA |
+| `/progress <plan>` | Goal, completion, active Tasks, critical path, calibrated ETA and blockers |
+| `/agents` | machine/agent/task/state/idle/elapsed summary |
+| `/stale` | stale agents and machine-offline distinctions |
+| `/waiting` | agents explicitly awaiting owner, safe reason and wait duration |
+| stale alert | one message on transition into stale |
+| owner-needed alert | one immediate message per new structured wait marker |
+| recovery alert | one message when stale/waiting/offline clears |
+
+Messages contain no raw transcript excerpts. Context comes from the approved
+Goal/Task, Git metadata, activity record kind, numeric timing and the explicit
+safe `needs-owner` reason supplied by the agent.
 
 ### Target tree
 
 ```text
 planctl/
-├── package.json                         # Bun package, Nest dependencies and agent:* verification scripts
-├── bun.lock                             # exact package snapshot
-├── tsconfig.json                        # strict TypeScript plus Nest decorator settings
-├── README.md                            # CLI, daemon, configuration and privacy contract
-├── deploy/planctld.service              # systemd --user unit template
-├── fixtures/sessions/                   # sanitized Codex/Claude JSONL behavior fixtures
-├── src/cli/main.ts                      # current commands plus progress and bounded daemon client
-├── src/core/plan-gate.ts                # moved canonical lock/gate engine
-├── src/core/plan-update.ts              # moved canonical writer and shared plan read model
-├── src/core/plan-progress.ts            # pure weighted progress/forecast projection
-├── src/core/task-run.ts                 # versioned start receipt and agent-session identity
-├── src/daemon/main.ts                   # loopback-only Nest bootstrap
-├── src/daemon/app.module.ts             # module composition and ScheduleModule ownership
-├── src/daemon/config.ts                 # strict environment decoding
-├── src/daemon/progress/                 # progress module, service and HTTP controller
-├── src/daemon/sessions/                 # session port plus Codex/Claude JSONL adapters
-├── src/daemon/stale/                    # scheduled correlation and transition policy
-├── src/daemon/notifications/            # notifier port and Telegram adapter
-├── src/daemon/state/                    # atomic alert-transition repository
-└── test/                                # moved core tests plus progress/stale/API/install tests
-bin/planctl                              # compatibility launcher into planctl/src/cli
-bin/planctld                             # foreground daemon launcher for systemd/manual use
-lib/setup-planctld.sh                    # idempotent dependency/unit/config installation
-shared/code-production/agent-stack.ts   # vendors lightweight core/CLI to stable consumer paths
-shared/code-production/templates/...    # stable consumer hooks continue calling vendored paths
-install-server-linux.sh                  # server bootstrap opt-in/enable step
-update.sh                                # refresh package and restart an installed user service
-README.md                                # feature inventory and operator entrypoints
+├── package.json                         # Bun/Nest package and seven agent:* scripts
+├── bun.lock                             # exact dependency snapshot
+├── tsconfig.json                        # strict TypeScript and Nest decorators
+├── README.md                            # roles, commands, configuration and operations
+├── deploy/                              # machine/server systemd-user unit templates
+├── fixtures/sessions/                   # sanitized Codex/Claude JSONL fixtures
+├── src/cli/                             # authoring, focus, progress, needs-owner and admin commands
+├── src/core/                            # canonical plan writer/gate/read model/ETA contracts
+├── src/machine/                         # collector modules, JSONL/process sources and SQLite outbox
+├── src/server/                          # Nest ingest, registry, progress, ETA and SQLite modules
+├── src/telegram/                        # authorized long-poll bot, commands and transition notifier
+└── test/                                # core, machine, server, Telegram and protocol tests
+bin/planctl                              # compatibility CLI launcher
+bin/planctld                             # per-machine collector launcher
+bin/planctl-server                       # central server launcher
+lib/setup-planctl.sh                     # role-aware validated user-service installer
+shared/code-production/agent-stack.ts   # vendors CLI/core to stable consumer paths
+shared/skills/blueprint-start/SKILL.md   # requires structured owner-wait state
+install-server-linux.sh                  # machine/server role setup entrypoint
+update.sh                                # package refresh and installed-service restart
+README.md                                # distributed planctl feature inventory
 ```
 
-The Nest daemon is never copied into a consumer repository. `agent-stack`
-continues to vendor the small TypeScript CLI/core under the existing
-`.agents/code-production/runtime/` targets so installed hooks and plans do not
-break when the source files move into `planctl/`.
+NestJS and server dependencies are never copied into consumer repositories.
+`agent-stack` continues to vendor lightweight CLI/core files under the existing
+`.agents/code-production/runtime/` paths so managed hooks do not break when
+source ownership moves into `planctl/`.
 
-### Core interfaces
+### Efficiency and failure policy
 
-```ts
-type AgentProvider = "codex" | "claude";
-
-type SessionIdentity =
-  | { readonly kind: "identified"; readonly provider: AgentProvider; readonly id: string }
-  | { readonly kind: "unavailable"; readonly reason: string };
-
-interface TaskRunV2 {
-  readonly version: 2;
-  readonly worktreeRoot: string;
-  readonly plan: string;
-  readonly deliveryId: string;
-  readonly stageId: string;
-  readonly taskId: string;
-  readonly startedAt: string;
-  readonly baseHead: string;
-  readonly session: SessionIdentity;
-}
-
-interface PlanProgress {
-  readonly plan: string;
-  readonly status: "SPEC_DRAFT" | "SPEC_LOCKED" | "APPROVED";
-  readonly tasks: { readonly completed: number; readonly total: number };
-  readonly predictedActiveMinutes: { readonly completed: number; readonly remaining: number };
-  readonly predictedCredits: { readonly completed: number; readonly remaining: number };
-  readonly completionPercent: number;
-}
-
-type AgentActivityState = "running" | "stale" | "untracked";
-
-interface AgentObservation {
-  readonly taskId: string;
-  readonly session: SessionIdentity;
-  readonly state: AgentActivityState;
-  readonly lastEventKind: string | null;
-  readonly lastUpdatedAt: string | null;
-  readonly idleSeconds: number | null;
-  readonly elapsedMinutes: number;
-}
-
-interface SessionSource {
-  activity(session: SessionIdentity): Promise<AgentObservation | null>;
-}
-
-interface Notifier {
-  stale(snapshot: AgentObservation, progress: PlanProgress): Promise<void>;
-  recovered(snapshot: AgentObservation, progress: PlanProgress): Promise<void>;
-}
-```
-
-The progress projection is one pure function used by both CLI and daemon.
-There is no second Markdown parser. `TaskRunV2` is written atomically by
-`start-task`; existing version-1 receipts remain completable but are reported
-as `untracked` because they contain no trustworthy session identity.
-
-### Stale and notification policy
-
-- Nest `ScheduleModule` owns one configurable cron scan; default cadence is 60
-  seconds and default stale interval is 15 minutes. Tests inject a clock and
-  invoke the scan directly—no wall-clock sleeps.
-- JSONL adapters read only identity, `cwd`, timestamps, record/event kind and
-  file size/mtime. An incomplete trailing append is ignored in favor of the
-  last complete JSON object; malformed metadata yields `untracked`, never a
-  healthy result.
-- Staleness requires an active Task receipt, a matching provider/session file,
-  and `now - lastUpdatedAt >= staleInterval`. A quiet chat with no active
-  `planctl` Task is not an agent to monitor.
-- The alert repository atomically persists the last notified state under the
-  configured XDG state directory. A notification failure is recorded and
-  retried on the next scan; a successful state is not re-sent until a genuine
-  transition occurs.
-- Telegram is disabled only when both token and chat ID are absent. Supplying
-  one without the other is invalid configuration and refuses daemon startup.
-  The daemon health endpoint reports notification capability explicitly.
-- The HTTP API binds `127.0.0.1` only. It exposes health, all active progress,
-  and one validated repository/plan progress query; it never exposes transcript
-  records or accepts plan mutations.
+- Collectors keep per-file byte offsets and parse only appended complete JSONL
+  records. A truncated tail remains buffered until completed; malformed input
+  becomes explicit source error, never healthy activity.
+- Snapshots are content-hashed. Unchanged state sends only a heartbeat; changed
+  state replaces the one coalesced outbox row. Retries use bounded exponential
+  backoff with jitter and preserve the latest state across restart.
+- The server transactionally accepts sequence + snapshot, so duplicate/out-of-
+  order retries cannot regress state or duplicate Telegram alerts.
+- Server unavailability is visible in local `planctl progress` and collector
+  health but never changes existing authoring/execution command status.
+- Machine offline and session stale are separate. A missing machine heartbeat
+  alerts once at 60 seconds by default; its sessions retain their last known
+  state and are labeled `machine_offline` in views.
+- A Task scope or plan revision mismatch is `plan_drift`; it is excluded from
+  ETA until reconciled rather than merged optimistically.
 
 ### Success metrics
 
-- Synthetic plans prove exact Task counts, weighted completion percent,
-  completed/remaining minutes and credits, partial Stage progress, and parallel
-  Stage forecasts without dividing work by agent count.
-- Codex and Claude fixtures prove session correlation, stale threshold boundary,
-  truncated final JSONL handling, unknown receipt versions, and provider/session
-  mismatches.
-- A secret string embedded in every transcript payload is absent from API
-  responses, state files, logs and captured Telegram messages.
-- Three identical stale scans plus a daemon restart produce one stale alert;
-  append/recovery plus a later stale transition produces one recovery and one
-  new stale alert.
-- An unreachable/hanging daemon cannot change existing command results and adds
-  no more than the configured 200 ms probe to `planctl progress`.
-- The existing 35 code-production tests remain green after their source move;
-  `agent-stack` install/check fixtures prove the same seven stable vendored
-  consumer targets.
+- A deterministic fixture with 3 machines, 12 agents, 2 plans, parallel Stages,
+  an owner wait, plan drift and an offline machine returns exact progress,
+  remaining active work, critical path and calibrated ETA.
+- With server loss across 20 collector scans, the outbox stays at one latest
+  snapshot; reconnect acknowledges it and server state converges within one
+  heartbeat without blocking a `planctl` work command.
+- Three duplicate/out-of-order snapshot deliveries plus a server restart create
+  one state transition and one Telegram alert.
+- Stale is detected at exactly `idleSeconds >= stale_after_seconds`; owner wait
+  is emitted immediately from `needs-owner`; machine offline is based only on
+  server heartbeat receipt time.
+- Telegram command fixtures prove authorization and exact `/progress`,
+  `/agents`, `/stale`, `/waiting` answers without live Telegram.
+- A secret marker placed in every JSONL payload is absent from wire snapshots,
+  SQLite rows, logs, API responses and Telegram messages.
+- A 100-machine/1,000-agent synthetic snapshot set is ingested idempotently and
+  queried for progress within a measured target established in Stage 0; the
+  target is recorded before optimization rather than guessed in this SPEC.
+- Existing code-production tests remain green after source relocation, and
+  installed consumer paths remain byte-identical to their canonical CLI/core
+  sources.
 
 ### Constraints and deliberate exclusions
 
-- TypeScript on Bun with NestJS (`@nestjs/core`, `@nestjs/common`,
-  `@nestjs/platform-express`, `@nestjs/schedule`) is the required runtime even
-  though a smaller HTTP loop would work; modules must preserve reusable seams.
-- Delivery 1 supports local Codex and Claude JSONL files and Linux systemd
-  `--user`. macOS launchd, remote/multi-host aggregation and Windows are later
-  Deliveries.
-- “Summarize” in Delivery 1 means deterministic plan context plus activity
-  metadata. LLM transcript summarization, prompt/tool excerpts, agent control,
-  restart/kill actions and a web dashboard are out of scope.
-- The daemon monitors approved Tasks started through `planctl`; it does not
-  guess that arbitrary chats are executing project work.
-- The source repository currently has no `staging` branch and no root Bun
-  package. This self-hosted plan uses `origin/main`, matching existing PRs; the
-  dedicated `planctl/package.json` owns its seven `agent:*` adapters and scoped
-  verification commands.
+- TypeScript on Bun and NestJS are required. SQLite WAL is the Delivery-1
+  persistence boundary; no PostgreSQL, Redis or message broker is introduced.
+- Delivery 1 supports Linux systemd-user hosts, Codex and Claude. macOS launchd,
+  Windows, browser UI and Kubernetes are later plans.
+- The system observes and reports agents; it never sends prompts into a live
+  session, kills/restarts a process, changes a plan, completes a Task, or lets a
+  Telegram command mutate execution.
+- “Summary” means deterministic approved-plan context and timing in Delivery 1.
+  LLM transcript summarization and transcript upload are out of scope.
+- Existing unassigned agents are tracked for activity/staleness but do not
+  contribute to a plan ETA until they bind through `start-task`.
+- The source repository has no `staging` branch. This self-hosted plan continues
+  its evidence-backed `origin/main` PR workflow; `planctl/package.json` owns the
+  seven `agent:*` commands from its own working directory.
 
 ### Today, measured against the target
 
 Pinned implementation base: `73e6c2a` (`origin/main`, 2026-08-29).
 
-- `shared/code-production/runtime/planctl.ts` is 453 lines and exposes no
-  `progress` command. Its version-1 Task receipt at lines 156-164 records plan,
-  Task, time and base commit but no worktree or agent session; receipts live in
-  the Git common directory at lines 234-237.
-- `shared/code-production/runtime/plan-update.ts` is 1,191 lines. It already owns
-  the canonical rendered Stage parser (`stageInputs`, line 437), Delivery
-  metadata parser (line 484) and exported Task brief (line 550); progress must
-  extend that read model rather than parse Markdown again.
-- `shared/code-production/agent-stack.ts` is 252 lines and maps source runtime
-  files to stable consumer targets at lines 89-119. That map is the compatibility
-  seam for moving source ownership into `planctl/`.
-- There is no root or nested `package.json`, Nest module, scheduler, Telegram
-  adapter, progress projection, or Codex/Claude session identity use in the
-  repository. The current four code-production test files pass **35/35** in
-  **6.17 s** on the pinned base.
-- Host schema inspection without reading payload content confirmed Codex
-  `session_meta` contains `id/session_id` and `cwd`, appended records carry
-  timestamps/event kinds, and 28 of 30 sampled recent completed logs ended in
-  `event_msg/task_complete`. Claude JSONL records expose `sessionId`, `cwd`,
-  `timestamp` and record type. Both formats can support metadata-only activity
-  adapters; neither currently links to a Task receipt.
+- `shared/code-production/runtime/planctl.ts` is 453 lines and has no focus,
+  progress, owner-wait, machine enrollment or distributed protocol commands.
+  Its version-1 Task receipt records no worktree, machine or session identity.
+- `shared/code-production/runtime/plan-update.ts` is 1,191 lines and already owns
+  the canonical rendered Stage/Delivery/Task parser needed for progress and the
+  dependency graph; a second Markdown parser is unnecessary.
+- `shared/code-production/agent-stack.ts` is 252 lines and owns the source-to-
+  stable-consumer mapping used to relocate CLI/core source safely.
+- There is no package.json, Nest module, local collector, server, SQLite state,
+  transport authentication, Telegram bot, progress projection, delivery ETA or
+  configuration schema in the repository. The current code-production suite is
+  green at 35/35 tests in 6.17 seconds.
+- Metadata-only host inspection confirmed both Codex and Claude JSONL expose
+  stable session identity, cwd and timestamps. Current Codex processes expose
+  `CODEX_SESSION_ID`/`CODEX_THREAD_ID`, so a local collector can correlate live
+  sessions without uploading transcript content.
 
 ### Reuse map
 
-- Extend `plan-update.ts`'s existing `stageInputs`, `deliveryMetas` and
-  `taskExecutionBrief`; grep found no other plan progress/read-model owner.
-- Extract `planctl.ts`'s existing Task receipt path/decoder into `task-run.ts`;
-  preserve atomic writes and the completion ancestry checks rather than adding
-  a daemon registry as execution truth.
-- Extend `agent-stack.ts::managedFiles`; keep installed target paths and the
-  manifest drift check unchanged.
-- Reuse `lib/install-bin.sh` for `planctld` and the repository's existing
-  systemd-user setup conventions in `lib/setup-cyrus.sh`; do not add a second
-  binary-linker or service installer framework.
-- Reuse `shared/skills/test-protocol` determinism/privacy rules and Bun's
-  temporary-directory fixtures; live Telegram and personal transcripts are
-  forbidden in tests.
-- Repository-wide greps found no existing progress service, session source,
-  Nest module, Telegram notifier or stale-agent policy to extend.
+- Extend the existing `plan-update.ts` Stage/Delivery/Task read model for
+  progress and ETA; repository-wide grep found no other progress owner.
+- Extract the existing Task receipt path/decoder and preserve completion
+  ancestry checks; add machine/session/wait metadata without creating a second
+  execution registry.
+- Extend `agent-stack.ts::managedFiles` while preserving consumer target paths
+  and manifest drift checks.
+- Reuse `lib/install-bin.sh` and existing systemd-user installation conventions;
+  one role-aware installer replaces separate ad-hoc service scripts.
+- Reuse Bun's `bun:sqlite`, Web `fetch`, crypto and TOML support. Add NestJS and
+  scheduling packages only; do not add an ORM, queue, Telegram SDK or config
+  framework unless implementation evidence proves the built-ins insufficient.
+- Reuse `shared/skills/test-protocol` fixture/privacy rules. Tests use sanitized
+  JSONL, fake clocks/transports and a fake Telegram boundary—never live accounts
+  or personal transcripts.
 
 ### Invariants
 
-- **OBS-001:** one canonical plan projection produces identical numeric
-  progress in CLI and daemon responses.
-- **OBS-002:** observer absence or timeout never changes the exit status or
-  writes of existing `planctl` commands.
-- **OBS-003:** only an active Task receipt can produce `running` or `stale`; a
-  recent unrelated JSONL cannot.
-- **OBS-004:** the stale boundary is deterministic at `>=` the configured
-  interval, and malformed/truncated session input cannot become healthy.
-- **OBS-005:** one persisted transition produces at most one Telegram message,
-  including across restart, while failed delivery remains retryable.
-- **OBS-006:** transcript payload content and Telegram credentials never cross
-  the metadata parser, HTTP response, persisted alert state or notification
-  template boundary.
-- **OBS-007:** existing version-1 receipts remain valid for Task completion and
-  progress but are explicitly `untracked` for stale detection.
-- **OBS-008:** consumer repositories retain the same seven vendored runtime/hook
-  target paths and do not receive NestJS daemon code or dependencies.
+- **CTL-001:** an agent can always name its approved Goal, current Task, exact
+  scope and next dependency-ready work from one canonical plan read model.
+- **CTL-002:** existing planctl authoring/execution succeeds identically while
+  collector or server is unavailable; telemetry never gates work.
+- **CTL-003:** every accepted machine snapshot is authenticated, versioned and
+  strictly sequence-monotonic; replay cannot regress state or duplicate alerts.
+- **CTL-004:** machine offline, session stale, awaiting owner, unassigned work
+  and plan drift are distinct states with distinct evidence.
+- **CTL-005:** delivery ETA is the calibrated remaining dependency critical
+  path, never total work divided by agent count; owner wait makes calendar ETA
+  unknown.
+- **CTL-006:** an owner-response claim requires a structured `needs-owner`
+  marker; transcript text is never heuristically classified as an obligation.
+- **CTL-007:** collector restart/server outage loses no latest state and cannot
+  grow an unbounded telemetry queue.
+- **CTL-008:** one persisted transition yields at most one authorized Telegram
+  alert, while failed delivery remains retryable.
+- **CTL-009:** transcript payloads and raw credentials never enter snapshots,
+  central persistence, logs, APIs or Telegram messages.
+- **CTL-010:** plan revision mismatches are visible and excluded from forecasts;
+  data from different revisions is never silently combined.
+- **CTL-011:** version-1 Task receipts remain completable and locally reportable,
+  but distributed correlation is explicitly unavailable until a version-2
+  receipt is started.
+- **CTL-012:** consumer repositories retain stable vendored runtime/hook paths
+  and receive neither NestJS server code nor central persistence dependencies.
 
 ### Open questions
 
-None. The first Delivery is deliberately local, metadata-only and read-only;
-future summarization or control behavior requires a new owner-approved plan.
+None. The initial system is a read-only distributed control plane with explicit
+machine/server configuration and structured owner-wait signaling. Agent control,
+LLM summaries and UI work require separate owner-approved plans.
 <!-- plan:spec:end -->
 
 <!-- plan:implementation:start -->
