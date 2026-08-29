@@ -1,0 +1,211 @@
+import { afterEach, describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { NestFactory } from "@nestjs/core";
+
+import { MachineAdminService } from "../src/server/admin/machine-admin.service";
+import { ServerAppModule } from "../src/server/app.module";
+import { IngestService } from "../src/server/ingest/ingest.service";
+import { ServerStore } from "../src/server/persistence/server-store";
+import { ProgressController } from "../src/server/progress/progress.controller";
+import { TransitionService } from "../src/server/transitions/transition.service";
+
+import type { INestApplicationContext } from "@nestjs/common";
+import type { AgentSnapshot, MachineSnapshot, ReportedPlanProgress } from "../src/core/snapshot-protocol";
+
+const PLAN_ID = "0xmikko/0_agents:docs/plans/example.md";
+const CANONICAL_REVISION = "a".repeat(64);
+const DRIFT_REVISION = "b".repeat(64);
+const roots: string[] = [];
+
+function fixtureRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "planctl-server-progress-"));
+  roots.push(root);
+  mkdirSync(join(root, "state"), { recursive: true });
+  return root;
+}
+
+function plan(planRevision: string): ReportedPlanProgress {
+  return {
+    planId: PLAN_ID,
+    planRevision,
+    goal: "Ship trustworthy distributed tracking",
+    progress: {
+      deliveryId: "D1",
+      tasks: { completed: 1, total: 4 },
+      activeMinutes: { completed: 20, remaining: 55, total: 75 },
+      credits: { completed: 5, remaining: 15, total: 20 },
+      completionPercent: 20 / 75 * 100,
+      stages: [{
+        id: "D1-S1",
+        depends: [],
+        parallelWith: [],
+        tasks: { completed: 1, total: 1 },
+        activeMinutes: { completed: 20, remaining: 0, total: 20 },
+        credits: { completed: 5, remaining: 0, total: 5 },
+        completionPercent: 100,
+      }, {
+        id: "D1-S2",
+        depends: ["D1-S1"],
+        parallelWith: ["D1-S3"],
+        tasks: { completed: 0, total: 1 },
+        activeMinutes: { completed: 0, remaining: 30, total: 30 },
+        credits: { completed: 0, remaining: 6, total: 6 },
+        completionPercent: 0,
+      }, {
+        id: "D1-S3",
+        depends: ["D1-S1"],
+        parallelWith: ["D1-S2"],
+        tasks: { completed: 0, total: 1 },
+        activeMinutes: { completed: 0, remaining: 10, total: 10 },
+        credits: { completed: 0, remaining: 3, total: 3 },
+        completionPercent: 0,
+      }, {
+        id: "D1-S4",
+        depends: ["D1-S2", "D1-S3"],
+        parallelWith: [],
+        tasks: { completed: 0, total: 1 },
+        activeMinutes: { completed: 0, remaining: 15, total: 15 },
+        credits: { completed: 0, remaining: 6, total: 6 },
+        completionPercent: 0,
+      }],
+    },
+  };
+}
+
+function agent(
+  agentId: string,
+  state: AgentSnapshot["state"],
+  planRevision: string,
+  taskId: string,
+): AgentSnapshot {
+  return {
+    agentId,
+    provider: "codex",
+    state,
+    repositoryId: "0xmikko/0_agents",
+    worktree: `/work/${agentId.replace(":", "-")}`,
+    branch: "feat/example",
+    planId: PLAN_ID,
+    planRevision,
+    taskId,
+    lastActivityAt: "2026-08-29T00:00:00.000Z",
+    idleSeconds: state === "stale" ? 900 : 0,
+    elapsedActiveMinutes: 10,
+    ownerWaitReason: state === "awaiting_owner" ? "Approve the production host" : null,
+  };
+}
+
+function snapshot(
+  machineId: string,
+  sequence: number,
+  agents: readonly AgentSnapshot[],
+  revision: string,
+): MachineSnapshot {
+  return {
+    heartbeat: {
+      protocolVersion: 1,
+      machineId,
+      sequence,
+      observedAt: "2026-08-29T00:00:00.000Z",
+      snapshotHash: `${machineId === "machine-a" ? "a" : machineId === "machine-b" ? "b" : "c"}${sequence}`
+        .padEnd(64, "0"),
+    },
+    agents,
+    plans: [plan(revision)],
+  };
+}
+
+async function server(root: string, clock: { value: string }): Promise<INestApplicationContext> {
+  return await NestFactory.createApplicationContext(ServerAppModule.register({
+    databasePath: join(root, "state/server.sqlite"),
+    machineOfflineAfterSeconds: 60,
+    transitionScanMs: null,
+    now: () => clock.value,
+  }), { logger: false });
+}
+
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+describe("central progress read model", () => {
+  /**
+   * @test-id: tst_int_planctl_progress_001
+   * @scenario: scn_planctl_progress_001
+   * @covers: planctl/src/server/progress/progress.service.ts::ProgressService.portfolio
+   * @covers: planctl/src/server/progress/progress.controller.ts::ProgressController
+   * @deterministic: yes
+   * @fixtures: temporary SQLite and a fixed four-Stage dependency DAG
+   *
+   * Test environment: real Nest services over persisted multi-machine snapshots
+   * Clients: direct in-process read controller
+   * Mocks: injected clock only
+   * Data: canonical/drift revisions, owner wait, stale/offline agents and calibration samples
+   */
+  it("tst_int_planctl_progress_001 serves exact portfolio and per-plan attention plus calibrated critical path", async () => {
+    const root = fixtureRoot();
+    const clock = { value: "2026-08-29T00:00:00.000Z" };
+    const app = await server(root, clock);
+    try {
+      const admin = app.get(MachineAdminService);
+      const ingest = app.get(IngestService);
+      const store = app.get(ServerStore);
+      const transitions = app.get(TransitionService);
+      const controller = app.get(ProgressController);
+      for (const machineId of ["machine-a", "machine-b", "machine-c"]) {
+        admin.registerMachine(machineId, `fixture-token-for-${machineId}`);
+      }
+
+      ingest.accept("machine-a", { kind: "snapshot", snapshot: snapshot("machine-a", 1, [
+        agent("codex:waiting", "awaiting_owner", CANONICAL_REVISION, "PLAN_002"),
+        agent("codex:stale", "stale", CANONICAL_REVISION, "PLAN_003"),
+      ], CANONICAL_REVISION) }, "machine-a");
+      ingest.accept("machine-b", { kind: "snapshot", snapshot: snapshot("machine-b", 1, [
+        agent("codex:drift", "working", DRIFT_REVISION, "PLAN_004"),
+      ], DRIFT_REVISION) }, "machine-b");
+      ingest.accept("machine-c", { kind: "snapshot", snapshot: snapshot("machine-c", 1, [
+        agent("codex:offline", "working", CANONICAL_REVISION, "PLAN_002"),
+      ], CANONICAL_REVISION) }, "machine-c");
+      store.recordCalibrationSample("0xmikko/0_agents", 10, 20, clock.value);
+      store.recordCalibrationSample("0xmikko/0_agents", 20, 30, clock.value);
+      store.recordCalibrationSample("0xmikko/0_agents", 10, 10, clock.value);
+
+      clock.value = "2026-08-29T00:01:00.000Z";
+      transitions.evaluate();
+      const portfolio = controller.portfolio();
+      expect(portfolio.generatedAt).toBe(clock.value);
+      expect(portfolio.plans).toHaveLength(1);
+      const view = portfolio.plans[0];
+      if (view === undefined) throw new Error("fixture plan is missing");
+      expect(view.planId).toBe(PLAN_ID);
+      expect(view.planRevision).toBe(CANONICAL_REVISION);
+      expect(view.tasks).toEqual({ completed: 1, total: 4 });
+      expect(view.activeMinutes).toEqual({ completed: 20, remaining: 55, total: 75 });
+      expect(view.remainingActiveMinutes).toBe(55);
+      expect(view.criticalPathMinutes).toBe(45);
+      expect(view.calibratedCriticalPathMinutes).toBe(67.5);
+      expect(view.estimatedDeliveryAt).toBeNull();
+      expect(view.calibration).toEqual({ factor: 1.5, completedTaskSamples: 3, confidence: "medium" });
+      expect(view.attention).toEqual({
+        ownerWait: 1,
+        stale: 1,
+        unassigned: 0,
+        machineOffline: 3,
+        planDrift: 1,
+      });
+      expect(view.activeAgents.map((entry) => entry.state)).toEqual([
+        "awaiting_owner",
+        "stale",
+        "plan_drift",
+        "working",
+      ]);
+      expect(controller.plan(encodeURIComponent(PLAN_ID))).toEqual(view);
+      expect(() => controller.plan(encodeURIComponent("missing:docs/plans/missing.md"))).toThrow("not found");
+    } finally {
+      await app.close();
+    }
+  });
+});
