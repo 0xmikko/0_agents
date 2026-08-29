@@ -35,6 +35,7 @@ Three top-level entry points; every other installer is a helper inside `lib/`.
   process to a TypeScript project without framework paths in hooks or skills
 - [x] **Neovim ≥ 0.11 + LazyVim** starter at `~/.config/nvim`
 - [x] **`Cmd-Shift-3` → screenshot uploaded to u3775 mdurl server** (via Hammerspoon)
+- [x] **`Alt-Shift-3` → select an Omarchy region, upload it to u3775, copy the remote path, and notify** (via Hyprland)
 - [x] **Zellij keybindings work on Russian (ЙЦУКЕН) layout** — every `Ctrl-P x` shortcut has a sibling on the matching Russian letter (`Ctrl-P ч`, etc.), so shortcuts keep working without switching keyboard layout
 - [x] **zsh completions** for `zellij`, `gh`, `codex`, `bun`, `rg`, `docker`, `kubectl`, `helm`, `cargo`, `rustup` — auto-generated and wired into `~/.zshrc`
 - [x] **Interactive subscription logins** — `claude auth login` (OAuth), `codex login` (browser flow)
@@ -50,7 +51,7 @@ Not installed by `install-client-mac.sh` — install yourself:
 
 ## Features on Linux server (`install-server-linux.sh`)
 
-**Everything from Mac above** (where applicable; no Hammerspoon hotkey) **plus:**
+**Everything from Mac above** (where applicable; Omarchy desktops use the Hyprland hotkey above) **plus:**
 
 - [x] **Server-wide Claude permissions profile** — wide bash allowlist for ops tools, **plus explicit `.env*` deny rules** (Read/Edit/Write/cat/grep all blocked) so agents can't leak secrets
 - [x] **`gh` CLI** installed + authenticated; `gh auth setup-git` wires HTTPS git push to use the gh token (no per-repo credential setup, works from any worktree)

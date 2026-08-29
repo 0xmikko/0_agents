@@ -2,9 +2,9 @@
 # Universal screenshot upload script for Linux and macOS
 # Uploads screenshots to Tailscale server u3775
 
+LOCAL_DIR="$HOME/Pictures/screenshots"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 FILENAME="screenshot-${TIMESTAMP}.png"
-LOCAL_DIR="$HOME/Pictures/screenshots"
 LOCAL_FILE="${LOCAL_DIR}/${FILENAME}"
 REMOTE_USER="screenshot"
 REMOTE_HOST="u3775"
@@ -20,11 +20,20 @@ OS="$(uname -s)"
 take_screenshot() {
     case "$OS" in
         Linux*)
-            # Use gnome-screenshot area selection
-            if command -v gnome-screenshot &> /dev/null; then
+            # Omarchy/Hyprland-native region picker. `save` prints the file it
+            # created, so keep that path for the upload below.
+            if command -v omarchy &> /dev/null; then
+                local captured_file
+                captured_file=$(OMARCHY_SCREENSHOT_DIR="$LOCAL_DIR" \
+                    omarchy capture screenshot region save) || return 1
+                captured_file=$(printf '%s\n' "$captured_file" | tail -n 1)
+                [ -n "$captured_file" ] && [ -f "$captured_file" ] || return 1
+                LOCAL_FILE="$captured_file"
+                FILENAME=$(basename "$LOCAL_FILE")
+            elif command -v gnome-screenshot &> /dev/null; then
                 gnome-screenshot -a -f "$LOCAL_FILE" 2>/dev/null
             else
-                echo "Error: No screenshot tool found"
+                echo "Error: No screenshot tool found (expected omarchy or gnome-screenshot)"
                 return 1
             fi
             ;;
@@ -76,7 +85,9 @@ show_notification() {
 
     case "$OS" in
         Linux*)
-            if command -v notify-send &> /dev/null; then
+            if command -v omarchy-notification-send &> /dev/null; then
+                omarchy-notification-send "$title" "$message" -u "$urgency" -t 5000
+            elif command -v notify-send &> /dev/null; then
                 notify-send "$title" "$message" -u "$urgency" -t 3000
             fi
             ;;
@@ -87,7 +98,7 @@ show_notification() {
 }
 
 # Main logic
-take_screenshot
+take_screenshot || true
 
 # Check if screenshot was taken successfully
 if [ ! -f "$LOCAL_FILE" ]; then
@@ -106,10 +117,12 @@ if [ $? -eq 0 ]; then
     FILE_PATH="${REMOTE_PATH}/${FILENAME}"
 
     # Copy path to clipboard
-    copy_to_clipboard "$FILE_PATH"
-
-    # Show success notification
-    show_notification "Screenshot Uploaded" "Path copied: ${FILE_PATH}"
+    if copy_to_clipboard "$FILE_PATH"; then
+        show_notification "Screenshot Uploaded" "Remote path copied to clipboard: ${FILE_PATH}"
+    else
+        show_notification "Screenshot Uploaded" "Upload succeeded, but copying the path failed" "critical"
+        exit 1
+    fi
 else
     show_notification "Upload Failed" "Could not upload to $REMOTE_HOST" "critical"
     exit 1

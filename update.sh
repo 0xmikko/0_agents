@@ -13,6 +13,7 @@
 #   7. lib/install-linear-mcp.sh   (Linear MCP register; OAuth login skipped)
 #   8. lib/install-lazyvim.sh      (only if --with-lazyvim or detected nvim use)
 #   9. lib/install-completions.sh  (zsh completions for zellij/gh/bun/codex/...)
+#  10. lib/omarchy_hotkey.sh       (auto-detected Omarchy desktop only)
 #
 # Per-step failures DO stop the run (set -e). Intentional skips via flags.
 #
@@ -24,7 +25,8 @@
 #   update.sh --with-lazyvim      # also run install-lazyvim.sh
 #   update.sh --skip <name>       # skip a specific step (repeatable):
 #                                   git, install, bin, codex-config, runtimes,
-#                                   mdurl-skill, linear-mcp, lazyvim, completions
+#                                   mdurl-skill, linear-mcp, lazyvim, completions,
+#                                   omarchy-hotkey
 
 set -euo pipefail
 
@@ -164,6 +166,16 @@ if should_skip completions; then
 else
   say "install-completions.sh"
   bash "$REPO_DIR/lib/install-completions.sh"
+fi
+
+# ─── 10. omarchy_hotkey.sh (auto-detected) ──────────────────────────────
+if should_skip omarchy-hotkey; then
+  ok "skipping omarchy_hotkey.sh"
+elif command -v omarchy >/dev/null 2>&1; then
+  say "omarchy_hotkey.sh"
+  bash "$REPO_DIR/lib/omarchy_hotkey.sh"
+else
+  ok "skipping omarchy_hotkey.sh (Omarchy not detected)"
 fi
 
 cat <<EOF
