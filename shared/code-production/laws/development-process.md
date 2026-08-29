@@ -106,6 +106,13 @@ For each Task:
    its paths with frozen Task writes and the actual commit diff.
 8. Continue automatically to the next ready Stage.
 
+An owner-response wait is runtime state, not prose. Immediately before asking a
+question that blocks an active Task, record one safe-line reason with
+`planctl needs-owner <plan> --task <ID> --reason <text>`. After the response,
+clear it atomically with `planctl resume-task <plan> --task <ID>` before work
+continues; `start-task` also clears an existing marker. Transcripts, question
+marks and terminal turns never create an owner obligation.
+
 At the PR Delivery boundary, the integration Stage joins the Stage commits,
 refreshes dependencies with `agent:install`, then invokes `.githooks/pre-push`.
 After a clean exact-head gate passes, the hook stores a Git-local SHA receipt;

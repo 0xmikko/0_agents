@@ -518,17 +518,17 @@ Predict: 180 active min / 70 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_002 — report identical weighted Task progress and remaining forecasts from every consumer of the canonical plan read model
+- [x] PLCTL_002 — report identical weighted Task progress and remaining forecasts from every consumer of the canonical plan read model — e66d80a561f1be969c057c2af38b83e4f4dd6f63
       Writes: `planctl/src/core/plan-update.ts`, `planctl/src/core/plan-progress.ts`, `planctl/test/plan-progress.test.ts`.
       Predict: 60 active min / 23 credits.
       How: export the existing Stage and Delivery parse result from plan-update, derive counts/minutes/credits in one pure projection, and cover partial completion plus parallel Stages with fixed approved-plan fixtures
       RED: `bun run agent:test:backend -- test/plan-progress.test.ts -t tst_unit_planctl_progress_001`
-- [ ] PLCTL_003 — calculate raw and calibrated delivery ETA from the remaining dependency critical path without dividing work by agent count
+- [x] PLCTL_003 — calculate raw and calibrated delivery ETA from the remaining dependency critical path without dividing work by agent count — e66d80a561f1be969c057c2af38b83e4f4dd6f63
       Writes: `planctl/src/core/delivery-forecast.ts`, `planctl/test/delivery-forecast.test.ts`.
       Predict: 60 active min / 24 credits.
       How: evaluate the Stage DAG with active elapsed time, apply the bounded median actual/predicted calibration rule, return confidence/sample count, and null calendar ETA whenever structured owner waits exist
       RED: `bun run agent:test:backend -- test/delivery-forecast.test.ts -t tst_unit_planctl_eta_001`
-- [ ] PLCTL_004 — decode strict machine/server configuration and write versioned session-aware Task receipts and snapshot contracts
+- [x] PLCTL_004 — decode strict machine/server configuration and write versioned session-aware Task receipts and snapshot contracts — e66d80a561f1be969c057c2af38b83e4f4dd6f63
       Writes: `planctl/src/cli/main.ts`, `planctl/src/config/config.ts`, `planctl/src/core/task-run.ts`, `planctl/src/core/snapshot-protocol.ts`, `planctl/test/config.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/planctl.test.ts`.
       Predict: 60 active min / 23 credits.
       How: manually narrow Bun TOML values, reject unsafe paths/permissions/timing, introduce protocolVersion and TaskRunV2 unions, and preserve version-1 completion while marking distributed correlation unavailable
@@ -536,16 +536,19 @@ Predict: 180 active min / 70 credits.
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/plan-progress.test.ts test/delivery-forecast.test.ts` exits 0 — weighted progress and critical-path ETA cover partial, parallel, calibrated and owner-blocked plans
-- [ ] `cd planctl && bun run agent:test:backend -- test/config.test.ts test/task-run.test.ts` exits 0 — both TOML roles and both Task receipt versions are strict and deterministic
+- [x] `cd planctl && bun run agent:test:backend -- test/plan-progress.test.ts test/delivery-forecast.test.ts` exits 0 — weighted progress and critical-path ETA cover partial, parallel, calibrated and owner-blocked plans — e66d80a561f1be969c057c2af38b83e4f4dd6f63
+- [x] `cd planctl && bun run agent:test:backend -- test/config.test.ts test/task-run.test.ts` exits 0 — both TOML roles and both Task receipt versions are strict and deterministic — e66d80a561f1be969c057c2af38b83e4f4dd6f63
 - [ ] Every CTL-001, CTL-004, CTL-005, CTL-006, CTL-010 and CTL-011 state/forecast branch carries a matching test traceability annotation
-- [ ] Commit
+- [x] Commit — e66d80a561f1be969c057c2af38b83e4f4dd6f63
 
 ##### Results
 
 <!-- plan:results:D1-S2:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_002 | e66d80a561f1be969c057c2af38b83e4f4dd6f63 | 2026-08-29T17:42:53.254Z–2026-08-29T18:26:30.244Z | 39 / 43.6165 min | unavailable: runner did not expose per-Stage token or credit usage | Canonical progress, calibrated critical-path ETA, strict TOML roles, TaskRunV1/V2 and protocol-v1 snapshot contracts now share one typed core. |
+| PLCTL_003 | e66d80a561f1be969c057c2af38b83e4f4dd6f63 | 2026-08-29T17:42:53.254Z–2026-08-29T18:26:30.244Z | 39 / 43.6165 min | unavailable: runner did not expose per-Stage token or credit usage | Canonical progress, calibrated critical-path ETA, strict TOML roles, TaskRunV1/V2 and protocol-v1 snapshot contracts now share one typed core. |
+| PLCTL_004 | e66d80a561f1be969c057c2af38b83e4f4dd6f63 | 2026-08-29T17:42:53.254Z–2026-08-29T18:26:30.244Z | 39 / 43.6165 min | unavailable: runner did not expose per-Stage token or credit usage | Canonical progress, calibrated critical-path ETA, strict TOML roles, TaskRunV1/V2 and protocol-v1 snapshot contracts now share one typed core. |
 <!-- plan:results:D1-S2:end -->
 <!-- plan:stage:D1-S2:end -->
 
@@ -779,4 +782,8 @@ Predict: 180 active min / 70 credits.
 - record-result D1-S1 commit:ab7b1c6331e5bf2e2035baa0e8594d4caf9f9848
 
 - close D1-S1 partial commit:ab7b1c6331e5bf2e2035baa0e8594d4caf9f9848
+
+- record-result D1-S2 commit:e66d80a561f1be969c057c2af38b83e4f4dd6f63
+
+- close D1-S2 partial commit:e66d80a561f1be969c057c2af38b83e4f4dd6f63
 <!-- plan:execution:end -->

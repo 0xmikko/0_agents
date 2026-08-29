@@ -117,6 +117,10 @@ planctl put-delivery <plan> --from <delivery.json>
 planctl put-stage <plan> --from <stage.json>
 planctl approve-plan <plan> --owner-word <word>
 planctl start-task <plan> --task <Task-ID>
+planctl focus <plan> [--task <Task-ID>]
+planctl progress <plan> [--server]
+planctl needs-owner <plan> --task <Task-ID> --reason <safe-line>
+planctl resume-task <plan> --task <Task-ID>
 planctl complete-task <plan> --from <stage-result.json>
 planctl close-stage <plan> --stage <D1-S1>
 planctl add-deviation <plan> --stage <D1-S1> --reason <text>
@@ -135,6 +139,11 @@ refused.
 refuses a blocked or closed Task, prints its exact scope and starts a Git-local
 timer without changing the plan. `complete-task` consumes that timer and compares the
 receipt's paths with both Task writes and the actual work-commit diff.
+`focus` reprints the Goal, current Task, next ready work, drift and progress.
+`progress` stays local unless `--server` explicitly requests one bounded read.
+Immediately before an owner-blocking question, `needs-owner` atomically writes
+a safe-line structured marker; `resume-task` or a fresh `start-task` clears it.
+No transcript text creates an owner obligation.
 
 ## Unattended, temp and handoff
 

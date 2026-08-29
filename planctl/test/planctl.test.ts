@@ -352,4 +352,79 @@ describe("planctl", () => {
       rmSync(fixture.root, { recursive: true, force: true });
     }
   });
+
+  /*
+   * @test-id: tst_scripts_planctl_006
+   * @scenario: scn_plan_control_006
+   * @covers: planctl/src/cli/main.ts::focus,progress,needs-owner,resume-task
+   * @deterministic: yes
+   * @fixtures: temporary approved plan and Git-owned structured receipts
+   * Test environment: isolated local Git repository
+   * Clients: planctl CLI
+   * Mocks: none
+   * Data: one active Task with an owner-wait transition
+   */
+  it("tst_scripts_planctl_006 keeps one Task focused through a structured owner wait", () => {
+    const fixture = fixtureRepository();
+    try {
+      expect(run(fixture.root, "init", fixture.plan, "--title", "Fixture plan").status).toBe(0);
+      expect(run(fixture.root, "set-spec", fixture.plan, "--from", fixture.spec).status).toBe(0);
+      git(fixture.root, "commit", "-qam", "docs: draft plan");
+      expect(run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes").status).toBe(0);
+      expect(run(fixture.root, "put-delivery", fixture.plan, "--from", fixture.delivery).status).toBe(0);
+      expect(run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage).status).toBe(0);
+      expect(run(fixture.root, "approve-plan", fixture.plan, "--owner-word", "yes").status).toBe(0);
+      git(fixture.root, "commit", "-qm", "docs: approve plan");
+      const approvedCommit = git(fixture.root, "rev-parse", "HEAD");
+      expect(run(fixture.root, "clear-transaction", fixture.plan, "--commit", approvedCommit).status).toBe(0);
+
+      const unassigned = run(fixture.root, "focus", fixture.plan);
+      expect(unassigned.status, `${unassigned.stdout}\n${unassigned.stderr}`).toBe(0);
+      expect(unassigned.stdout).toContain("Status: unassigned");
+      expect(unassigned.stdout).toContain("Goal: Ship one observable result.");
+      expect(unassigned.stdout).toContain("Next ready: PLANCTL_001");
+
+      expect(run(fixture.root, "start-task", fixture.plan, "--task", "PLANCTL_001").status).toBe(0);
+      const focused = run(fixture.root, "focus", fixture.plan, "--task", "PLANCTL_001");
+      expect(focused.status, `${focused.stdout}\n${focused.stderr}`).toBe(0);
+      expect(focused.stdout).toContain("Status: focused");
+      expect(focused.stdout).toContain("Current Task: PLANCTL_001");
+
+      const waiting = run(
+        fixture.root,
+        "needs-owner",
+        fixture.plan,
+        "--task",
+        "PLANCTL_001",
+        "--reason",
+        "Choose the public hostname",
+      );
+      expect(waiting.status, `${waiting.stdout}\n${waiting.stderr}`).toBe(0);
+      const blocked = run(fixture.root, "focus", fixture.plan, "--task", "PLANCTL_001");
+      expect(blocked.stdout).toContain("Status: awaiting_owner");
+      expect(blocked.stdout).toContain("Owner response needed: Choose the public hostname");
+
+      expect(run(fixture.root, "start-task", fixture.plan, "--task", "PLANCTL_001").status).toBe(0);
+      expect(run(fixture.root, "focus", fixture.plan, "--task", "PLANCTL_001").stdout).toContain("Status: focused");
+      expect(run(
+        fixture.root,
+        "needs-owner",
+        fixture.plan,
+        "--task",
+        "PLANCTL_001",
+        "--reason",
+        "Choose the public hostname",
+      ).status).toBe(0);
+      const resumed = run(fixture.root, "resume-task", fixture.plan, "--task", "PLANCTL_001");
+      expect(resumed.status, `${resumed.stdout}\n${resumed.stderr}`).toBe(0);
+      expect(run(fixture.root, "focus", fixture.plan, "--task", "PLANCTL_001").stdout).toContain("Status: focused");
+
+      const progress = run(fixture.root, "progress", fixture.plan);
+      expect(progress.status, `${progress.stdout}\n${progress.stderr}`).toBe(0);
+      expect(progress.stdout).toContain("Source: local plan docs/plans/fixture.md");
+      expect(progress.stdout).toContain("Progress: 0.0% (0/1 Tasks)");
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
 });

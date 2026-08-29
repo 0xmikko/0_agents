@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
+import { dirname, join } from "node:path";
 
 export interface TaskRunV1 {
   readonly version: 1;
@@ -11,6 +14,19 @@ export interface TaskRunV1 {
 }
 
 export interface OwnerWaitMarker {
+  readonly reason: string;
+  readonly startedAt: string;
+}
+
+export interface OwnerWaitReceipt extends OwnerWaitMarker {
+  readonly version: 1;
+  readonly plan: string;
+  readonly taskId: string;
+}
+
+export interface OwnerWaitInput {
+  readonly plan: string;
+  readonly taskId: string;
   readonly reason: string;
   readonly startedAt: string;
 }
@@ -66,7 +82,7 @@ function baseFields(value: Readonly<Record<string, unknown>>): Omit<TaskRunV1, "
   };
 }
 
-function ownerWait(value: unknown): OwnerWaitMarker | null {
+function decodeOwnerWaitMarker(value: unknown): OwnerWaitMarker | null {
   if (value === null) return null;
   const wait = record(value, "TaskRunV2 ownerWait");
   const reason = text(wait.reason, "TaskRunV2 ownerWait reason");
@@ -94,7 +110,7 @@ export function decodeTaskRun(input: unknown): TaskRun {
     worktree,
     branch: text(value.branch, "TaskRunV2 branch"),
     planRevision: text(value.planRevision, "TaskRunV2 planRevision", /^[0-9a-f]{64}$/),
-    ownerWait: ownerWait(value.ownerWait),
+    ownerWait: decodeOwnerWaitMarker(value.ownerWait),
   };
 }
 
@@ -108,4 +124,74 @@ export function taskRunCorrelation(run: TaskRun): TaskRunCorrelation | null {
     branch: run.branch,
     planRevision: run.planRevision,
   };
+}
+
+function assertExactKeys(
+  value: Readonly<Record<string, unknown>>,
+  allowed: readonly string[],
+  name: string,
+): void {
+  const unexpected = Object.keys(value).filter((key) => !allowed.includes(key));
+  if (unexpected.length > 0) throw new Error(`${name} has unknown key(s): ${unexpected.join(", ")}`);
+}
+
+export function decodeOwnerWait(input: unknown): OwnerWaitReceipt {
+  const value = record(input, "owner wait receipt");
+  assertExactKeys(value, ["version", "plan", "taskId", "reason", "startedAt"], "owner wait receipt");
+  if (value.version !== 1) throw new Error("owner wait receipt version is unsupported");
+  const marker = decodeOwnerWaitMarker({ reason: value.reason, startedAt: value.startedAt });
+  if (marker === null) throw new Error("owner wait receipt marker is missing");
+  return {
+    version: 1,
+    plan: text(value.plan, "owner wait plan", /^docs\/plans\/[a-z0-9][a-z0-9-]*\.md$/),
+    taskId: text(value.taskId, "owner wait taskId", /^[A-Z][A-Z0-9_-]*$/),
+    ...marker,
+  };
+}
+
+export function ownerWaitPath(gitCommonDir: string, plan: string, taskId: string): string {
+  if (!isAbsolute(gitCommonDir)) throw new Error("Git common directory must be absolute");
+  const validated = decodeOwnerWait({
+    version: 1,
+    plan,
+    taskId,
+    reason: "path-validation",
+    startedAt: "1970-01-01T00:00:00.000Z",
+  });
+  const planKey = createHash("sha256").update(validated.plan).digest("hex").slice(0, 12);
+  return join(gitCommonDir, "planctl", "owner-waits", `${planKey}-${validated.taskId}.json`);
+}
+
+/**
+ * @tested-by: tst_cli_planctl_owner_wait_001
+ * @invariant: CTL-004 awaiting_owner exists only as a validated structured receipt, never transcript inference.
+ */
+export function markOwnerWait(path: string, input: OwnerWaitInput): OwnerWaitReceipt {
+  if (!isAbsolute(path)) throw new Error("owner wait path must be absolute");
+  const receipt = decodeOwnerWait({ version: 1, ...input });
+  const parent = dirname(path);
+  mkdirSync(parent, { recursive: true });
+  const temporary = mkdtempSync(join(parent, ".owner-wait-"));
+  const candidate = join(temporary, "receipt.json");
+  try {
+    writeFileSync(candidate, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
+    renameSync(candidate, path);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+  return receipt;
+}
+
+export function readOwnerWait(path: string): OwnerWaitReceipt | null {
+  if (!isAbsolute(path)) throw new Error("owner wait path must be absolute");
+  if (!existsSync(path)) return null;
+  const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+  return decodeOwnerWait(parsed);
+}
+
+export function clearOwnerWait(path: string): boolean {
+  if (!isAbsolute(path)) throw new Error("owner wait path must be absolute");
+  if (!existsSync(path)) return false;
+  unlinkSync(path);
+  return true;
 }

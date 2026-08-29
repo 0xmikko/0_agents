@@ -40,6 +40,13 @@ own all project-specific commands.
    closure commit.
 7. Continue automatically to the next ready Stage.
 
+If a Task cannot continue without an owner response, run
+`planctl needs-owner <plan> --task <TASK_ID> --reason <one-safe-line>`
+immediately before asking. Do not infer an owner obligation from transcript
+punctuation or a terminal turn. After the owner answers, run
+`planctl resume-task <plan> --task <TASK_ID>` before continuing; a fresh
+`start-task` also clears the marker.
+
 The integrator merges returned Stage commits into the Delivery tree and records
 their results. Never copy files between worktrees and never let child agents
 invent or mutate Tasks.
