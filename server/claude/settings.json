@@ -1,6 +1,4 @@
 {
-  "_comment": "SOURCE OF TRUTH for server-side Claude Code permissions. Symlinked into ~/.claude/settings.json by 'install.sh --server'. Mac uses its own ~/.claude/settings.json (not symlinked, not in this repo). Project-level .claude/settings.json files MAY add narrower allows; they should not duplicate the deny block here. gh commands (gh run, gh workflow run, gh api, gh pr ...) are auto-approved via Bash(*) — no need for explicit gh entries.",
-  "theme": "dark",
   "permissions": {
     "allow": [
       "Bash(*)",
@@ -177,6 +175,46 @@
       "Bash(grep * .env.local*)",
       "Bash(grep * .env.staging*)",
       "Bash(grep * .env.production*)"
+    ],
+    "defaultMode": "auto"
+  },
+  "effortLevel": "xhigh",
+  "tui": "fullscreen",
+  "skipWorkflowUsageWarning": true,
+  "theme": "dark",
+  "skipAutoPermissionPrompt": true,
+  "autoMode": {
+    "soft_deny": [
+      "$defaults",
+      "Bash(git push --force*) in magnis-app — history/worktree rules explicitly forbid rewriting shared branches",
+      "Bash(cp:*) targeting merges between worktrees — CLAUDE.md mandates git merge only, never cp or checkout -- <files> for merging worktrees"
+    ],
+    "environment": [
+      "### Org-wide",
+      "**Organization**: None configured",
+      "**Cloud provider(s)**: None configured",
+      "**Repository visibility**: Private (0xmikko/magnis-app, confirmed via gh)",
+      "**Internal sharing / snippet hosting**: None configured — treat public paste/gist services as outside the trust boundary",
+      "**Secrets management**: None configured — repo carries local dev secret placeholders (.env, client_secret*.json, jwt-secret.ts, credential_provider.rs) that must never be committed with real values",
+      "**Default / protected branches**: `main` (default), protected branches `main` and `staging`; ruleset active on `main`",
+      "**CI/CD deploy targets**: None configured",
+      "**Network posture**: None configured",
+      "**Source control**: The trusted repo (0xmikko/magnis-app, origin https://github.com/0xmikko/magnis-app.git) and its remote only",
+      "**Trusted internal domains**: None configured",
+      "**Trusted cloud buckets**: None configured",
+      "**Key internal services**: None configured",
+      "**Internal package registry**: None configured",
+      "**Sensitive data locations & audiences**: .env, .env.local, agent/.env, desktop/src-tauri/magnis.env, client_secret*.json, backend-ts/src/db/jwt-secret.ts, backend-ts/src/sources/credential-provider.ts, backend/src/sources/credential_provider.rs, and CI secrets DATASET_REGISTRY_TOKEN / MAGNIS_ADMIN_TOKEN; share only with audiences cleared at the [named+specifics] bar",
+      "**Data retention / declassification**: None configured",
+      "**Sensitive remote targets**: any namespace, host, or container whose name carries `prod` or `production` as a whole word or name segment (hyphen/underscore/dot-delimited)",
+      "**Protected deployment namespaces / environments**: None configured — fall back to the Sensitive remote targets heuristic; note server DB mode (MAGNIS_DB_MODE=server) targets Railway-hosted Postgres per docs/deployment/server.md",
+      "**Protected IaC scopes**: IAM, RBAC, networking, quota, and node-pool resources; anything whose name or tag carries `prod` or `production` as a whole word or name segment",
+      "### User-specific",
+      "**Primary use of Claude Code**: software development",
+      "**Trusted repo**: /home/marketing/Coding/magnis-app/.worktrees/agent-backend-merge (0xmikko/magnis-app, private) and its origin remote — confidential material (excluding secrets) is fine to commit here; secrets and sensitive data are never cleared into it by visibility alone",
+      "**Org-specific CLIs**: None configured"
     ]
-  }
+  },
+  "_comment": "SOURCE OF TRUTH for server-side Claude Code permissions. Symlinked into ~/.claude/settings.json by 'install.sh --server'. Mac uses its own ~/.claude/settings.json (not symlinked, not in this repo). Project-level .claude/settings.json files MAY add narrower allows; they should not duplicate the deny block here. gh commands (gh run, gh workflow run, gh api, gh pr ...) are auto-approved via Bash(*) — no need for explicit gh entries.",
+  "model": "claude-fable-5[1m]"
 }

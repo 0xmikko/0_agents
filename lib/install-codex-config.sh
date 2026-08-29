@@ -116,6 +116,28 @@ if [ -f "$RULES_SRC" ]; then
 fi
 
 if [ -d "$SKILLS_SRC" ]; then
+  # markdown-view is retired; mdurl is the single markdown command.
+  retired_markdown_view="$DST/skills/markdown-view"
+  if [ -L "$retired_markdown_view" ] \
+    && [ "$(readlink "$retired_markdown_view")" = "$SKILLS_SRC/markdown-view" ]; then
+    rm "$retired_markdown_view"
+    echo "✓ removed retired Codex skill: ~/.codex/skills/markdown-view"
+  fi
+
+  # Remove only stale links previously managed by this repository.
+  for stale_skill in "$DST"/skills/*; do
+    [ -L "$stale_skill" ] || continue
+    stale_target="$(readlink "$stale_skill")"
+    case "$stale_target" in
+      "$SKILLS_SRC"/*)
+        if [ ! -e "$stale_target" ]; then
+          rm "$stale_skill"
+          echo "✓ removed retired Codex skill: ~/.codex/skills/$(basename "$stale_skill")"
+        fi
+        ;;
+    esac
+  done
+
   find "$SKILLS_SRC" -mindepth 1 -maxdepth 1 -type d | sort | while IFS= read -r skill_src; do
     skill_name="$(basename "$skill_src")"
     skill_dst="$DST/skills/$skill_name"

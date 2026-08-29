@@ -8,7 +8,7 @@
 # What this installs (in order, all helpers live in lib/):
 #   0. Sanity checks (running as user, Homebrew + git present)
 #   1. lib/install.sh              (claude+codex symlinks; NOT --server on a client)
-#   2. lib/install-bin.sh          (~/.local/bin/markdown-view, frogmouth-tuned, ...)
+#   2. lib/install-bin.sh          (~/.local/bin/frogmouth-tuned, ...)
 #   3. lib/install-codex-config.sh (Codex config.toml render)
 #   4. lib/install-runtimes.sh     (claude native binary + codex npm CLI)
 #   5. lib/install-linear-mcp.sh   (Linear MCP register)
@@ -161,7 +161,7 @@ cat <<EOF
     ~/.codex/{skills/*, agents, lang}
     ~/.codex/config.toml
     ~/.config/zellij/config.kdl (defaults + Russian-layout mirror binds)
-    ~/.local/bin/{markdown-view, frogmouth-tuned, agent-session-name, plan-view}
+    ~/.local/bin/{frogmouth-tuned, agent-session-name}
 
   ~/.claude/settings.json was NOT installed (Mac uses its own settings).
   Server-side wide-permission profile is at $REPO_DIR/server/claude/settings.json

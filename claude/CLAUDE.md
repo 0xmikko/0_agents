@@ -29,6 +29,14 @@ For multi-language tasks, read all relevant files.
 
 ## Always-on principles
 
+### Shared code-production process
+
+The process has three self-contained entrypoints: `blueprint` plans,
+`blueprint-start` executes, and `end-work` closes a merged Delivery. Do not
+chain auxiliary process skills. Plans change only through `planctl`; project
+verification runs only through the standard Bun `agent:*` scripts. Agents
+never merge to `staging` or `main`.
+
 For git operations (branching, commits, merges, history) — see
 ~/.claude/agents/git.md. The summary: never rewrite history.
 
@@ -39,7 +47,9 @@ For git operations (branching, commits, merges, history) — see
 - Write a **RED test** that captures each invariant — it must FAIL on current
   code. If it passes immediately, it doesn't capture the invariant; rewrite it.
 - Implement the minimum code to make the test GREEN.
-- Run the full suite to verify no regressions before moving to the next stage.
+- Run the Stage's 1–3 named behavior files before its commit. The complete
+  suite runs once at the PR Delivery publication boundary through
+  `agent:verify:pr`, then CI repeats it on the published SHA.
 - Skill-level escape hatches that bypass RED test (e.g. `/bug` for typos)
   are explicit and require the skill itself to announce them. Never skip
   RED test on your own initiative.

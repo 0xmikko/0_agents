@@ -6,7 +6,7 @@
 # Sequence (all installers live in lib/):
 #   1. git pull --ff-only          (fast-forward; aborts on diverged history)
 #   2. lib/install.sh              (claude+codex symlinks, +server flag passthrough)
-#   3. lib/install-bin.sh          (~/.local/bin/markdown-view, ...)
+#   3. lib/install-bin.sh          (~/.local/bin/agent-session-name, ...)
 #   4. lib/install-codex-config.sh (codex/config.toml render)
 #   5. lib/install-runtimes.sh     (claude native binary + codex npm — upgrade)
 #   6. mdurl shared skill check    (Claude/Codex use repo symlinks from shared/skills)
@@ -176,6 +176,6 @@ repo: $REPO_DIR @ $(cd "$REPO_DIR" && git rev-parse --short HEAD)
 Next checks (manual):
   - claude mcp list      (codex + linear should appear)
   - codex mcp list       (linear should appear)
-  - markdown-view --help (should print usage)
+  - mdurl -l             (should list your documents)
   - claude --version / codex --version
 EOF

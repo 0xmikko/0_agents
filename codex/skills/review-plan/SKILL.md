@@ -1,22 +1,22 @@
 ---
 name: review-plan
-description: Plan review with strict iterate-until-APPROVED loop and finding triage. After every fix, re-run review; never self-assert. For context-mismatched findings (e.g. security on local-only code), ask the user before applying.
-user-invocable: true
-disable-model-invocation: true
+description: Codex self-review of implementation plans with a strict iterate-until-APPROVED loop and finding triage. Use after writing a plan. Review directly in the current Codex turn; do not call codex_mcp, a Codex CLI reviewer, or a subagent.
 ---
 
-<!-- KEEP-ALIGNED: claude/skills/review-plan/SKILL.md — both tools have a divergent copy of this skill (different project doc references and review tool). When changing this file, sync the twin or document why they intentionally diverge. -->
+<!-- INTENTIONAL DIVERGENCE: this Codex skill performs a direct self-review. The Claude twin may use a different review surface. -->
 
 # Plan Review
 
-Review the active plan, triage findings, loop until APPROVED, or escalate
-to the user when stuck.
+Review the active plan yourself, triage findings, loop until APPROVED, or
+escalate to the user when stuck.
 
 ## Rules (do not violate)
 
-- **Re-run review after every fix.** Self-assertion ("fixes addressed the
-  findings, should be approved now") is NOT review. Only the most recent
-  review output counts as the verdict.
+- **Re-run review after every fix.** Re-read the complete updated plan and
+  perform a fresh pass against every review criterion. A claim that fixes
+  "should" be enough is not a review.
+- **Review directly.** Do not call `mcp__codex__codex`, `codex_mcp`, a Codex
+  CLI reviewer, or a subagent. The current Codex instance is the reviewer.
 - **Never apply review findings blindly.** Triage every finding (see below).
 - **Never exit on NEEDS_WORK.** The loop continues until APPROVED, or
   until the iteration cap forces a human decision.
@@ -56,12 +56,14 @@ Wait for the user's answer per finding before continuing.
 ### How to find the plan
 
 1. If plan mode is active, use the active plan path from the conversation.
-2. Otherwise, find the most recently modified `docs/plans/*.md` file.
+2. Otherwise, use a plan path named in the conversation.
+3. Otherwise, find the most recently modified `docs/plans/*.md` file.
 
 ### How to run review
 
-Read the plan file and pass its content directly to the review surface when
-needed. Do not create temp copies unless a project-specific tool requires it.
+Read the entire plan file directly. Inspect the referenced requirements,
+architecture docs, and code paths needed to validate its claims. Do not send
+the plan to another model or review service.
 
 ### What review evaluates
 
@@ -75,9 +77,10 @@ file count justification.
 ```
 round = 1
 while round ≤ 3:
-  run review on the plan content
-  if output starts with APPROVED:
-    return "APPROVED — review agreed in round N"
+  re-read the full current plan and relevant evidence
+  review every criterion from scratch
+  if no substantive findings remain:
+    return "APPROVED — Codex self-review passed in round N"
   triage findings → REAL / CONTEXT-MISMATCHED / STYLE
   for each REAL: apply fix to plan
   for each CONTEXT-MISMATCHED: ask user, follow their decision
@@ -91,7 +94,7 @@ return "NEEDS_HUMAN_DECISION — 3 review rounds exhausted.
 
 ## Output (enum — return one only)
 
-- `APPROVED — review agreed in round N`
+- `APPROVED — Codex self-review passed in round N`
 - `NEEDS_HUMAN_DECISION — <reason>` (3-round cap hit, or user override
   mid-loop, or all remaining findings are CONTEXT-MISMATCHED)
 
