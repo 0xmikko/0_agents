@@ -3,7 +3,7 @@
 Status: SPEC_LOCKED
 Spec lock: sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
 Implementation lock: unlocked
-Active Delivery: none
+Active Delivery: D1
 Unattended decisions: allowed
 
 <!-- plan:spec:start -->
@@ -465,10 +465,311 @@ LLM summaries and UI work require separate owner-approved plans.
 
 <!-- plan:implementation:start -->
 ## Implementation contract
+
+<!-- plan:delivery:D1:start -->
+<!-- plan:delivery-meta:{"active":true,"depends":[]} -->
+### PR Delivery D1 — Operate one distributed planctl control plane across coding machines
+
+Branch: `feat/planctl-observer-daemon`; Depends: none; Gate: cd planctl && bun run agent:verify:pr.
+
+Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7`.
+
+<!-- plan:stage:D1-S1:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["planctl/package.json","planctl/bun.lock","planctl/tsconfig.json","planctl/src/cli/main.ts","planctl/src/core/plan-gate.ts","planctl/src/core/plan-update.ts","planctl/test/package-boundary.test.ts","planctl/test/planctl.test.ts","planctl/test/plan-gate.test.ts","planctl/test/plan-update.test.ts","shared/code-production/runtime/planctl.ts","shared/code-production/runtime/plan-gate.ts","shared/code-production/runtime/plan-update.ts","shared/code-production/runtime/planctl.test.ts","shared/code-production/runtime/plan-gate.test.ts","shared/code-production/runtime/plan-update.test.ts","shared/code-production/agent-stack.ts","shared/code-production/agent-stack.test.ts","shared/code-production/README.md","shared/code-production/laws/development-process.md","shared/code-production/laws/git-workflow.md","shared/code-production/laws/plan-format.md","shared/code-production/laws/plan-protocol.md","bin/planctl"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S1"} -->
+#### Stage D1-S1 — Launch the existing plan protocol from its dedicated Bun package
+
+Owner: integrator; Profile: strong; Depends: none; Parallel with: none.
+Writes: `planctl/package.json`, `planctl/bun.lock`, `planctl/tsconfig.json`, `planctl/src/cli/main.ts`, `planctl/src/core/plan-gate.ts`, `planctl/src/core/plan-update.ts`, `planctl/test/package-boundary.test.ts`, `planctl/test/planctl.test.ts`, `planctl/test/plan-gate.test.ts`, `planctl/test/plan-update.test.ts`, `shared/code-production/runtime/planctl.ts`, `shared/code-production/runtime/plan-gate.ts`, `shared/code-production/runtime/plan-update.ts`, `shared/code-production/runtime/planctl.test.ts`, `shared/code-production/runtime/plan-gate.test.ts`, `shared/code-production/runtime/plan-update.test.ts`, `shared/code-production/agent-stack.ts`, `shared/code-production/agent-stack.test.ts`, `shared/code-production/README.md`, `shared/code-production/laws/development-process.md`, `shared/code-production/laws/git-workflow.md`, `shared/code-production/laws/plan-format.md`, `shared/code-production/laws/plan-protocol.md`, `bin/planctl`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S1` (must be absent at handoff).
+Predict: 90 active min / 30 credits.
+
+##### Tasks
+
+- [ ] PLCTL_001 — run every existing plan command from the dedicated planctl package while installed consumer paths remain compatible
+      Writes: `planctl/package.json`, `planctl/bun.lock`, `planctl/tsconfig.json`, `planctl/src/cli/main.ts`, `planctl/src/core/plan-gate.ts`, `planctl/src/core/plan-update.ts`, `planctl/test/package-boundary.test.ts`, `planctl/test/planctl.test.ts`, `planctl/test/plan-gate.test.ts`, `planctl/test/plan-update.test.ts`, `shared/code-production/runtime/planctl.ts`, `shared/code-production/runtime/plan-gate.ts`, `shared/code-production/runtime/plan-update.ts`, `shared/code-production/runtime/planctl.test.ts`, `shared/code-production/runtime/plan-gate.test.ts`, `shared/code-production/runtime/plan-update.test.ts`, `shared/code-production/agent-stack.ts`, `shared/code-production/agent-stack.test.ts`, `shared/code-production/README.md`, `shared/code-production/laws/development-process.md`, `shared/code-production/laws/git-workflow.md`, `shared/code-production/laws/plan-format.md`, `shared/code-production/laws/plan-protocol.md`, `bin/planctl`.
+      Predict: 90 active min / 30 credits.
+      How: from planctl/, add the package adapter and tst_unit_planctl_package_001 first, observe RED on the missing canonical package entrypoint, then move the existing CLI/core/tests with git mv and repoint agent-stack sources without changing its seven installed targets
+      RED: `bun run agent:test:backend -- test/package-boundary.test.ts -t tst_unit_planctl_package_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/package-boundary.test.ts` exits 0 — bin/planctl and agent-stack use the dedicated package while consumers receive the same seven managed targets
+- [ ] `cd planctl && bun test test/planctl.test.ts test/plan-gate.test.ts test/plan-update.test.ts` exits 0 — all pre-move plan authoring, locking and receipt behavior remains green
+- [ ] The source tree has one canonical copy of each planctl CLI/core module and NestJS dependencies remain package-local
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S1:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S1:end -->
+<!-- plan:stage:D1-S1:end -->
+
+<!-- plan:stage:D1-S2:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S1"],"parallelWith":[],"writes":["planctl/src/cli/main.ts","planctl/src/config/config.ts","planctl/src/core/plan-update.ts","planctl/src/core/plan-progress.ts","planctl/src/core/delivery-forecast.ts","planctl/src/core/task-run.ts","planctl/src/core/snapshot-protocol.ts","planctl/test/config.test.ts","planctl/test/plan-progress.test.ts","planctl/test/delivery-forecast.test.ts","planctl/test/task-run.test.ts","planctl/test/planctl.test.ts"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S2"} -->
+#### Stage D1-S2 — Project canonical progress, ETA, identity and configuration contracts
+
+Owner: core-agent; Profile: strong; Depends: D1-S1; Parallel with: none.
+Writes: `planctl/src/cli/main.ts`, `planctl/src/config/config.ts`, `planctl/src/core/plan-update.ts`, `planctl/src/core/plan-progress.ts`, `planctl/src/core/delivery-forecast.ts`, `planctl/src/core/task-run.ts`, `planctl/src/core/snapshot-protocol.ts`, `planctl/test/config.test.ts`, `planctl/test/plan-progress.test.ts`, `planctl/test/delivery-forecast.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/planctl.test.ts`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S2` (must be absent at handoff).
+Predict: 180 active min / 70 credits.
+
+##### Tasks
+
+- [ ] PLCTL_002 — report identical weighted Task progress and remaining forecasts from every consumer of the canonical plan read model
+      Writes: `planctl/src/core/plan-update.ts`, `planctl/src/core/plan-progress.ts`, `planctl/test/plan-progress.test.ts`.
+      Predict: 60 active min / 23 credits.
+      How: export the existing Stage and Delivery parse result from plan-update, derive counts/minutes/credits in one pure projection, and cover partial completion plus parallel Stages with fixed approved-plan fixtures
+      RED: `bun run agent:test:backend -- test/plan-progress.test.ts -t tst_unit_planctl_progress_001`
+- [ ] PLCTL_003 — calculate raw and calibrated delivery ETA from the remaining dependency critical path without dividing work by agent count
+      Writes: `planctl/src/core/delivery-forecast.ts`, `planctl/test/delivery-forecast.test.ts`.
+      Predict: 60 active min / 24 credits.
+      How: evaluate the Stage DAG with active elapsed time, apply the bounded median actual/predicted calibration rule, return confidence/sample count, and null calendar ETA whenever structured owner waits exist
+      RED: `bun run agent:test:backend -- test/delivery-forecast.test.ts -t tst_unit_planctl_eta_001`
+- [ ] PLCTL_004 — decode strict machine/server configuration and write versioned session-aware Task receipts and snapshot contracts
+      Writes: `planctl/src/cli/main.ts`, `planctl/src/config/config.ts`, `planctl/src/core/task-run.ts`, `planctl/src/core/snapshot-protocol.ts`, `planctl/test/config.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/planctl.test.ts`.
+      Predict: 60 active min / 23 credits.
+      How: manually narrow Bun TOML values, reject unsafe paths/permissions/timing, introduce protocolVersion and TaskRunV2 unions, and preserve version-1 completion while marking distributed correlation unavailable
+      RED: `bun run agent:test:backend -- test/task-run.test.ts -t tst_unit_planctl_task_run_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/plan-progress.test.ts test/delivery-forecast.test.ts` exits 0 — weighted progress and critical-path ETA cover partial, parallel, calibrated and owner-blocked plans
+- [ ] `cd planctl && bun run agent:test:backend -- test/config.test.ts test/task-run.test.ts` exits 0 — both TOML roles and both Task receipt versions are strict and deterministic
+- [ ] Every CTL-001, CTL-004, CTL-005, CTL-006, CTL-010 and CTL-011 state/forecast branch carries a matching test traceability annotation
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S2:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S2:end -->
+<!-- plan:stage:D1-S2:end -->
+
+<!-- plan:stage:D1-S3:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S2"],"parallelWith":["D1-S4","D1-S6"],"writes":["planctl/src/machine/main.ts","planctl/src/machine/app.module.ts","planctl/src/machine/collector.service.ts","planctl/src/machine/discovery/git-worktree.source.ts","planctl/src/machine/sessions/session-source.ts","planctl/src/machine/sessions/jsonl-tail-reader.ts","planctl/src/machine/sessions/codex-session.source.ts","planctl/src/machine/sessions/claude-session.source.ts","planctl/src/machine/sessions/linux-process.source.ts","planctl/src/machine/state/machine-store.ts","planctl/src/machine/transport/server-client.ts","planctl/fixtures/sessions/codex-active.jsonl","planctl/fixtures/sessions/claude-active.jsonl","planctl/fixtures/sessions/truncated-tail.jsonl","planctl/test/machine-sessions.test.ts","planctl/test/machine-outbox.test.ts","planctl/test/machine-collector.test.ts","bin/planctld"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S3"} -->
+#### Stage D1-S3 — Collect existing machine sessions and survive disconnected operation
+
+Owner: machine-agent; Profile: strong; Depends: D1-S2; Parallel with: D1-S4, D1-S6.
+Writes: `planctl/src/machine/main.ts`, `planctl/src/machine/app.module.ts`, `planctl/src/machine/collector.service.ts`, `planctl/src/machine/discovery/git-worktree.source.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/machine/sessions/jsonl-tail-reader.ts`, `planctl/src/machine/sessions/codex-session.source.ts`, `planctl/src/machine/sessions/claude-session.source.ts`, `planctl/src/machine/sessions/linux-process.source.ts`, `planctl/src/machine/state/machine-store.ts`, `planctl/src/machine/transport/server-client.ts`, `planctl/fixtures/sessions/codex-active.jsonl`, `planctl/fixtures/sessions/claude-active.jsonl`, `planctl/fixtures/sessions/truncated-tail.jsonl`, `planctl/test/machine-sessions.test.ts`, `planctl/test/machine-outbox.test.ts`, `planctl/test/machine-collector.test.ts`, `bin/planctld`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S3` (must be absent at handoff).
+Predict: 240 active min / 90 credits.
+
+##### Tasks
+
+- [ ] PLCTL_005 — discover live Codex and Claude sessions and classify bound, unassigned, stale and malformed activity without reading payload content
+      Writes: `planctl/src/machine/discovery/git-worktree.source.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/machine/sessions/jsonl-tail-reader.ts`, `planctl/src/machine/sessions/codex-session.source.ts`, `planctl/src/machine/sessions/claude-session.source.ts`, `planctl/src/machine/sessions/linux-process.source.ts`, `planctl/fixtures/sessions/codex-active.jsonl`, `planctl/fixtures/sessions/claude-active.jsonl`, `planctl/fixtures/sessions/truncated-tail.jsonl`, `planctl/test/machine-sessions.test.ts`.
+      Predict: 90 active min / 35 credits.
+      How: index explicit session roots and /proc identities, advance byte cursors only across complete JSON objects, correlate cwd/git/task receipts, and assert a fixture payload secret never enters observations
+      RED: `bun run agent:test:backend -- test/machine-sessions.test.ts -t tst_svc_planctld_sessions_001`
+- [ ] PLCTL_006 — retain one latest machine snapshot across collector restart and any number of failed server sends
+      Writes: `planctl/src/machine/state/machine-store.ts`, `planctl/test/machine-outbox.test.ts`.
+      Predict: 70 active min / 25 credits.
+      How: use temporary real bun:sqlite WAL with cursor and single coalescing outbox rows, transactionally replace hashes/sequences, and drive reconnects with a fake clock and scripted transport
+      RED: `bun run agent:test:backend -- test/machine-outbox.test.ts -t tst_svc_planctld_outbox_001`
+- [ ] PLCTL_007 — publish scheduled versioned heartbeats and changed snapshots without blocking local planctl work when the server is unavailable
+      Writes: `planctl/src/machine/main.ts`, `planctl/src/machine/app.module.ts`, `planctl/src/machine/collector.service.ts`, `planctl/src/machine/transport/server-client.ts`, `planctl/test/machine-collector.test.ts`, `bin/planctld`.
+      Predict: 80 active min / 30 credits.
+      How: compose a Nest application context with an injected clock/scheduler, hash observations, send heartbeat-or-snapshot through bounded authenticated fetch, retry in the background, and expose foreground process health
+      RED: `bun run agent:test:backend -- test/machine-collector.test.ts -t tst_svc_planctld_collector_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/machine-sessions.test.ts` exits 0 — Codex, Claude, live-process, truncated-tail, unassigned and privacy cases produce exact states
+- [ ] `cd planctl && bun run agent:test:backend -- test/machine-outbox.test.ts test/machine-collector.test.ts` exits 0 — twenty disconnected scans retain one latest snapshot and converge on reconnect
+- [ ] No machine test uses a real home session, wall-clock sleep, live server or network provider
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S3:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S3:end -->
+<!-- plan:stage:D1-S3:end -->
+
+<!-- plan:stage:D1-S4:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S2"],"parallelWith":["D1-S3","D1-S6"],"writes":["planctl/src/server/main.ts","planctl/src/server/app.module.ts","planctl/src/server/auth/machine-auth.guard.ts","planctl/src/server/admin/machine-admin.service.ts","planctl/src/server/ingest/ingest.module.ts","planctl/src/server/ingest/ingest.controller.ts","planctl/src/server/ingest/ingest.service.ts","planctl/src/server/persistence/server-store.ts","planctl/src/server/transitions/transition.service.ts","planctl/src/server/progress/progress.module.ts","planctl/src/server/progress/progress.controller.ts","planctl/src/server/progress/progress.service.ts","planctl/test/server-ingest.test.ts","planctl/test/server-transitions.test.ts","planctl/test/server-progress.test.ts","bin/planctl-server"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S4"} -->
+#### Stage D1-S4 — Ingest authenticated machine state into one central progress and ETA service
+
+Owner: server-agent; Profile: strong; Depends: D1-S2; Parallel with: D1-S3, D1-S6.
+Writes: `planctl/src/server/main.ts`, `planctl/src/server/app.module.ts`, `planctl/src/server/auth/machine-auth.guard.ts`, `planctl/src/server/admin/machine-admin.service.ts`, `planctl/src/server/ingest/ingest.module.ts`, `planctl/src/server/ingest/ingest.controller.ts`, `planctl/src/server/ingest/ingest.service.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/src/server/transitions/transition.service.ts`, `planctl/src/server/progress/progress.module.ts`, `planctl/src/server/progress/progress.controller.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/server-progress.test.ts`, `bin/planctl-server`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S4` (must be absent at handoff).
+Predict: 300 active min / 110 credits.
+
+##### Tasks
+
+- [ ] PLCTL_008 — accept each authenticated machine snapshot exactly once and reject wrong identity, version, replay and out-of-order sequence
+      Writes: `planctl/src/server/main.ts`, `planctl/src/server/app.module.ts`, `planctl/src/server/auth/machine-auth.guard.ts`, `planctl/src/server/admin/machine-admin.service.ts`, `planctl/src/server/ingest/ingest.module.ts`, `planctl/src/server/ingest/ingest.controller.ts`, `planctl/src/server/ingest/ingest.service.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/test/server-ingest.test.ts`, `bin/planctl-server`.
+      Predict: 120 active min / 45 credits.
+      How: compile real Nest modules over temporary bun:sqlite WAL, hash per-machine bearer credentials, transact sequence/snapshot/receivedAt, and drive the HTTP controller in process without a live listener
+      RED: `bun run agent:test:backend -- test/server-ingest.test.ts -t tst_int_planctl_ingest_001`
+- [ ] PLCTL_009 — persist distinct machine-offline, stale, owner-wait, unassigned, recovery and plan-drift transitions without duplicate events
+      Writes: `planctl/src/server/persistence/server-store.ts`, `planctl/src/server/transitions/transition.service.ts`, `planctl/test/server-transitions.test.ts`.
+      Predict: 80 active min / 30 credits.
+      How: evaluate transitions against injected server receipt time, keep machine liveness separate from session activity, store one idempotent transition key, and exclude revision drift from canonical progress
+      RED: `bun run agent:test:backend -- test/server-transitions.test.ts -t tst_svc_planctl_transitions_001`
+- [ ] PLCTL_010 — serve portfolio and per-plan progress with active agents, blockers, critical path and calibrated delivery forecast from persisted snapshots
+      Writes: `planctl/src/server/progress/progress.module.ts`, `planctl/src/server/progress/progress.controller.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/test/server-progress.test.ts`.
+      Predict: 100 active min / 35 credits.
+      How: group matching plan revisions, join active observations and completed receipts, call the canonical progress/forecast core, order attention states first, and return null calendar ETA for owner waits
+      RED: `bun run agent:test:backend -- test/server-progress.test.ts -t tst_int_planctl_progress_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/server-ingest.test.ts` exits 0 — authentication and strictly monotonic idempotent ingest hold against real temporary SQLite
+- [ ] `cd planctl && bun run agent:test:backend -- test/server-transitions.test.ts test/server-progress.test.ts` exits 0 — every attention state and ETA field has exact persisted evidence
+- [ ] The server exposes no plan mutation or agent-control route and rejects non-loopback plain-HTTP external configuration
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S4:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S4:end -->
+<!-- plan:stage:D1-S4:end -->
+
+<!-- plan:stage:D1-S5:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S4"],"parallelWith":[],"writes":["planctl/src/server/app.module.ts","planctl/src/server/persistence/server-store.ts","planctl/src/telegram/telegram.module.ts","planctl/src/telegram/telegram-client.ts","planctl/src/telegram/bot.service.ts","planctl/src/telegram/commands.service.ts","planctl/src/telegram/notifier.service.ts","planctl/fixtures/telegram/updates.json","planctl/test/telegram-commands.test.ts","planctl/test/telegram-alerts.test.ts"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S5"} -->
+#### Stage D1-S5 — Answer authorized Telegram progress commands and deliver state-transition alerts
+
+Owner: telegram-agent; Profile: strong; Depends: D1-S4; Parallel with: none.
+Writes: `planctl/src/server/app.module.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/src/telegram/telegram.module.ts`, `planctl/src/telegram/telegram-client.ts`, `planctl/src/telegram/bot.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/src/telegram/notifier.service.ts`, `planctl/fixtures/telegram/updates.json`, `planctl/test/telegram-commands.test.ts`, `planctl/test/telegram-alerts.test.ts`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S5` (must be absent at handoff).
+Predict: 180 active min / 70 credits.
+
+##### Tasks
+
+- [ ] PLCTL_011 — answer progress, agents, stale and waiting Telegram commands only for configured owner identities
+      Writes: `planctl/src/server/app.module.ts`, `planctl/src/telegram/telegram.module.ts`, `planctl/src/telegram/telegram-client.ts`, `planctl/src/telegram/bot.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/fixtures/telegram/updates.json`, `planctl/test/telegram-commands.test.ts`.
+      Predict: 90 active min / 35 credits.
+      How: long-poll through a narrow fetch client, authorize numeric user IDs before querying, map commands to the existing progress service, render deterministic bounded messages, and ignore unknown chats without leaking plan data
+      RED: `bun run agent:test:backend -- test/telegram-commands.test.ts -t tst_svc_planctl_telegram_001`
+- [ ] PLCTL_012 — send one retryable Telegram alert for each stale, owner-needed, machine-offline and recovery transition across restart
+      Writes: `planctl/src/server/persistence/server-store.ts`, `planctl/src/telegram/notifier.service.ts`, `planctl/test/telegram-alerts.test.ts`.
+      Predict: 90 active min / 35 credits.
+      How: claim pending transitions transactionally, mark only successful fake deliveries notified, retry failures, and construct context strictly from approved plan/task metadata plus explicit owner-wait reason
+      RED: `bun run agent:test:backend -- test/telegram-alerts.test.ts -t tst_svc_planctl_alerts_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/telegram-commands.test.ts` exits 0 — all five commands authorize and render exact multi-machine progress answers
+- [ ] `cd planctl && bun run agent:test:backend -- test/telegram-alerts.test.ts` exits 0 — duplicate scans/restarts send once while failed delivery remains retryable
+- [ ] A fixture secret present in Telegram updates and session payloads appears in no rendered message, log assertion or persisted notification row
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S5:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S5:end -->
+<!-- plan:stage:D1-S5:end -->
+
+<!-- plan:stage:D1-S6:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S2"],"parallelWith":["D1-S3","D1-S4"],"writes":["planctl/src/cli/main.ts","planctl/src/cli/render.ts","planctl/src/cli/server-client.ts","planctl/src/core/task-run.ts","planctl/test/focus.test.ts","planctl/test/owner-wait.test.ts","planctl/test/planctl.test.ts","shared/skills/blueprint-start/SKILL.md","shared/code-production/laws/development-process.md","shared/code-production/laws/plan-protocol.md"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S6"} -->
+#### Stage D1-S6 — Keep agents focused and mark owner-required work explicitly
+
+Owner: cli-agent; Profile: strong; Depends: D1-S2; Parallel with: D1-S3, D1-S4.
+Writes: `planctl/src/cli/main.ts`, `planctl/src/cli/render.ts`, `planctl/src/cli/server-client.ts`, `planctl/src/core/task-run.ts`, `planctl/test/focus.test.ts`, `planctl/test/owner-wait.test.ts`, `planctl/test/planctl.test.ts`, `shared/skills/blueprint-start/SKILL.md`, `shared/code-production/laws/development-process.md`, `shared/code-production/laws/plan-protocol.md`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S6` (must be absent at handoff).
+Predict: 150 active min / 55 credits.
+
+##### Tasks
+
+- [ ] PLCTL_013 — show each agent the approved Goal, current exact Task, next ready work, drift and local or aggregated progress on demand
+      Writes: `planctl/src/cli/main.ts`, `planctl/src/cli/render.ts`, `planctl/src/cli/server-client.ts`, `planctl/test/focus.test.ts`, `planctl/test/planctl.test.ts`.
+      Predict: 80 active min / 30 credits.
+      How: add focus/progress commands over the canonical read model, use bounded server reads only when explicitly requested, render source/status/forecast evidence, and keep existing command exit codes independent of telemetry
+      RED: `bun run agent:test:backend -- test/focus.test.ts -t tst_cli_planctl_focus_001`
+- [ ] PLCTL_014 — record and clear a structured owner-response wait so agents never infer obligations from transcript punctuation
+      Writes: `planctl/src/cli/main.ts`, `planctl/src/core/task-run.ts`, `planctl/test/owner-wait.test.ts`, `shared/skills/blueprint-start/SKILL.md`, `shared/code-production/laws/development-process.md`, `shared/code-production/laws/plan-protocol.md`.
+      Predict: 70 active min / 25 credits.
+      How: add needs-owner/resume-task atomic receipt operations, require one safe-line reason, clear on resume/start, and teach blueprint-start to emit the marker immediately before asking the owner
+      RED: `bun run agent:test:backend -- test/owner-wait.test.ts -t tst_cli_planctl_owner_wait_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/focus.test.ts` exits 0 — focused, unassigned, drifted, offline-server and owner-blocked views name their evidence
+- [ ] `cd planctl && bun run agent:test:backend -- test/owner-wait.test.ts` exits 0 — only structured markers create owner obligations and resume clears them atomically
+- [ ] Existing planctl commands retain their pre-stage outputs and exit behavior when no machine/server configuration exists
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S6:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S6:end -->
+<!-- plan:stage:D1-S6:end -->
+
+<!-- plan:stage:D1-S7:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S3","D1-S5","D1-S6"],"parallelWith":[],"writes":["planctl/deploy/planctld.service","planctl/deploy/planctl-server.service","planctl/README.md","planctl/bench/distributed-benchmark.ts","planctl/test/distributed-e2e.test.ts","planctl/test/distributed-benchmark.test.ts","planctl/test/setup-planctl.test.ts","lib/setup-planctl.sh","lib/install-bin.sh","install-server-linux.sh","update.sh","README.md","shared/code-production/README.md"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S7"} -->
+#### Stage D1-S7 — Install, integrate and measure the complete distributed control plane
+
+Owner: integrator; Profile: strong; Depends: D1-S3, D1-S5, D1-S6; Parallel with: none.
+Writes: `planctl/deploy/planctld.service`, `planctl/deploy/planctl-server.service`, `planctl/README.md`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/distributed-benchmark.test.ts`, `planctl/test/setup-planctl.test.ts`, `lib/setup-planctl.sh`, `lib/install-bin.sh`, `install-server-linux.sh`, `update.sh`, `README.md`, `shared/code-production/README.md`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S7` (must be absent at handoff).
+Predict: 180 active min / 70 credits.
+
+##### Tasks
+
+- [ ] PLCTL_015 — converge three simulated machines through outage, owner wait, stale recovery, plan drift and Telegram progress without data leakage
+      Writes: `planctl/test/distributed-e2e.test.ts`.
+      Predict: 70 active min / 28 credits.
+      How: compose real machine/server Nest modules over temporary SQLite, fake only clocks/fetch/Telegram, drive sequence/reconnect transitions, and assert exact final progress/ETA/alerts from sanitized fixtures
+      RED: `bun run agent:test:e2e -- test/distributed-e2e.test.ts -t tst_int_planctl_distributed_001`
+- [ ] PLCTL_016 — install validated machine or server roles idempotently without overwriting configuration or starting an invalid service
+      Writes: `planctl/deploy/planctld.service`, `planctl/deploy/planctl-server.service`, `planctl/README.md`, `planctl/test/setup-planctl.test.ts`, `lib/setup-planctl.sh`, `lib/install-bin.sh`, `install-server-linux.sh`, `update.sh`, `README.md`, `shared/code-production/README.md`.
+      Predict: 70 active min / 27 credits.
+      How: generate role-specific systemd-user units from checked config, link all three binaries through the existing installer, refuse secret/config overwrite, and exercise install/update/restart against isolated fake home/systemctl fixtures
+      RED: `bun run agent:test:backend -- test/setup-planctl.test.ts -t tst_int_planctl_install_001`
+- [ ] PLCTL_017 — measure deterministic 100-machine and 1000-agent ingest and progress costs as the optimization baseline for later Deliveries
+      Writes: `planctl/bench/distributed-benchmark.ts`, `planctl/test/distributed-benchmark.test.ts`, `planctl/README.md`.
+      Predict: 40 active min / 15 credits.
+      How: build a fixed-seed synthetic snapshot generator, prove exact result cardinality without wall-time assertions, then run a separate host benchmark that records p50/p95 ingest and query timings in Stage Results
+      RED: `bun run agent:test:backend -- test/distributed-benchmark.test.ts -t tst_cert_planctl_scale_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:e2e -- test/distributed-e2e.test.ts` exits 0 — three machines converge with exact ETA, stale/waiting/offline distinctions and deduplicated Telegram output
+- [ ] `cd planctl && bun run agent:test:backend -- test/setup-planctl.test.ts test/distributed-benchmark.test.ts` exits 0 — role installation is safe and the 100/1000 fixture produces exact cardinality
+- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — typecheck, lint, all deterministic tests and package build pass once on the integrated Delivery
+- [ ] The Stage Results record host, p50/p95 ingest, p50/p95 progress query, snapshot bytes and the 100-machine/1000-agent optimization baseline
+- [ ] Both registered machine/server temp trees and every Stage temp root are absent before publication
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S7:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S7:end -->
+<!-- plan:stage:D1-S7:end -->
+<!-- plan:delivery:D1:end -->
 <!-- plan:implementation:end -->
 
 <!-- plan:execution:start -->
 ## Execution log
 
 - lock-spec sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
+
+- put-delivery D1
+
+- put-stage D1-S1
+
+- put-stage D1-S2
+
+- put-stage D1-S3
+
+- put-stage D1-S4
+
+- put-stage D1-S5
+
+- put-stage D1-S6
+
+- put-stage D1-S7
 <!-- plan:execution:end -->
