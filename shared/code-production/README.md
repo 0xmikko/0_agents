@@ -12,6 +12,19 @@ There is one project seam: `package.json`. Every repository implements the
 same command names, while the central hooks and CI decide *when* they run.
 Framework paths and tool choices never leak into the central process.
 
+## Optional distributed observer
+
+The plan lifecycle remains local and authoritative. The adjacent
+`planctld`/`planctl-server` services add an optional multi-machine read model:
+collectors publish privacy-safe session/activity and canonical plan snapshots,
+while the server derives progress, dependency-path ETA, stale/offline/drift and
+owner-wait attention. A missing server never changes local Task execution or
+the canonical plan writer.
+
+Role-specific TOML, enrollment, systemd-user setup, Telegram behavior and the
+100-machine/1,000-agent baseline are documented in
+[`../../planctl/README.md`](../../planctl/README.md).
+
 ## Consumer contract
 
 ```json

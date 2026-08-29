@@ -10,6 +10,8 @@ Configs and tooling for our coding agents — **Claude Code** and **Codex** — 
 | Bare Linux server | `bash ~/Coding/0_agents/install-server-linux.sh` |
 | Linux server hosting Cyrus | `bash install-server-linux.sh && bash lib/setup-cyrus.sh` |
 | Sync existing host | `bash ~/Coding/0_agents/update.sh` |
+| Install planctl machine observer | `bash lib/setup-planctl.sh --role machine --config /absolute/machine.toml` |
+| Install central planctl server | `bash lib/setup-planctl.sh --role server --config /absolute/server.toml` |
 
 Three top-level entry points; every other installer is a helper inside `lib/`.
 
@@ -25,6 +27,10 @@ Three top-level entry points; every other installer is a helper inside `lib/`.
 - [x] **Per-language guides** loaded on demand — `rust.md`, `typescript.md`
 - [x] **Portable code-production stack** — shared Git/PR/TDD laws, `planctl`,
   managed hooks/CI, timing receipts and one `package.json` command contract
+- [x] **Optional distributed observer** — `planctld` collectors report
+  privacy-safe agent/plan state to one NestJS server for progress, ETA,
+  stale/offline/owner-wait distinctions and durable alerts; see
+  [planctl/README.md](planctl/README.md) for explicit configuration
 - [x] **Three production entrypoints** — `blueprint`, `blueprint-start`, and
   `end-work`; each is self-contained and does not chain auxiliary skills
 - [x] **Codex sandbox profile** — workspace-write; auto-discovers `.git` / `.worktrees` writable roots in `~/Coding`, `~/.cyrus/repos`, `~/.cyrus/worktrees`
@@ -67,6 +73,12 @@ Run **as the target user, not root**.
 
 Skips: `--no-runtimes`, `--no-lazyvim`, `--no-logins`.
 
+To configure an observer role during bootstrap, pass both explicit values:
+
+```bash
+bash install-server-linux.sh --planctl-role=machine --planctl-config=/absolute/machine.toml
+```
+
 Not installed by `install-server-linux.sh` — separate one-shots (all in `lib/`):
 - **mdurl** markdown publishing server: `sudo bash lib/setup-mdurl.sh`
 - **Cyrus** orchestrator: `bash lib/setup-cyrus.sh`
@@ -79,6 +91,7 @@ Not installed by `install-server-linux.sh` — separate one-shots (all in `lib/`
 ```bash
 bash update.sh              # client mode
 bash update.sh --server     # apply server-only wide-permission settings
+bash update.sh --planctl-role machine --planctl-config /absolute/machine.toml
 ```
 
 Pulls latest, re-runs every component installer (idempotent — only changes what's missing or out of date). Runs `claude update` (native binary self-update) and `npm install -g @openai/codex`. On every run also installs/refreshes:

@@ -653,12 +653,12 @@ Predict: 180 active min / 70 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_011 — answer progress, agents, stale and waiting Telegram commands only for configured owner identities
+- [x] PLCTL_011 — answer progress, agents, stale and waiting Telegram commands only for configured owner identities — 02a7ca879f47e601dc91042a41fe9004013712cf
       Writes: `planctl/src/server/app.module.ts`, `planctl/src/telegram/telegram.module.ts`, `planctl/src/telegram/telegram-client.ts`, `planctl/src/telegram/bot.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/fixtures/telegram/updates.json`, `planctl/test/telegram-commands.test.ts`.
       Predict: 90 active min / 35 credits.
       How: long-poll through a narrow fetch client, authorize numeric user IDs before querying, map commands to the existing progress service, render deterministic bounded messages, and ignore unknown chats without leaking plan data
       RED: `bun run agent:test:backend -- test/telegram-commands.test.ts -t tst_svc_planctl_telegram_001`
-- [ ] PLCTL_012 — send one retryable Telegram alert for each stale, owner-needed, machine-offline and recovery transition across restart
+- [x] PLCTL_012 — send one retryable Telegram alert for each stale, owner-needed, machine-offline and recovery transition across restart — 02a7ca879f47e601dc91042a41fe9004013712cf
       Writes: `planctl/src/server/persistence/server-store.ts`, `planctl/src/telegram/notifier.service.ts`, `planctl/test/telegram-alerts.test.ts`.
       Predict: 90 active min / 35 credits.
       How: claim pending transitions transactionally, mark only successful fake deliveries notified, retry failures, and construct context strictly from approved plan/task metadata plus explicit owner-wait reason
@@ -669,13 +669,15 @@ Predict: 180 active min / 70 credits.
 - [ ] `cd planctl && bun run agent:test:backend -- test/telegram-commands.test.ts` exits 0 — all five commands authorize and render exact multi-machine progress answers
 - [ ] `cd planctl && bun run agent:test:backend -- test/telegram-alerts.test.ts` exits 0 — duplicate scans/restarts send once while failed delivery remains retryable
 - [ ] A fixture secret present in Telegram updates and session payloads appears in no rendered message, log assertion or persisted notification row
-- [ ] Commit
+- [x] Commit — 02a7ca879f47e601dc91042a41fe9004013712cf
 
 ##### Results
 
 <!-- plan:results:D1-S5:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_011 | 02a7ca879f47e601dc91042a41fe9004013712cf | 2026-08-29T20:01:22.514Z–2026-08-29T20:35:56.401Z | 31 / 34.56 min | unavailable: runner did not expose per-Stage token or credit usage | Five authorized progress commands and durable retryable transition alerts are implemented over a narrow Telegram boundary with bounded privacy-safe rendering. |
+| PLCTL_012 | 02a7ca879f47e601dc91042a41fe9004013712cf | 2026-08-29T20:01:22.514Z–2026-08-29T20:35:56.401Z | 31 / 34.56 min | unavailable: runner did not expose per-Stage token or credit usage | Five authorized progress commands and durable retryable transition alerts are implemented over a narrow Telegram boundary with bounded privacy-safe rendering. |
 <!-- plan:results:D1-S5:end -->
 <!-- plan:stage:D1-S5:end -->
 
@@ -808,4 +810,16 @@ Predict: 180 active min / 70 credits.
 - record-result D1-S6 commit:9c510e12deccd033f69e9f8bab3a70d40364bb06
 
 - close D1-S6 partial commit:bd3eabe50439f004b793d6cecf151a9888c12015
+
+- record-result D1-S5 commit:02a7ca879f47e601dc91042a41fe9004013712cf
+
+- deviation D1-S5: AgentSnapshot omits owner-wait startedAt, so /waiting reports duration as unavailable instead of inventing it.
+
+- deviation D1-S5: D1-S5 does not authorize planctl/src/server/main.ts, so TelegramModule.registerWithTelegram is implemented but the production server bootstrap cannot yet pass configured Telegram credentials.
+
+- deviation D1-S5: The existing planctl build script bundles Nest optional peers and fails on unresolved @nestjs/microservices, @nestjs/websockets, class-transformer, and class-validator; package.json is outside remaining Stage writes.
+
+- close D1-S5 partial commit:02a7ca879f47e601dc91042a41fe9004013712cf
+
+- deviation D1-S7: The Delivery gate passed typecheck, lint, and 48 tests but Bun bundling still cannot resolve Nest optional peers @nestjs/microservices, @nestjs/websockets, class-transformer, and class-validator; planctl/package.json is outside the owner-approved D1-S7 writes.
 <!-- plan:execution:end -->
