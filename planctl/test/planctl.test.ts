@@ -90,6 +90,7 @@ describe("planctl", () => {
     expect(general.stdout).toContain("planctl <command>");
     expect(general.stdout).toContain("one canonical writer: plan-update");
     expect(general.stdout).toContain("start-task");
+    expect(general.stdout).toContain("config check");
     expect(task.status).toBe(0);
     expect(task.stdout).toContain("planctl complete-task <plan.md> --from <stage-result.json>");
     expect(task.stdout).toContain('"taskIds": ["PLANCTL_001"]');
@@ -304,6 +305,7 @@ describe("planctl", () => {
       expect(started.status, `${started.stdout}\n${started.stderr}`).toBe(0);
       expect(started.stdout).toContain("Task PLANCTL_001 STARTED");
       expect(started.stdout).toContain("Source: docs/plans/fixture.md");
+      expect(started.stdout).toContain("Distributed correlation: unavailable (TaskRunV1)");
       expect(started.stdout).toContain("Writes: scripts/example.ts");
       expect(started.stdout).toContain("RED: bun run agent:test:backend -- test/planctl.test.ts");
       const startedAt = started.stdout.match(/^Started: (.+)$/m)?.[1];

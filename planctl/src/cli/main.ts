@@ -37,6 +37,10 @@ Authoring:
   put-stage          Add one commit-sized Stage from JSON
   approve-plan       Lock Delivery, Stage and Task meaning
 
+Configuration:
+  config init        Write a commented machine or server template
+  config check       Validate one machine or server TOML file
+
 Execution:
   start-task         Validate one approved Task, print its scope and start timing
   complete-task      Import a validated Stage result and close its Task(s)
@@ -164,6 +168,12 @@ Checks that staged plan bytes are exactly the script-produced journal head.
 
 Internal post-commit cleanup for a spent mutation journal.
 `,
+  config: `Usage: planctl config <init|check> --role <machine|server> [--path <absolute.toml>]
+
+init writes a commented template without inventing identity, endpoint or secret
+values. check validates the strict role schema, absolute paths, endpoint safety
+and mode-0600 secret files.
+`,
 };
 
 interface TaskRun {
@@ -206,6 +216,14 @@ function flag(args: readonly string[], name: string): string {
   const at = args.indexOf(name);
   const value = at === -1 ? undefined : args[at + 1];
   if (value === undefined || value.startsWith("--")) throw new Error(`${name} is required`);
+  return value;
+}
+
+function optionalFlag(args: readonly string[], name: string): string | undefined {
+  const at = args.indexOf(name);
+  if (at === -1) return undefined;
+  const value = args[at + 1];
+  if (value === undefined || value.startsWith("--")) throw new Error(`${name} requires a value`);
   return value;
 }
 
@@ -273,6 +291,7 @@ function printTaskStart(brief: TaskExecutionBrief, run: TaskRun): void {
   console.log([
     `Task ${brief.id} STARTED`,
     `Source: ${run.plan}`,
+    "Distributed correlation: unavailable (TaskRunV1)",
     `Delivery / Stage: ${brief.deliveryId} / ${brief.stageId} — ${brief.stageTitle}`,
     `Owner / Profile: ${brief.owner} / ${brief.profile}`,
     `Started: ${run.startedAt}`,
@@ -405,6 +424,27 @@ function setSpec(args: readonly string[]): void {
   stage(rootPath, target.relative);
 }
 
+async function configCommand(args: readonly string[]): Promise<void> {
+  if (basename(import.meta.dir) !== "cli") throw new Error("config commands require the dedicated planctl package");
+  const action = args[1];
+  if (action !== "init" && action !== "check") throw new Error("config action must be init or check");
+  const role = flag(args, "--role");
+  if (role !== "machine" && role !== "server") throw new Error("--role must be machine or server");
+  const { defaultPlanctlConfigPath, loadPlanctlConfig, planctlConfigTemplate } = await import(
+    resolve(import.meta.dir, "../config/config.ts")
+  );
+  const path = optionalFlag(args, "--path") ?? defaultPlanctlConfigPath(role);
+  if (!isAbsolute(path)) throw new Error("config path must be absolute");
+  if (action === "init") {
+    if (existsSync(path)) throw new Error(`refusing to overwrite existing config: ${path}`);
+    atomicWrite(path, planctlConfigTemplate(role));
+    console.log(`planctl: wrote ${role} config template — ${path}`);
+    return;
+  }
+  loadPlanctlConfig(path, role);
+  console.log(`planctl: ${role} config OK — ${path}`);
+}
+
 function verify(args: readonly string[]): void {
   const plan = args[1];
   if (plan === undefined) throw new Error("plan path is required");
@@ -424,7 +464,7 @@ function runEngine(args: readonly string[], engineCommand: string): number {
   return result.status ?? 1;
 }
 
-function run(args: readonly string[]): number {
+async function run(args: readonly string[]): Promise<number> {
   const command = args[0];
   if (command === undefined || command === "--help" || command === "-h") {
     console.log(GENERAL_HELP);
@@ -444,6 +484,10 @@ function run(args: readonly string[]): number {
     setSpec(args);
     return 0;
   }
+  if (command === "config") {
+    await configCommand(args);
+    return 0;
+  }
   if (command === "verify") {
     verify(args);
     return 0;
@@ -459,7 +503,7 @@ function run(args: readonly string[]): number {
 }
 
 try {
-  process.exitCode = run(process.argv.slice(2));
+  process.exitCode = await run(process.argv.slice(2));
 } catch (error: unknown) {
   console.error(`planctl: ${message(error)}`);
   process.exitCode = 1;

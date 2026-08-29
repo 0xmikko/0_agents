@@ -57,6 +57,32 @@ export interface StageInput {
   readonly criteria: readonly string[];
 }
 
+export interface ParsedTaskInput extends TaskInput {
+  readonly completed: boolean;
+  readonly completionCommit: string | null;
+}
+
+export interface ParsedStageInput {
+  readonly id: string;
+  readonly deliveryId: string;
+  readonly title: string;
+  readonly owner: string;
+  readonly profile: "fast" | "strong";
+  readonly depends: readonly string[];
+  readonly parallelWith: readonly string[];
+  readonly writes: readonly string[];
+  readonly tempRoot: string;
+  readonly predictedActiveMinutes: number;
+  readonly predictedCredits: number;
+  readonly tasks: readonly ParsedTaskInput[];
+  readonly criteria: readonly string[];
+}
+
+export interface DeliveryMeta {
+  readonly id: string;
+  readonly active: boolean;
+}
+
 export interface StageResultReceipt {
   readonly version: 1;
   readonly plan: string;
@@ -434,8 +460,8 @@ function capture(match: RegExpMatchArray, index: number, name: string): string {
   return value;
 }
 
-function stageInputs(body: string): readonly StageInput[] {
-  const inputs: StageInput[] = [];
+export function stageInputs(body: string): readonly ParsedStageInput[] {
+  const inputs: ParsedStageInput[] = [];
   const expression = /<!-- plan:stage:(D[1-9]\d*-S[1-9]\d*):start -->\n<!-- plan:stage-meta:(\{[^\n]*\}) -->[\s\S]*?Predict: (\d+(?:\.\d+)?) active min \/ (\d+(?:\.\d+)?) credits\.[\s\S]*?<!-- plan:stage:\1:end -->/g;
   for (const match of body.matchAll(expression)) {
     const block = capture(match, 0, "Stage block");
@@ -460,17 +486,22 @@ function stageInputs(body: string): readonly StageInput[] {
       tempRoot: typeof meta.tempRoot === "string" ? meta.tempRoot : "",
       predictedActiveMinutes: Number(capture(match, 3, "Stage active minutes")),
       predictedCredits: Number(capture(match, 4, "Stage credits")),
-      tasks: taskMatches.map((task) => ({
-        id: capture(task, 2, "Task ID"),
-        story: capture(task, 1, "Task state") === "x"
-          ? capture(task, 3, "Task story").replace(/ — [0-9a-f]{7,40}$/, "")
-          : capture(task, 3, "Task story"),
-        writes: renderedPaths(capture(task, 4, "Task writes"), `Task ${capture(task, 2, "Task ID")} writes`),
-        predictedActiveMinutes: Number(capture(task, 5, "Task active minutes")),
-        predictedCredits: Number(capture(task, 6, "Task credits")),
-        how: capture(task, 7, "Task how"),
-        red: capture(task, 8, "Task RED"),
-      })),
+      tasks: taskMatches.map((task) => {
+        const completed = capture(task, 1, "Task state") === "x";
+        const renderedStory = capture(task, 3, "Task story");
+        const completionCommit = completed ? renderedStory.match(/ — ([0-9a-f]{7,40})$/)?.[1] ?? null : null;
+        return {
+          id: capture(task, 2, "Task ID"),
+          story: completed ? renderedStory.replace(/ — [0-9a-f]{7,40}$/, "") : renderedStory,
+          writes: renderedPaths(capture(task, 4, "Task writes"), `Task ${capture(task, 2, "Task ID")} writes`),
+          predictedActiveMinutes: Number(capture(task, 5, "Task active minutes")),
+          predictedCredits: Number(capture(task, 6, "Task credits")),
+          how: capture(task, 7, "Task how"),
+          red: capture(task, 8, "Task RED"),
+          completed,
+          completionCommit,
+        };
+      }),
       criteria: criteriaBlock === null
         ? []
         : capture(criteriaBlock, 1, "Stage criteria").split("\n").filter((line) => /^- \[[ x]\] /.test(line)).map((line) =>
@@ -481,8 +512,8 @@ function stageInputs(body: string): readonly StageInput[] {
   return inputs;
 }
 
-function deliveryMetas(body: string): readonly { readonly id: string; readonly active: boolean }[] {
-  const values: Array<{ readonly id: string; readonly active: boolean }> = [];
+export function deliveryMetas(body: string): readonly DeliveryMeta[] {
+  const values: DeliveryMeta[] = [];
   const expression = /<!-- plan:delivery:(D[1-9]\d*):start -->\n<!-- plan:delivery-meta:(\{[^\n]*\}) -->/g;
   for (const match of body.matchAll(expression)) {
     const id = capture(match, 1, "Delivery ID");
@@ -1098,7 +1129,19 @@ function stageResultFrom(value: unknown): StageResultReceipt {
 }
 
 function decisionFrom(value: unknown): UnattendedDecisionReceipt {
-  return object(value, "unattended decision") as unknown as UnattendedDecisionReceipt;
+  const decision = object(value, "unattended decision");
+  if (decision.version !== 1) throw new Error("unsupported unattended decision version");
+  return {
+    version: 1,
+    decidedAt: requiredString(decision, "decidedAt"),
+    goalPreserved: requiredString(decision, "goalPreserved"),
+    decision: requiredString(decision, "decision"),
+    alternatives: stringArray(decision.alternatives, "alternatives"),
+    whyContinueNow: requiredString(decision, "whyContinueNow"),
+    affectedScope: stringArray(decision.affectedScope, "affectedScope"),
+    rollbackBase: requiredString(decision, "rollbackBase"),
+    verification: stringArray(decision.verification, "verification"),
+  };
 }
 
 function patchFrom(value: unknown): ExactReplacement {

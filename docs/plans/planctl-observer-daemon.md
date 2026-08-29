@@ -485,7 +485,7 @@ Predict: 90 active min / 30 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_001 — run every existing plan command from the dedicated planctl package while installed consumer paths remain compatible
+- [x] PLCTL_001 — run every existing plan command from the dedicated planctl package while installed consumer paths remain compatible — ab7b1c6331e5bf2e2035baa0e8594d4caf9f9848
       Writes: `planctl/package.json`, `planctl/bun.lock`, `planctl/tsconfig.json`, `planctl/src/cli/main.ts`, `planctl/src/core/plan-gate.ts`, `planctl/src/core/plan-update.ts`, `planctl/test/package-boundary.test.ts`, `planctl/test/planctl.test.ts`, `planctl/test/plan-gate.test.ts`, `planctl/test/plan-update.test.ts`, `shared/code-production/runtime/planctl.ts`, `shared/code-production/runtime/plan-gate.ts`, `shared/code-production/runtime/plan-update.ts`, `shared/code-production/runtime/planctl.test.ts`, `shared/code-production/runtime/plan-gate.test.ts`, `shared/code-production/runtime/plan-update.test.ts`, `shared/code-production/agent-stack.ts`, `shared/code-production/agent-stack.test.ts`, `shared/code-production/README.md`, `shared/code-production/laws/development-process.md`, `shared/code-production/laws/git-workflow.md`, `shared/code-production/laws/plan-format.md`, `shared/code-production/laws/plan-protocol.md`, `bin/planctl`.
       Predict: 90 active min / 30 credits.
       How: from planctl/, add the package adapter and tst_unit_planctl_package_001 first, observe RED on the missing canonical package entrypoint, then move the existing CLI/core/tests with git mv and repoint agent-stack sources without changing its seven installed targets
@@ -493,16 +493,17 @@ Predict: 90 active min / 30 credits.
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/package-boundary.test.ts` exits 0 — bin/planctl and agent-stack use the dedicated package while consumers receive the same seven managed targets
-- [ ] `cd planctl && bun test test/planctl.test.ts test/plan-gate.test.ts test/plan-update.test.ts` exits 0 — all pre-move plan authoring, locking and receipt behavior remains green
+- [x] `cd planctl && bun run agent:test:backend -- test/package-boundary.test.ts` exits 0 — bin/planctl and agent-stack use the dedicated package while consumers receive the same seven managed targets — ab7b1c6331e5bf2e2035baa0e8594d4caf9f9848
+- [x] `cd planctl && bun test test/planctl.test.ts test/plan-gate.test.ts test/plan-update.test.ts` exits 0 — all pre-move plan authoring, locking and receipt behavior remains green — ab7b1c6331e5bf2e2035baa0e8594d4caf9f9848
 - [ ] The source tree has one canonical copy of each planctl CLI/core module and NestJS dependencies remain package-local
-- [ ] Commit
+- [x] Commit — ab7b1c6331e5bf2e2035baa0e8594d4caf9f9848
 
 ##### Results
 
 <!-- plan:results:D1-S1:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_001 | ab7b1c6331e5bf2e2035baa0e8594d4caf9f9848 | 2026-08-29T16:44:58.223Z–2026-08-29T17:36:43.383Z | 45 / 51.75266666666667 min | unavailable: runner did not expose per-Stage token or credit usage | The canonical plan CLI/core now runs from the dedicated Bun package and vendors byte-identical lightweight sources to all seven stable consumer targets. |
 <!-- plan:results:D1-S1:end -->
 <!-- plan:stage:D1-S1:end -->
 
@@ -774,4 +775,8 @@ Predict: 180 active min / 70 credits.
 - put-stage D1-S7
 
 - approve sha256:5301ecd18a44b5c0b0a5916590b9a5c4d3b095f1e78a762d9ff094e3b10d22a1 owner:$blueprint-start
+
+- record-result D1-S1 commit:ab7b1c6331e5bf2e2035baa0e8594d4caf9f9848
+
+- close D1-S1 partial commit:ab7b1c6331e5bf2e2035baa0e8594d4caf9f9848
 <!-- plan:execution:end -->
