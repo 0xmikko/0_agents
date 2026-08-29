@@ -1,0 +1,2 @@
+{"timestamp":"2026-08-29T12:00:00.000Z","type":"session_meta","payload":{"id":"codex-session-1","cwd":"/work/repo/.worktrees/feature","source":"cli"}}
+{"timestamp":"2026-08-29T12:04:50.000Z","type":"response_item","payload":{"type":"message","content":"DO_NOT_UPLOAD_CODEX_PAYLOAD"}}

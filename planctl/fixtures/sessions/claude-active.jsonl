@@ -1,0 +1,2 @@
+{"sessionId":"claude-session-1","cwd":"/work/repo","timestamp":"2026-08-29T12:04:40.000Z","type":"user","message":{"role":"user","content":"DO_NOT_UPLOAD_CLAUDE_PAYLOAD"}}
+{"sessionId":"claude-session-1","cwd":"/work/repo","timestamp":"2026-08-29T12:04:55.000Z","type":"assistant","message":{"role":"assistant","content":"private response"}}
