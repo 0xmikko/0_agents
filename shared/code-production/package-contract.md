@@ -49,3 +49,11 @@ It also refuses the opt-out when that managed workflow is still present, so a
 repository cannot silently buy both complete gates. The external workflow owns
 published-SHA coverage; the local pre-push hook still calls
 `agent:verify:pr` once and stores its exact-HEAD receipt.
+
+## Existing approved plans
+
+New plans use the marked `planctl` format and every locked mutation requires
+its journal. Markerless plans created before installation remain governed by
+the legacy freeze: protected text can change only when the same commit adds an
+owner Amendment. The hook never fabricates a `planctl` journal for historical
+bytes, so a repository can adopt the stack without abandoning active plans.

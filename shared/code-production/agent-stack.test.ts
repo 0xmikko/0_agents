@@ -270,4 +270,43 @@ describe("agent-stack", () => {
 
     expect(() => installStack(root)).toThrow("external CI workflow must be a regular file");
   });
+
+  test("tst_agent_stack_013 keeps markerless approved plans operable through the legacy freeze", () => {
+    const root = fixture();
+    const plan = "docs/plans/legacy.md";
+    const planPath = join(root, plan);
+    mkdirSync(join(root, "docs/plans"), { recursive: true });
+    writeFileSync(planPath, [
+      "---",
+      "doc_type: plan",
+      "status: historical",
+      "---",
+      "# Legacy plan",
+      "",
+      "Status: APPROVED",
+      "",
+      "## Goal",
+      "",
+      "Original contract.",
+      "",
+      "## Amendments",
+      "",
+      "- None.",
+      "",
+    ].join("\n"));
+    git(root, "add", plan);
+    git(root, "commit", "-m", "plan: add legacy fixture");
+    installStack(root);
+
+    writeFileSync(planPath, readFileSync(planPath, "utf8")
+      .replace("Original contract.", "Owner-amended contract.")
+      .replace("- None.", "- None.\n- 2026-08-29 (owner word): migrate this approved plan."));
+    git(root, "add", plan);
+
+    const committed = spawnSync("git", ["-C", root, "commit", "-m", "plan: amend legacy fixture"], {
+      encoding: "utf8",
+    });
+    expect(`${committed.stdout}${committed.stderr}`).not.toMatch(/no journal|missing canonical protocol/i);
+    expect(committed.status).toBe(0);
+  });
 });
