@@ -115,50 +115,7 @@ if [ -f "$RULES_SRC" ]; then
   chmod 600 "$DST/rules/default.rules"
 fi
 
-if [ -d "$SKILLS_SRC" ]; then
-  # markdown-view is retired; mdurl is the single markdown command.
-  retired_markdown_view="$DST/skills/markdown-view"
-  if [ -L "$retired_markdown_view" ] \
-    && [ "$(readlink "$retired_markdown_view")" = "$SKILLS_SRC/markdown-view" ]; then
-    rm "$retired_markdown_view"
-    echo "✓ removed retired Codex skill: ~/.codex/skills/markdown-view"
-  fi
-
-  # Remove only stale links previously managed by this repository.
-  for stale_skill in "$DST"/skills/*; do
-    [ -L "$stale_skill" ] || continue
-    stale_target="$(readlink "$stale_skill")"
-    case "$stale_target" in
-      "$SKILLS_SRC"/*)
-        if [ ! -e "$stale_target" ]; then
-          rm "$stale_skill"
-          echo "✓ removed retired Codex skill: ~/.codex/skills/$(basename "$stale_skill")"
-        fi
-        ;;
-    esac
-  done
-
-  find "$SKILLS_SRC" -mindepth 1 -maxdepth 1 -type d | sort | while IFS= read -r skill_src; do
-    skill_name="$(basename "$skill_src")"
-    skill_dst="$DST/skills/$skill_name"
-
-    if [ -L "$skill_dst" ]; then
-      current="$(readlink "$skill_dst")"
-      if [ "$current" = "$skill_src" ]; then
-        echo "✓ already linked: ~/.codex/skills/$skill_name"
-        continue
-      fi
-      rm "$skill_dst"
-    elif [ -e "$skill_dst" ]; then
-      backup="${skill_dst}.bak.$(date +%s)"
-      mv "$skill_dst" "$backup"
-      echo "  backed up ~/.codex/skills/$skill_name -> $(basename "$backup")"
-    fi
-
-    ln -s "$skill_src" "$skill_dst"
-    echo "✓ linked: ~/.codex/skills/$skill_name"
-  done
-fi
+bash "$REPO_DIR/lib/sync-codex-skills.sh" "$SKILLS_SRC" "$DST/skills"
 
 if [ -n "$EXISTING_CONFIG" ]; then
   rm -f "$EXISTING_CONFIG"
