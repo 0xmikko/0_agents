@@ -114,8 +114,8 @@ for item in AGENTS.md agents lang; do
 done
 if [ -d "$HOME/.codex/skills" ]; then
   ok "~/.codex/skills exists"
-  # Spot-check that the most-used shared skills are symlinked
-  for skill in start-work mdurl bug fast-precommit; do
+  # Spot-check the canonical production entrypoints and one shared utility.
+  for skill in blueprint blueprint-start end-work mdurl; do
     src="$REPO_DIR/codex/skills/$skill"
     dst="$HOME/.codex/skills/$skill"
     if [ -L "$dst" ]; then

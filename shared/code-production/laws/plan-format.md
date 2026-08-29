@@ -145,7 +145,7 @@ timer. The Markdown file remains the only contract source of truth.
   Prose quoting the form is not executed. Beware `rg -c`: it prints nothing
   and exits 1 on zero matches — write `` `rg -q …` exits 1 ``.
 - A machinable criterion must hold in EVERY environment that re-runs it —
-  stage close, the pre-push lane, `/review-implementation`, the `/end-work`
+  stage close, the pre-push lane, the Delivery review gate, and the `end-work`
   closure. (The CI plan-gate job checks receipts only, `--no-exec`: a thin
   runner cannot host the stack, and a false red teaches people to ignore
   the gate.) An environment-specific measurement (this machine's branch

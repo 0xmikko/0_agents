@@ -90,47 +90,6 @@ link_item() {
   echo "✓ linked: $label → $src"
 }
 
-link_codex_skill() {
-  local skill_name="$1"
-  local src="$CODEX_SRC/skills/$skill_name"
-  local dst="$CODEX_DST/skills/$skill_name"
-  local label="~/.codex/skills/$skill_name"
-
-  # mdurl is a repo-managed shared skill. Older installs created
-  # ~/.codex/skills/mdurl as a real directory with SKILL.md inside; migrate it
-  # to the standard repo symlink instead of leaving a stale copy.
-  if [ "$skill_name" = "mdurl" ] && [ -e "$dst" ] && [ ! -L "$dst" ]; then
-    local backup="${dst}.bak.$(date +%s)"
-    echo "  backing up existing $label → $(basename "$backup")"
-    mv "$dst" "$backup"
-  fi
-
-  if [ -L "$dst" ]; then
-    local current
-    current=$(readlink "$dst")
-    if [ "$current" = "$src" ]; then
-      echo "✓ already linked: $label"
-      return
-    fi
-    case "$current" in
-      "$CODEX_SRC"/skills/*)
-        echo "  replacing stale general codex skill symlink $label (was → $current)"
-        rm "$dst"
-        ;;
-      *)
-        echo "  keep existing codex skill: $label (→ $current)"
-        return
-        ;;
-    esac
-  elif [ -e "$dst" ]; then
-    echo "  keep existing codex skill: $label"
-    return
-  fi
-
-  ln -s "$src" "$dst"
-  echo "✓ linked: $label → $src"
-}
-
 # Claude top-level items. `lang/` and common skills are symlinks into `shared/`.
 #  agents/ — Task-tool subagents (cops, etc.)
 #  skills/ — user-invoked slash commands (/spec, /plan, /review-*, etc.)
@@ -143,40 +102,12 @@ done
 link_item "~/.claude/lang" "$SHARED_SRC/lang" "$CLAUDE_DST/lang"
 
 # Codex skills live next to system skills in ~/.codex/skills/.system, so link
-# individual skill directories instead of replacing ~/.codex/skills. Project
-# skills with the same name are resolved by Codex's normal project override.
+# individual skill directories instead of replacing ~/.codex/skills. Codex
+# discovers user- and repo-scope names independently, so this catalog omits
+# retired process aliases that projects may still provide locally.
 link_item "~/.codex/AGENTS.md" "$CODEX_SRC/AGENTS.md" "$CODEX_DST/AGENTS.md"
 mkdir -p "$CODEX_DST/skills"
-
-# markdown-view is retired everywhere: mdurl is the single markdown-viewing
-# command for both agents. Remove the old repo-managed Codex skill link.
-retired_codex_markdown_view="$CODEX_DST/skills/markdown-view"
-if [ -L "$retired_codex_markdown_view" ] \
-  && [ "$(readlink "$retired_codex_markdown_view")" = "$CODEX_SRC/skills/markdown-view" ]; then
-  rm "$retired_codex_markdown_view"
-  echo "✓ removed retired Codex skill: ~/.codex/skills/markdown-view"
-fi
-
-# Remove only stale links previously managed by this repository. This retires
-# superseded entrypoints such as spec without touching operator-owned skills.
-for stale_skill in "$CODEX_DST"/skills/*; do
-  [ -L "$stale_skill" ] || continue
-  stale_target="$(readlink "$stale_skill")"
-  case "$stale_target" in
-    "$CODEX_SRC"/skills/*)
-      if [ ! -e "$stale_target" ]; then
-        rm "$stale_skill"
-        echo "✓ removed retired Codex skill: ~/.codex/skills/$(basename "$stale_skill")"
-      fi
-      ;;
-  esac
-done
-
-for skill_dir in "$CODEX_SRC"/skills/*; do
-  [ -d "$skill_dir" ] || continue
-  skill_name="$(basename "$skill_dir")"
-  link_codex_skill "$skill_name"
-done
+bash "$REPO_DIR/lib/sync-codex-skills.sh" "$CODEX_SRC/skills" "$CODEX_DST/skills"
 link_item "~/.codex/agents" "$CODEX_SRC/agents" "$CODEX_DST/agents"
 link_item "~/.codex/lang" "$SHARED_SRC/lang" "$CODEX_DST/lang"
 
