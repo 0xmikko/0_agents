@@ -26,3 +26,26 @@ Rules:
    runners or duplicated project policy.
 6. Final review reuses the published-SHA gate result. It reruns a suite only
    when the reviewed SHA changed.
+
+## Existing CI
+
+The managed GitHub workflow is the default. A repository that already owns an
+equivalent complete PR workflow opts out explicitly in `package.json`:
+
+```json
+{
+  "agentStack": {
+    "ci": "external",
+    "ciWorkflow": ".github/workflows/ci.yml"
+  }
+}
+```
+
+The named workflow must already exist as a regular file. `ciWorkflow` without
+`ci: external` is rejected instead of silently falling back to managed CI. In
+this mode `agent-stack` installs the runtime and hooks but does not create
+`.github/workflows/code-production.yml`.
+It also refuses the opt-out when that managed workflow is still present, so a
+repository cannot silently buy both complete gates. The external workflow owns
+published-SHA coverage; the local pre-push hook still calls
+`agent:verify:pr` once and stores its exact-HEAD receipt.
