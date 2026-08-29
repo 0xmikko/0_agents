@@ -2,5 +2,14 @@
 # Managed entrypoint for the private code-production plan runtime.
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SOURCE_PATH="${BASH_SOURCE[0]}"
+# @tested-by: tst_agent_unit_planctl_001
+# @invariant: the launcher locates the repository when invoked through ~/.local/bin.
+while [[ -L "$SOURCE_PATH" ]]; do
+  SOURCE_DIR="$(cd -P "$(dirname "$SOURCE_PATH")" && pwd)"
+  SOURCE_PATH="$(readlink "$SOURCE_PATH")"
+  [[ "$SOURCE_PATH" = /* ]] || SOURCE_PATH="$SOURCE_DIR/$SOURCE_PATH"
+done
+
+REPO_DIR="$(cd -P "$(dirname "$SOURCE_PATH")/.." && pwd)"
 exec bun "$REPO_DIR/shared/code-production/runtime/planctl.ts" "$@"
