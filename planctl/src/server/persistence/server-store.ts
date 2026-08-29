@@ -69,6 +69,10 @@ export interface TransitionRecord {
   readonly detail: TransitionDetail;
 }
 
+export type AlertTransitionRecord = TransitionRecord & {
+  readonly claimedAt: string;
+};
+
 export interface ObservedStateChange {
   readonly entityKey: string;
   readonly currentState: string;
@@ -127,6 +131,10 @@ interface TransitionRow {
   readonly detail_json: string;
 }
 
+interface AlertTransitionRow extends TransitionRow {
+  readonly claimed_at: string;
+}
+
 interface CalibrationRow {
   readonly predicted_active_minutes: number;
   readonly actual_active_minutes: number;
@@ -164,6 +172,22 @@ function transitionDetail(input: string): TransitionDetail {
     result[key] = value;
   }
   return result;
+}
+
+function transitionFromRow(row: TransitionRow): TransitionRecord {
+  return {
+    transitionKey: row.transition_key,
+    kind: row.kind,
+    entityKey: row.entity_key,
+    machineId: row.machine_id,
+    agentId: row.agent_id,
+    planId: row.plan_id,
+    taskId: row.task_id,
+    previousState: row.previous_state,
+    currentState: row.current_state,
+    occurredAt: row.occurred_at,
+    detail: transitionDetail(row.detail_json),
+  };
 }
 
 function canonicalPlanFromRow(row: CanonicalPlanRow): CanonicalPlanRecord {
@@ -525,19 +549,58 @@ export class ServerStore implements OnModuleDestroy {
              previous_state, current_state, occurred_at, detail_json
       FROM transitions
       ORDER BY rowid
-    `).all().map((row) => ({
-      transitionKey: row.transition_key,
-      kind: row.kind,
-      entityKey: row.entity_key,
-      machineId: row.machine_id,
-      agentId: row.agent_id,
-      planId: row.plan_id,
-      taskId: row.task_id,
-      previousState: row.previous_state,
-      currentState: row.current_state,
-      occurredAt: row.occurred_at,
-      detail: transitionDetail(row.detail_json),
-    }));
+    `).all().map(transitionFromRow);
+  }
+
+  /**
+   * @tested-by: tst_svc_planctl_alerts_001
+   * @invariant: CTL-008 each alertable transition has one durable claim and remains retryable until notified.
+   */
+  claimPendingAlerts(nowInput: string, leaseSeconds: number): readonly AlertTransitionRecord[] {
+    const now = requireTimestamp(nowInput, "alert claim time");
+    if (!Number.isSafeInteger(leaseSeconds) || leaseSeconds <= 0) {
+      throw new Error("alert claim leaseSeconds must be a positive integer");
+    }
+    const expiredBefore = new Date(Date.parse(now) - leaseSeconds * 1_000).toISOString();
+    const transaction = this.#database.transaction((): readonly AlertTransitionRecord[] => {
+      const rows = this.#database.query<AlertTransitionRow, [string, string]>(`
+        SELECT transition_key, kind, entity_key, machine_id, agent_id, plan_id, task_id,
+               previous_state, current_state, occurred_at, detail_json, ? AS claimed_at
+        FROM transitions
+        WHERE notified_at IS NULL
+          AND kind IN ('stale', 'owner_wait', 'machine_offline', 'recovery')
+          AND (claimed_at IS NULL OR claimed_at <= ?)
+        ORDER BY rowid
+        LIMIT 100
+      `).all(now, expiredBefore);
+      for (const row of rows) {
+        this.#database.query(`
+          UPDATE transitions
+          SET claimed_at = ?
+          WHERE transition_key = ? AND notified_at IS NULL
+            AND (claimed_at IS NULL OR claimed_at <= ?)
+        `).run(now, row.transition_key, expiredBefore);
+      }
+      return rows.map((row) => ({ ...transitionFromRow(row), claimedAt: row.claimed_at }));
+    });
+    return transaction.immediate();
+  }
+
+  markAlertNotified(transitionKey: string, notifiedAtInput: string): void {
+    const notifiedAt = requireTimestamp(notifiedAtInput, "alert notifiedAt");
+    const result = this.#database.query(`
+      UPDATE transitions
+      SET notified_at = ?, claimed_at = NULL
+      WHERE transition_key = ? AND notified_at IS NULL
+    `).run(notifiedAt, transitionKey);
+    if (result.changes !== 1) throw new Error(`alert ${transitionKey} is missing or already notified`);
+  }
+
+  releaseAlertClaim(transitionKey: string): void {
+    this.#database.query(`
+      UPDATE transitions SET claimed_at = NULL
+      WHERE transition_key = ? AND notified_at IS NULL
+    `).run(transitionKey);
   }
 
   recordCalibrationSample(

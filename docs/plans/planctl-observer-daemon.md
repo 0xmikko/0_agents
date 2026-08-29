@@ -563,17 +563,17 @@ Predict: 240 active min / 90 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_005 — discover live Codex and Claude sessions and classify bound, unassigned, stale and malformed activity without reading payload content
+- [x] PLCTL_005 — discover live Codex and Claude sessions and classify bound, unassigned, stale and malformed activity without reading payload content — db537da65f2b36bfe5eb76a33ae0040ce6a5d5c2
       Writes: `planctl/src/machine/discovery/git-worktree.source.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/machine/sessions/jsonl-tail-reader.ts`, `planctl/src/machine/sessions/codex-session.source.ts`, `planctl/src/machine/sessions/claude-session.source.ts`, `planctl/src/machine/sessions/linux-process.source.ts`, `planctl/fixtures/sessions/codex-active.jsonl`, `planctl/fixtures/sessions/claude-active.jsonl`, `planctl/fixtures/sessions/truncated-tail.jsonl`, `planctl/test/machine-sessions.test.ts`.
       Predict: 90 active min / 35 credits.
       How: index explicit session roots and /proc identities, advance byte cursors only across complete JSON objects, correlate cwd/git/task receipts, and assert a fixture payload secret never enters observations
       RED: `bun run agent:test:backend -- test/machine-sessions.test.ts -t tst_svc_planctld_sessions_001`
-- [ ] PLCTL_006 — retain one latest machine snapshot across collector restart and any number of failed server sends
+- [x] PLCTL_006 — retain one latest machine snapshot across collector restart and any number of failed server sends — db537da65f2b36bfe5eb76a33ae0040ce6a5d5c2
       Writes: `planctl/src/machine/state/machine-store.ts`, `planctl/test/machine-outbox.test.ts`.
       Predict: 70 active min / 25 credits.
       How: use temporary real bun:sqlite WAL with cursor and single coalescing outbox rows, transactionally replace hashes/sequences, and drive reconnects with a fake clock and scripted transport
       RED: `bun run agent:test:backend -- test/machine-outbox.test.ts -t tst_svc_planctld_outbox_001`
-- [ ] PLCTL_007 — publish scheduled versioned heartbeats and changed snapshots without blocking local planctl work when the server is unavailable
+- [x] PLCTL_007 — publish scheduled versioned heartbeats and changed snapshots without blocking local planctl work when the server is unavailable — db537da65f2b36bfe5eb76a33ae0040ce6a5d5c2
       Writes: `planctl/src/machine/main.ts`, `planctl/src/machine/app.module.ts`, `planctl/src/machine/collector.service.ts`, `planctl/src/machine/transport/server-client.ts`, `planctl/test/machine-collector.test.ts`, `bin/planctld`.
       Predict: 80 active min / 30 credits.
       How: compose a Nest application context with an injected clock/scheduler, hash observations, send heartbeat-or-snapshot through bounded authenticated fetch, retry in the background, and expose foreground process health
@@ -581,16 +581,19 @@ Predict: 240 active min / 90 credits.
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/machine-sessions.test.ts` exits 0 — Codex, Claude, live-process, truncated-tail, unassigned and privacy cases produce exact states
+- [x] `cd planctl && bun run agent:test:backend -- test/machine-sessions.test.ts` exits 0 — Codex, Claude, live-process, truncated-tail, unassigned and privacy cases produce exact states — bd3eabe50439f004b793d6cecf151a9888c12015
 - [ ] `cd planctl && bun run agent:test:backend -- test/machine-outbox.test.ts test/machine-collector.test.ts` exits 0 — twenty disconnected scans retain one latest snapshot and converge on reconnect
 - [ ] No machine test uses a real home session, wall-clock sleep, live server or network provider
-- [ ] Commit
+- [x] Commit — bd3eabe50439f004b793d6cecf151a9888c12015
 
 ##### Results
 
 <!-- plan:results:D1-S3:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_005 | db537da65f2b36bfe5eb76a33ae0040ce6a5d5c2 | 2026-08-29T18:32:06.390Z–2026-08-29T19:51:28.000Z | 74 / 79.36 min | unavailable: runner did not expose per-Stage token or credit usage | Incremental privacy-safe Codex/Claude discovery, structured owner-wait correlation, SQLite WAL state, coalescing outbox, scheduled collection, and bounded snapshot/heartbeat transport are implemented. |
+| PLCTL_006 | db537da65f2b36bfe5eb76a33ae0040ce6a5d5c2 | 2026-08-29T18:32:06.390Z–2026-08-29T19:51:28.000Z | 74 / 79.36 min | unavailable: runner did not expose per-Stage token or credit usage | Incremental privacy-safe Codex/Claude discovery, structured owner-wait correlation, SQLite WAL state, coalescing outbox, scheduled collection, and bounded snapshot/heartbeat transport are implemented. |
+| PLCTL_007 | db537da65f2b36bfe5eb76a33ae0040ce6a5d5c2 | 2026-08-29T18:32:06.390Z–2026-08-29T19:51:28.000Z | 74 / 79.36 min | unavailable: runner did not expose per-Stage token or credit usage | Incremental privacy-safe Codex/Claude discovery, structured owner-wait correlation, SQLite WAL state, coalescing outbox, scheduled collection, and bounded snapshot/heartbeat transport are implemented. |
 <!-- plan:results:D1-S3:end -->
 <!-- plan:stage:D1-S3:end -->
 
@@ -605,17 +608,17 @@ Predict: 300 active min / 110 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_008 — accept each authenticated machine snapshot exactly once and reject wrong identity, version, replay and out-of-order sequence
+- [x] PLCTL_008 — accept each authenticated machine snapshot exactly once and reject wrong identity, version, replay and out-of-order sequence — 6b38f782b8eebea017b5eb57fba20efa7246aecd
       Writes: `planctl/src/server/main.ts`, `planctl/src/server/app.module.ts`, `planctl/src/server/auth/machine-auth.guard.ts`, `planctl/src/server/admin/machine-admin.service.ts`, `planctl/src/server/ingest/ingest.module.ts`, `planctl/src/server/ingest/ingest.controller.ts`, `planctl/src/server/ingest/ingest.service.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/test/server-ingest.test.ts`, `bin/planctl-server`.
       Predict: 120 active min / 45 credits.
       How: compile real Nest modules over temporary bun:sqlite WAL, hash per-machine bearer credentials, transact sequence/snapshot/receivedAt, and drive the HTTP controller in process without a live listener
       RED: `bun run agent:test:backend -- test/server-ingest.test.ts -t tst_int_planctl_ingest_001`
-- [ ] PLCTL_009 — persist distinct machine-offline, stale, owner-wait, unassigned, recovery and plan-drift transitions without duplicate events
+- [x] PLCTL_009 — persist distinct machine-offline, stale, owner-wait, unassigned, recovery and plan-drift transitions without duplicate events — 6b38f782b8eebea017b5eb57fba20efa7246aecd
       Writes: `planctl/src/server/persistence/server-store.ts`, `planctl/src/server/transitions/transition.service.ts`, `planctl/test/server-transitions.test.ts`.
       Predict: 80 active min / 30 credits.
       How: evaluate transitions against injected server receipt time, keep machine liveness separate from session activity, store one idempotent transition key, and exclude revision drift from canonical progress
       RED: `bun run agent:test:backend -- test/server-transitions.test.ts -t tst_svc_planctl_transitions_001`
-- [ ] PLCTL_010 — serve portfolio and per-plan progress with active agents, blockers, critical path and calibrated delivery forecast from persisted snapshots
+- [x] PLCTL_010 — serve portfolio and per-plan progress with active agents, blockers, critical path and calibrated delivery forecast from persisted snapshots — 6b38f782b8eebea017b5eb57fba20efa7246aecd
       Writes: `planctl/src/server/progress/progress.module.ts`, `planctl/src/server/progress/progress.controller.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/test/server-progress.test.ts`.
       Predict: 100 active min / 35 credits.
       How: group matching plan revisions, join active observations and completed receipts, call the canonical progress/forecast core, order attention states first, and return null calendar ETA for owner waits
@@ -626,13 +629,16 @@ Predict: 300 active min / 110 credits.
 - [ ] `cd planctl && bun run agent:test:backend -- test/server-ingest.test.ts` exits 0 — authentication and strictly monotonic idempotent ingest hold against real temporary SQLite
 - [ ] `cd planctl && bun run agent:test:backend -- test/server-transitions.test.ts test/server-progress.test.ts` exits 0 — every attention state and ETA field has exact persisted evidence
 - [ ] The server exposes no plan mutation or agent-control route and rejects non-loopback plain-HTTP external configuration
-- [ ] Commit
+- [x] Commit — bd3eabe50439f004b793d6cecf151a9888c12015
 
 ##### Results
 
 <!-- plan:results:D1-S4:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_008 | 6b38f782b8eebea017b5eb57fba20efa7246aecd | 2026-08-29T18:32:32.124Z–2026-08-29T19:51:08.000Z | 75 / 78.6 min | unavailable: runner did not expose per-Stage token or credit usage | Authenticated idempotent ingest, durable transitions, and portfolio/per-plan progress APIs now share the collector's discriminated snapshot/heartbeat contract. |
+| PLCTL_009 | 6b38f782b8eebea017b5eb57fba20efa7246aecd | 2026-08-29T18:32:32.124Z–2026-08-29T19:51:08.000Z | 75 / 78.6 min | unavailable: runner did not expose per-Stage token or credit usage | Authenticated idempotent ingest, durable transitions, and portfolio/per-plan progress APIs now share the collector's discriminated snapshot/heartbeat contract. |
+| PLCTL_010 | 6b38f782b8eebea017b5eb57fba20efa7246aecd | 2026-08-29T18:32:32.124Z–2026-08-29T19:51:08.000Z | 75 / 78.6 min | unavailable: runner did not expose per-Stage token or credit usage | Authenticated idempotent ingest, durable transitions, and portfolio/per-plan progress APIs now share the collector's discriminated snapshot/heartbeat contract. |
 <!-- plan:results:D1-S4:end -->
 <!-- plan:stage:D1-S4:end -->
 
@@ -684,12 +690,12 @@ Predict: 150 active min / 55 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_013 — show each agent the approved Goal, current exact Task, next ready work, drift and local or aggregated progress on demand
+- [x] PLCTL_013 — show each agent the approved Goal, current exact Task, next ready work, drift and local or aggregated progress on demand — 9c510e12deccd033f69e9f8bab3a70d40364bb06
       Writes: `planctl/src/cli/main.ts`, `planctl/src/cli/render.ts`, `planctl/src/cli/server-client.ts`, `planctl/test/focus.test.ts`, `planctl/test/planctl.test.ts`.
       Predict: 80 active min / 30 credits.
       How: add focus/progress commands over the canonical read model, use bounded server reads only when explicitly requested, render source/status/forecast evidence, and keep existing command exit codes independent of telemetry
       RED: `bun run agent:test:backend -- test/focus.test.ts -t tst_cli_planctl_focus_001`
-- [ ] PLCTL_014 — record and clear a structured owner-response wait so agents never infer obligations from transcript punctuation
+- [x] PLCTL_014 — record and clear a structured owner-response wait so agents never infer obligations from transcript punctuation — 9c510e12deccd033f69e9f8bab3a70d40364bb06
       Writes: `planctl/src/cli/main.ts`, `planctl/src/core/task-run.ts`, `planctl/test/owner-wait.test.ts`, `shared/skills/blueprint-start/SKILL.md`, `shared/code-production/laws/development-process.md`, `shared/code-production/laws/plan-protocol.md`.
       Predict: 70 active min / 25 credits.
       How: add needs-owner/resume-task atomic receipt operations, require one safe-line reason, clear on resume/start, and teach blueprint-start to emit the marker immediately before asking the owner
@@ -697,16 +703,18 @@ Predict: 150 active min / 55 credits.
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/focus.test.ts` exits 0 — focused, unassigned, drifted, offline-server and owner-blocked views name their evidence
-- [ ] `cd planctl && bun run agent:test:backend -- test/owner-wait.test.ts` exits 0 — only structured markers create owner obligations and resume clears them atomically
+- [x] `cd planctl && bun run agent:test:backend -- test/focus.test.ts` exits 0 — focused, unassigned, drifted, offline-server and owner-blocked views name their evidence — bd3eabe50439f004b793d6cecf151a9888c12015
+- [x] `cd planctl && bun run agent:test:backend -- test/owner-wait.test.ts` exits 0 — only structured markers create owner obligations and resume clears them atomically — bd3eabe50439f004b793d6cecf151a9888c12015
 - [ ] Existing planctl commands retain their pre-stage outputs and exit behavior when no machine/server configuration exists
-- [ ] Commit
+- [x] Commit — bd3eabe50439f004b793d6cecf151a9888c12015
 
 ##### Results
 
 <!-- plan:results:D1-S6:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_013 | 9c510e12deccd033f69e9f8bab3a70d40364bb06 | 2026-08-29T18:33:09.600Z–2026-08-29T19:18:20.543Z | 42 / 45.18 min | unavailable: runner did not expose per-Stage token or credit usage | Focus/progress render canonical Goal, Task, dependency-ready work and forecasts; bounded observer reads stay optional; atomic owner-wait markers drive owner obligations. |
+| PLCTL_014 | 9c510e12deccd033f69e9f8bab3a70d40364bb06 | 2026-08-29T18:33:09.600Z–2026-08-29T19:18:20.543Z | 42 / 45.18 min | unavailable: runner did not expose per-Stage token or credit usage | Focus/progress render canonical Goal, Task, dependency-ready work and forecasts; bounded observer reads stay optional; atomic owner-wait markers drive owner obligations. |
 <!-- plan:results:D1-S6:end -->
 <!-- plan:stage:D1-S6:end -->
 
@@ -786,4 +794,18 @@ Predict: 180 active min / 70 credits.
 - record-result D1-S2 commit:e66d80a561f1be969c057c2af38b83e4f4dd6f63
 
 - close D1-S2 partial commit:e66d80a561f1be969c057c2af38b83e4f4dd6f63
+
+- record-result D1-S3 commit:db537da65f2b36bfe5eb76a33ae0040ce6a5d5c2
+
+- close D1-S3 partial commit:bd3eabe50439f004b793d6cecf151a9888c12015
+
+- record-result D1-S4 commit:6b38f782b8eebea017b5eb57fba20efa7246aecd
+
+- deviation D1-S4: MachineSnapshot does not carry completed-task calibration receipts or task-to-Stage elapsed mapping, so current collectors cannot populate observed calibration samples; resolve the wire evidence in D1-S7 or an owner amendment.
+
+- close D1-S4 partial commit:bd3eabe50439f004b793d6cecf151a9888c12015
+
+- record-result D1-S6 commit:9c510e12deccd033f69e9f8bab3a70d40364bb06
+
+- close D1-S6 partial commit:bd3eabe50439f004b793d6cecf151a9888c12015
 <!-- plan:execution:end -->
