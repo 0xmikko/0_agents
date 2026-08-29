@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
-import type { DeliveryInput, StageInput, StageResultReceipt } from "./plan-update";
+import type { DeliveryInput, StageInput, StageResultReceipt } from "../src/core/plan-update";
 
 const DELIVERY: DeliveryInput = {
   id: "D1",
@@ -67,14 +67,14 @@ function fixtureRepository(): {
 }
 
 function run(root: string, ...args: readonly string[]) {
-  return spawnSync("bun", [join(import.meta.dir, "planctl.ts"), ...args], { cwd: root, encoding: "utf8" });
+  return spawnSync("bun", [join(import.meta.dir, "../src/cli/main.ts"), ...args], { cwd: root, encoding: "utf8" });
 }
 
 describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_001
    * @scenario: scn_plan_control_001
-   * @covers: scripts/planctl.ts::help
+   * @covers: planctl/src/cli/main.ts::help
    * @deterministic: yes
    * @fixtures: none
    * Test environment: Bun child process
@@ -106,7 +106,7 @@ describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_002
    * @scenario: scn_plan_control_002
-   * @covers: scripts/planctl.ts::init,set-spec,approve-spec,put-delivery,put-stage,approve-plan,verify
+   * @covers: planctl/src/cli/main.ts::init,set-spec,approve-spec,put-delivery,put-stage,approve-plan,verify
    * @deterministic: yes
    * @fixtures: temporary Git repository and JSON inputs
    * Test environment: isolated local Git repository
@@ -150,7 +150,7 @@ describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_003
    * @scenario: scn_plan_control_003
-   * @covers: scripts/planctl.ts::complete-task,add-deviation,close-stage
+   * @covers: planctl/src/cli/main.ts::complete-task,add-deviation,close-stage
    * @deterministic: yes
    * @fixtures: temporary approved plan and Stage receipt
    * Test environment: isolated local Git repository
@@ -227,7 +227,7 @@ describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_004
    * @scenario: scn_plan_control_004
-   * @covers: scripts/planctl.ts::verify
+   * @covers: planctl/src/cli/main.ts::verify
    * @deterministic: yes
    * @fixtures: temporary approved plan
    * Test environment: isolated local Git repository
@@ -259,7 +259,7 @@ describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_005
    * @scenario: scn_plan_control_005
-   * @covers: scripts/planctl.ts::start-task,complete-task
+   * @covers: planctl/src/cli/main.ts::start-task,complete-task
    * @deterministic: yes
    * @fixtures: temporary approved plan and Git-owned Task start receipt
    * Test environment: isolated local Git repository

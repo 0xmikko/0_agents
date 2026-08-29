@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 
-import { checkPlanFreeze, gatePlan, planItems } from "./plan-gate";
+import { checkPlanFreeze, gatePlan, planItems } from "../src/core/plan-gate";
 
 // This file used to `delete process.env.PLAN_GATE_NESTED` here, so that the
 // suite could still exercise criterion execution when it ran AS a criterion
@@ -22,7 +22,7 @@ import { checkPlanFreeze, gatePlan, planItems } from "./plan-gate";
 /*
  * @test-id: tst_scripts_plangate_001
  * @scenario: scn_process_001
- * @covers: scripts/plan-gate.ts::gatePlan
+ * @covers: planctl/src/core/plan-gate.ts::gatePlan
  * @deterministic: yes
  * @fixtures: temporary git repo with a staged-plan file; receipts point at
  *            the repo's own commits or at garbage
@@ -90,6 +90,7 @@ describe("plan-gate", () => {
       `  - [x] child, closed — ${sha}`,
     ].join("\n"));
     const parent = planItems(nestedBody, 1)[0];
+    if (parent === undefined) throw new Error("nested fixture must expose its parent Task");
     expect(parent.text).toBe("parent, still open");
     expect(parent.hasReceipt).toBe(false);
 
@@ -216,7 +217,7 @@ describe("plan-gate", () => {
   it("tst_scripts_plangate_005 a self-referential criterion cannot recurse, and a hanging one times out", () => {
     const { root, sha } = makeRepo();
     const plan = join(root, "plan.md");
-    const gate = join(import.meta.dir, "plan-gate.ts");
+    const gate = join(import.meta.dir, "../src/core/plan-gate.ts");
 
     // The criterion invokes plan-gate on the SAME plan — without a guard this
     // recursed forever. Nested runs must skip criterion execution, so the
@@ -288,7 +289,7 @@ describe("plan-gate", () => {
 
 // @test-id: tst_scripts_plangate_008, _009, _014, _015, _017, _018
 // @scenario: scn_stage_loop_007
-// @covers: scripts/plan-gate.ts::checkPlanFreeze
+// @covers: planctl/src/core/plan-gate.ts::checkPlanFreeze
 // @deterministic: yes
 // @invariant: INV-SL-4 — a commit that changes a protected section of an
 //   APPROVED plan is refused unless that same commit adds an Amendments line.
@@ -438,7 +439,7 @@ describe("plan freeze", () => {
   //   the coverage review found it unpinned.
   it("tst_scripts_plangate_015 refuses when the merge cannot be reconstructed", () => {
     const un = makeRepo().root;
-    const gate = join(import.meta.dir, "plan-gate.ts");
+    const gate = join(import.meta.dir, "../src/core/plan-gate.ts");
     mkdirSync(join(un, "docs/plans"), { recursive: true });
     writeFileSync(join(un, "docs/plans/subject.md"), approved);
     git(un, "add -A");
@@ -599,7 +600,7 @@ describe("plan freeze", () => {
   //   cannot be created already APPROVED".
   it("tst_scripts_plangate_012 pairs a rename and inherits a merge, through the CLI", () => {
     const { root } = makeRepo();
-    const gate = join(import.meta.dir, "plan-gate.ts");
+    const gate = join(import.meta.dir, "../src/core/plan-gate.ts");
     mkdirSync(join(root, "docs/plans"), { recursive: true });
     const plan = join(root, "docs/plans/subject.md");
     writeFileSync(plan, approved);
@@ -689,7 +690,7 @@ describe("plan freeze", () => {
   //   can show that the CLI actually reads it.
   it("tst_scripts_plangate_013 inherits a merged plan through the CLI", () => {
     const { root } = makeRepo();
-    const gate = join(import.meta.dir, "plan-gate.ts");
+    const gate = join(import.meta.dir, "../src/core/plan-gate.ts");
     mkdirSync(join(root, "docs/plans"), { recursive: true });
     const plan = join(root, "docs/plans/subject.md");
     writeFileSync(plan, approved);

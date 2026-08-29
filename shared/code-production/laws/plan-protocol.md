@@ -3,9 +3,9 @@ doc_type: target
 status: approved
 derived_from: magnis-process-pr-227
 implementation_anchors:
-  - global:shared/code-production/runtime/planctl.ts
-  - global:shared/code-production/runtime/plan-update.ts
-  - global:shared/code-production/runtime/plan-gate.ts
+  - global:planctl/src/cli/main.ts
+  - global:planctl/src/core/plan-update.ts
+  - global:planctl/src/core/plan-gate.ts
   - global:shared/code-production/templates/hooks/pre-commit
   - global:shared/code-production/templates/github/code-production.yml
 ---

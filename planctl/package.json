@@ -1,0 +1,31 @@
+{
+  "name": "@0agents/planctl",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "agent:install": "bun install --frozen-lockfile --backend=copyfile",
+    "agent:test:backend": "bun test",
+    "agent:test:frontend": "bun test test/focus.test.ts test/owner-wait.test.ts",
+    "agent:test:e2e": "bun test",
+    "agent:verify:commit": "bun run typecheck && bun test",
+    "agent:verify:pr": "bun run typecheck && bun run lint && bun test && bun run build",
+    "agent:verify:docs": "bun test test/package-boundary.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src test bench",
+    "build": "bun build src/cli/main.ts src/machine/main.ts src/server/main.ts --outdir dist --target bun"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-express": "^11.1.6",
+    "@nestjs/schedule": "^6.0.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.21",
+    "oxlint": "^1.14.0",
+    "typescript": "^5.9.2"
+  }
+}

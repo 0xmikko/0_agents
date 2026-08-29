@@ -76,6 +76,11 @@ The canonical `docs/plans/<slug>.md` is the only plan copy. JSON files are
 temporary command inputs or typed execution receipts. Git-local journals store
 hashes and timers, never a second plan.
 
+The reusable implementation lives in the dedicated `planctl/` Bun package;
+its commands run from that package working directory. `agent-stack` vendors
+only the lightweight CLI/core bytes to stable consumer runtime paths, so NestJS
+service dependencies never become part of a consumer repository contract.
+
 While status is `SPEC_DRAFT`, the agent may freely edit SPEC prose. After SPEC
 approval, and especially after `APPROVED`, all mutations go through `planctl`.
 The pre-commit hook refuses direct checkbox changes, rewritten Tasks, criteria,

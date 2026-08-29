@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, test } from "bun:test";
@@ -54,6 +54,9 @@ describe("agent-stack", () => {
     expect(readFileSync(join(root, ".gitignore"), "utf8")).toContain("/.worktrees/");
     expect(readFileSync(join(root, ".gitignore"), "utf8")).toContain("/.tmp/code-production/");
     expect(readFileSync(join(root, ".agents/code-production/manifest.json"), "utf8")).toContain("dltxperts/0_agents");
+    expect(readFileSync(join(root, ".agents/code-production/runtime/planctl.ts"), "utf8")).toBe(
+      readFileSync(resolve(import.meta.dir, "../../planctl/src/cli/main.ts"), "utf8"),
+    );
     expect(checkStack(root).files).toEqual(installed.files);
   });
 

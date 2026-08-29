@@ -14,8 +14,8 @@ import {
   type DeliveryInput,
   type StageInput,
   type StageResultReceipt,
-} from "./plan-update";
-import { protocolLockViolations } from "./plan-gate";
+} from "../src/core/plan-update";
+import { protocolLockViolations } from "../src/core/plan-gate";
 
 const SPEC_START = "<!-- plan:spec:start -->";
 const SPEC_END = "<!-- plan:spec:end -->";
@@ -112,7 +112,7 @@ function approvedWithStages(): string {
 describe("plan-update", () => {
   // @test-id: tst_scripts_planupdate_001
   // @scenario: scn_codeprod_001
-  // @covers: scripts/plan-update.ts::lockPlanSpec,approvePlan
+  // @covers: planctl/src/core/plan-update.ts::lockPlanSpec,approvePlan
   // @deterministic: yes
   // @invariant: two owner receipts freeze the SPEC and implementation bytes.
   it("tst_scripts_planupdate_001 locks SPEC, builds one Delivery, then locks implementation", () => {
@@ -138,7 +138,7 @@ describe("plan-update", () => {
 
   // @test-id: tst_scripts_planupdate_002
   // @scenario: scn_codeprod_001
-  // @covers: scripts/plan-update.ts::targeted plan mutations
+  // @covers: planctl/src/core/plan-update.ts::targeted plan mutations
   // @deterministic: yes
   // @invariant: operations preserve every byte outside their target range.
   it("tst_scripts_planupdate_002 changes only the addressed implementation range", () => {
@@ -154,7 +154,7 @@ describe("plan-update", () => {
     const root = mkdtempSync(join(tmpdir(), "portable-plan-update-journal-"));
     const plan = join(root, "plan.md");
     const deliveryJson = join(root, "delivery.json");
-    const writer = join(import.meta.dir, "plan-update.ts");
+    const writer = join(import.meta.dir, "../src/core/plan-update.ts");
     const git = (...args: readonly string[]): string =>
       execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
     try {
@@ -191,7 +191,7 @@ describe("plan-update", () => {
 
   // @test-id: tst_scripts_planupdate_003
   // @scenario: scn_codeprod_002
-  // @covers: scripts/plan-update.ts::recordStageResult
+  // @covers: planctl/src/core/plan-update.ts::recordStageResult
   // @deterministic: yes
   // @invariant: results are append-only and a Stage cannot close over temp leftovers.
   it("tst_scripts_planupdate_003 records an ancestral Stage result and refuses temp leftovers", () => {
@@ -241,7 +241,7 @@ describe("plan-update", () => {
 
   // @test-id: tst_scripts_planupdate_004
   // @scenario: scn_codeprod_003
-  // @covers: scripts/plan-update.ts::applyUnattendedAmendment
+  // @covers: planctl/src/core/plan-update.ts::applyUnattendedAmendment
   // @deterministic: yes
   // @invariant: a complete reversible decision keeps execution live without owner impersonation.
   it("tst_scripts_planupdate_004 applies a complete unattended decision and marks owner review pending", () => {
@@ -264,7 +264,7 @@ describe("plan-update", () => {
 
   // @test-id: tst_scripts_planupdate_005
   // @scenario: scn_codeprod_002
-  // @covers: scripts/plan-update.ts::approvePlan
+  // @covers: planctl/src/core/plan-update.ts::approvePlan
   // @deterministic: yes
   // @invariant: only explicit disjoint Stage writes may run in parallel.
   it("tst_scripts_planupdate_005 refuses parallel Stages with overlapping writes", () => {
@@ -279,21 +279,23 @@ describe("plan-update", () => {
 
   // @test-id: tst_scripts_planupdate_006
   // @scenario: scn_plan_control_004
-  // @covers: scripts/plan-update.ts::putStage Task contract validation
+  // @covers: planctl/src/core/plan-update.ts::putStage Task contract validation
   // @deterministic: yes
   // @invariant: a Stage cannot lock vague, unscoped, unestimated or untestable Tasks.
   it("tst_scripts_planupdate_006 refuses low-information Task contracts", () => {
     const locked = putDelivery(lockPlanSpec(draft(), "spec").body, delivery()).body;
     const valid = stage("D1-S1", ["scripts/base.ts"]);
+    const task = valid.tasks[0];
+    if (task === undefined) throw new Error("valid Stage fixture must have one Task");
     const invalid: ReadonlyArray<readonly [StageInput, RegExp]> = [
       [{ ...valid, tasks: [] }, /at least one Task/i],
-      [{ ...valid, tasks: [{ ...valid.tasks[0], story: "Refactor scheduler" }] }, /observable outcome/i],
-      [{ ...valid, tasks: [{ ...valid.tasks[0], how: "" }] }, /Task how must not be empty/i],
-      [{ ...valid, tasks: [{ ...valid.tasks[0], red: "echo done" }] }, /RED.*agent:test/i],
-      [{ ...valid, tasks: [{ ...valid.tasks[0], red: "bun test test/plan-update.test.ts" }] }, /RED.*agent:test/i],
+      [{ ...valid, tasks: [{ ...task, story: "Refactor scheduler" }] }, /observable outcome/i],
+      [{ ...valid, tasks: [{ ...task, how: "" }] }, /Task how must not be empty/i],
+      [{ ...valid, tasks: [{ ...task, red: "echo done" }] }, /RED.*agent:test/i],
+      [{ ...valid, tasks: [{ ...task, red: "bun test test/plan-update.test.ts" }] }, /RED.*agent:test/i],
       [{ ...valid, tempRoot: "/tmp" }, /tempRoot/i],
-      [{ ...valid, tasks: [{ ...valid.tasks[0], writes: ["scripts/foreign.ts"] }] }, /outside Stage writes/i],
-      [{ ...valid, tasks: [{ ...valid.tasks[0], predictedActiveMinutes: 11 }] }, /Task forecasts exceed Stage forecast/i],
+      [{ ...valid, tasks: [{ ...task, writes: ["scripts/foreign.ts"] }] }, /outside Stage writes/i],
+      [{ ...valid, tasks: [{ ...task, predictedActiveMinutes: 11 }] }, /Task forecasts exceed Stage forecast/i],
       [{ ...valid, criteria: [] }, /acceptance criteria/i],
     ];
 

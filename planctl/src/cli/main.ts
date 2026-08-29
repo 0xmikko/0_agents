@@ -3,12 +3,25 @@
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import { createDraftPlan, replaceDraftSpec, taskExecutionBrief, verifyStagedPlan } from "./plan-update";
-import { protocolLockViolations } from "./plan-gate";
+import type { TaskExecutionBrief } from "../core/plan-update";
 
-import type { TaskExecutionBrief } from "./plan-update";
+function portableRuntimeFile(name: "plan-gate.ts" | "plan-update.ts"): string {
+  const layout = basename(import.meta.dir);
+  if (layout === "cli") return resolve(import.meta.dir, "../core", name);
+  if (layout === "runtime") return resolve(import.meta.dir, name);
+  throw new Error(`unsupported planctl runtime layout: ${import.meta.dir}`);
+}
+
+const PLAN_UPDATE_FILE = portableRuntimeFile("plan-update.ts");
+const {
+  createDraftPlan,
+  replaceDraftSpec,
+  taskExecutionBrief,
+  verifyStagedPlan,
+} = await import(PLAN_UPDATE_FILE);
+const { protocolLockViolations } = await import(portableRuntimeFile("plan-gate.ts"));
 
 const GENERAL_HELP = `Usage: planctl <command> [arguments]
 
@@ -404,7 +417,7 @@ function verify(args: readonly string[]): void {
 function runEngine(args: readonly string[], engineCommand: string): number {
   const plan = args[1];
   if (plan === undefined) throw new Error("plan path is required");
-  const result = spawnSync("bun", [join(import.meta.dir, "plan-update.ts"), plan, engineCommand, ...args.slice(2)], {
+  const result = spawnSync("bun", [PLAN_UPDATE_FILE, plan, engineCommand, ...args.slice(2)], {
     cwd: process.cwd(),
     stdio: "inherit",
   });

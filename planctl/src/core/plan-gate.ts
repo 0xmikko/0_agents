@@ -6,7 +6,7 @@
 // didn't finish and decided it was fine" a red check instead of a review
 // finding (docs/development-process.md §Cadence).
 //
-//   bun scripts/plan-gate.ts <plan.md> [--closure] [--root <repo>]
+//   bun planctl/src/core/plan-gate.ts <plan.md> [--closure] [--root <repo>]
 
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -609,7 +609,7 @@ if (import.meta.main) {
     : args[rootFlag + 1];
   const plan = args.find((a) => a.endsWith(".md"));
   if (!plan || !root) {
-    console.error("usage: bun scripts/plan-gate.ts <plan.md> [--closure] [--start] [--no-exec] [--root <repo>]");
+    console.error("usage: bun planctl/src/core/plan-gate.ts <plan.md> [--closure] [--start] [--no-exec] [--root <repo>]");
     process.exit(64);
   }
   const report = gatePlan(plan, { root, closure, start, noExec });

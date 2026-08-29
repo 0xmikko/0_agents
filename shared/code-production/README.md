@@ -3,7 +3,7 @@
 This directory is the private, reusable development system for every project:
 
 - `laws/` defines the Git, plan, TDD, PR, timing and review contract;
-- `runtime/` contains the canonical plan writer and gates;
+- `../../planctl/src/` contains the canonical CLI, plan writer and gates;
 - `templates/` contains the managed Git hooks and GitHub workflow;
 - `agent-stack.ts` installs and verifies the managed project snapshot;
 - global skills teach agents when to call the deterministic runtime.
@@ -59,6 +59,8 @@ agent-stack install /path/to/repository
 agent-stack check /path/to/repository
 ```
 
-The installer vendors the small deterministic runtime, installs managed hooks
-and a GitHub workflow, and selects `.githooks` for the current worktree only.
+The installer vendors the lightweight CLI/core files from the dedicated
+`planctl/` package to the stable `.agents/code-production/runtime/` consumer
+paths, installs managed hooks and a GitHub workflow, and selects `.githooks`
+for the current worktree only. NestJS and service dependencies are not copied.
 It refuses to overwrite an unmanaged hook or workflow.

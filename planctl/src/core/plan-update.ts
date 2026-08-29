@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
 import { MACHINABLE, protocolImplementationHash, protocolSpecHash } from "./plan-gate";
@@ -1120,7 +1120,7 @@ function requiredFlag(args: readonly string[], name: string): string {
 }
 
 function usage(): never {
-  console.error("usage: bun scripts/plan-update.ts <plan> <lock-spec|put-delivery|put-stage|drop|move|approve|record-result|close|deviate|amend|unattended-amend|verify-staged|clear-spent> [options]");
+  console.error("usage: bun planctl/src/core/plan-update.ts <plan> <lock-spec|put-delivery|put-stage|drop|move|approve|record-result|close|deviate|amend|unattended-amend|verify-staged|clear-spent> [options]");
   process.exit(64);
 }
 

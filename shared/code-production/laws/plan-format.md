@@ -3,8 +3,8 @@ doc_type: current
 status: verified
 derived_from: magnis-process-pr-227
 implementation_anchors:
-  - global:shared/code-production/runtime/plan-gate.ts
-  - global:shared/code-production/runtime/plan-update.ts
+  - global:planctl/src/core/plan-gate.ts
+  - global:planctl/src/core/plan-update.ts
 ---
 
 # The plan format
