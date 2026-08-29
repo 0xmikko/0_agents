@@ -20,8 +20,9 @@ Authoring:
   init               Create and stage a SPEC_DRAFT plan
   set-spec           Replace and stage SPEC while it is still draft
   approve-spec       Lock SPEC after explicit owner approval
-  put-delivery       Add one PR Delivery from JSON
-  put-stage          Add one commit-sized Stage from JSON
+  put-delivery       Add or replace one draft PR Delivery from JSON
+  put-stage          Add or replace one draft commit-sized Stage from JSON
+  remove-stage       Remove one draft Stage
   approve-plan       Lock Delivery, Stage and Task meaning
 
 Execution:
@@ -55,11 +56,13 @@ Locks the exact SPEC bytes. Run only after explicit owner approval.
   "put-delivery": `Usage: planctl put-delivery <plan.md> --from <delivery.json>
 
 Delivery JSON uses the canonical plan-update DeliveryInput contract. IDs are
-D1, D2, ...; a Delivery is one PR.
+D1, D2, ...; a Delivery is one PR. Reusing an ID replaces its draft metadata
+and preserves its existing Stage blocks.
 `,
   "put-stage": `Usage: planctl put-stage <plan.md> --from <stage.json>
 
-Stage JSON is structured input; planctl renders the Markdown.
+Add or replace a Stage while the plan is SPEC_LOCKED. Stage JSON is structured
+input; planctl renders the Markdown. APPROVED plans remain immutable.
 
 Good Task in a complete stage.json (copy this shape):
 {
@@ -88,6 +91,11 @@ Good Task in a complete stage.json (copy this shape):
 
 Bad Task (rejected):
 {"id":"BAD_001","story":"Refactor scheduler","writes":[],"predictedActiveMinutes":0,"predictedCredits":0,"how":"","red":"echo done"}
+`,
+  "remove-stage": `Usage: planctl remove-stage <plan.md> --stage <D1-S1>
+
+Removes one Stage while the plan is SPEC_LOCKED. APPROVED plans remain
+immutable. Re-add or replace remaining Stage JSON before approve-plan.
 `,
   "approve-plan": `Usage: planctl approve-plan <plan.md> --owner-word <receipt>
 
@@ -176,6 +184,7 @@ const ENGINE_COMMANDS: Readonly<Record<string, string>> = {
   "approve-spec": "lock-spec",
   "put-delivery": "put-delivery",
   "put-stage": "put-stage",
+  "remove-stage": "remove-stage",
   "approve-plan": "approve",
   "complete-task": "record-result",
   "add-deviation": "deviate",

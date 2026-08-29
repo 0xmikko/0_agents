@@ -90,6 +90,7 @@ describe("planctl", () => {
     expect(general.stdout).toContain("planctl <command>");
     expect(general.stdout).toContain("one canonical writer: plan-update");
     expect(general.stdout).toContain("start-task");
+    expect(general.stdout).toContain("remove-stage");
     expect(task.status).toBe(0);
     expect(task.stdout).toContain("planctl complete-task <plan.md> --from <stage-result.json>");
     expect(task.stdout).toContain('"taskIds": ["PLANCTL_001"]');
@@ -101,6 +102,7 @@ describe("planctl", () => {
     expect(stage.stdout).toContain('"writes": ["src/scheduler.ts", "test/scheduler.test.ts"]');
     expect(stage.stdout).toContain("Bad Task (rejected)");
     expect(stage.stdout).toContain("Good Task");
+    expect(stage.stdout).toContain("Add or replace");
   });
 
   /*
@@ -346,6 +348,65 @@ describe("planctl", () => {
       const secondCompletion = run(fixture.root, "complete-task", fixture.plan, "--from", receiptPath);
       expect(secondCompletion.status).toBe(1);
       expect(secondCompletion.stderr).toContain("run planctl start-task");
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  /*
+   * @test-id: tst_scripts_planctl_006
+   * @scenario: scn_plan_control_006
+   * @covers: scripts/planctl.ts::put-stage,remove-stage
+   * @deterministic: yes
+   * @fixtures: temporary SPEC_LOCKED plan and replacement Stage JSON
+   * Test environment: isolated local Git repository
+   * Clients: CLI
+   * Mocks: none
+   * Data: one Stage replaced in place, removed, restored and approved
+   */
+  it("tst_scripts_planctl_006 freely replaces and removes a draft Stage but preserves the approved lock", () => {
+    const fixture = fixtureRepository();
+    try {
+      expect(run(fixture.root, "init", fixture.plan, "--title", "Fixture plan").status).toBe(0);
+      expect(run(fixture.root, "set-spec", fixture.plan, "--from", fixture.spec).status).toBe(0);
+      git(fixture.root, "commit", "-qam", "docs: draft plan");
+      expect(run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes").status).toBe(0);
+      expect(run(fixture.root, "put-delivery", fixture.plan, "--from", fixture.delivery).status).toBe(0);
+      expect(run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage).status).toBe(0);
+
+      const replacement: StageInput = {
+        ...STAGE,
+        title: "Replacement ownership",
+        tasks: [{ ...STAGE.tasks[0], story: "replace the draft Stage with one observable canonical writer outcome" }],
+      };
+      writeFileSync(fixture.stage, `${JSON.stringify(replacement)}\n`);
+      const replaced = run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage);
+      expect(replaced.status, `${replaced.stdout}\n${replaced.stderr}`).toBe(0);
+      const replacedBody = readFileSync(fixture.plan, "utf8");
+      expect(replacedBody).toContain("#### Stage D1-S1 — Replacement ownership");
+      expect(replacedBody).not.toContain("#### Stage D1-S1 — Canonical ownership");
+      expect(replacedBody.match(/<!-- plan:stage:D1-S1:start -->/g)).toHaveLength(1);
+
+      const replacementDelivery: DeliveryInput = { ...DELIVERY, title: "Replacement foundation" };
+      writeFileSync(fixture.delivery, `${JSON.stringify(replacementDelivery)}\n`);
+      const deliveryReplaced = run(fixture.root, "put-delivery", fixture.plan, "--from", fixture.delivery);
+      expect(deliveryReplaced.status, `${deliveryReplaced.stdout}\n${deliveryReplaced.stderr}`).toBe(0);
+      const deliveryBody = readFileSync(fixture.plan, "utf8");
+      expect(deliveryBody).toContain("### PR Delivery D1 — Replacement foundation");
+      expect(deliveryBody).toContain("#### Stage D1-S1 — Replacement ownership");
+
+      const removed = run(fixture.root, "remove-stage", fixture.plan, "--stage", "D1-S1");
+      expect(removed.status, `${removed.stdout}\n${removed.stderr}`).toBe(0);
+      expect(readFileSync(fixture.plan, "utf8")).not.toContain("<!-- plan:stage:D1-S1:start -->");
+
+      expect(run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage).status).toBe(0);
+      expect(run(fixture.root, "approve-plan", fixture.plan, "--owner-word", "yes").status).toBe(0);
+      const approvedReplace = run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage);
+      const approvedRemove = run(fixture.root, "remove-stage", fixture.plan, "--stage", "D1-S1");
+      expect(approvedReplace.status).toBe(1);
+      expect(approvedReplace.stderr).toContain("requires SPEC_LOCKED");
+      expect(approvedRemove.status).toBe(1);
+      expect(approvedRemove.stderr).toContain("requires SPEC_LOCKED");
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }

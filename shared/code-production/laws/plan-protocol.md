@@ -115,6 +115,7 @@ planctl set-spec <plan> --from <spec.md>
 planctl approve-spec <plan> --owner-word <word>
 planctl put-delivery <plan> --from <delivery.json>
 planctl put-stage <plan> --from <stage.json>
+planctl remove-stage <plan> --stage <D1-S1>
 planctl approve-plan <plan> --owner-word <word>
 planctl start-task <plan> --task <Task-ID>
 planctl complete-task <plan> --from <stage-result.json>
@@ -130,7 +131,10 @@ the HEAD/blob-bound journal to `plan-update`. Direct `Edit`, `Write`,
 `apply_patch`, search/replace or manual checkbox changes have no journal and are
 refused.
 
-`put-stage --help` prints the copyable JSON contract plus good/bad Tasks.
+While the plan is `SPEC_LOCKED`, rerunning `put-delivery` or `put-stage` with
+the same ID replaces that draft record in place; `remove-stage` deletes it.
+After `APPROVED` all three are refused. `put-stage --help` prints the copyable
+JSON contract plus good/bad Tasks.
 `start-task` re-reads the committed plan or its journal-verified staged Result,
 refuses a blocked or closed Task, prints its exact scope and starts a Git-local
 timer without changing the plan. `complete-task` consumes that timer and compares the
