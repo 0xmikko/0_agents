@@ -1,7 +1,7 @@
 # Planctl observer daemon
 
-Status: SPEC_DRAFT
-Spec lock: unlocked
+Status: SPEC_LOCKED
+Spec lock: sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
 Implementation lock: unlocked
 Active Delivery: none
 Unattended decisions: allowed
@@ -469,4 +469,6 @@ LLM summaries and UI work require separate owner-approved plans.
 
 <!-- plan:execution:start -->
 ## Execution log
+
+- lock-spec sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
 <!-- plan:execution:end -->
