@@ -130,6 +130,7 @@ async function server(root: string, clock: { value: string }): Promise<INestAppl
   return await NestFactory.createApplicationContext(ServerAppModule.register({
     databasePath: join(root, "state/server.sqlite"),
     machineOfflineAfterSeconds: 60,
+    historyRetentionDays: 90,
     transitionScanMs: null,
     now: () => clock.value,
   }), { logger: false });
@@ -152,6 +153,7 @@ describe("central progress read model", () => {
     const app: INestApplication = await NestFactory.create(ServerAppModule.register({
       databasePath: join(root, "state/server.sqlite"),
       machineOfflineAfterSeconds: 60,
+      historyRetentionDays: 90,
       transitionScanMs: null,
       now: () => "2026-08-30T00:00:00.000Z",
     }), { logger: false });

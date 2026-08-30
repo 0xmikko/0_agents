@@ -48,6 +48,7 @@ function storeOptions(config: ServerConfig, now: () => string) {
   return {
     databasePath: config.database,
     machineOfflineAfterSeconds: config.machineOfflineAfterSeconds,
+    historyRetentionDays: config.historyRetentionDays,
     transitionScanMs: 5_000,
     now,
   };

@@ -68,7 +68,10 @@ Bind to loopback behind Tailscale Serve or an HTTPS reverse proxy. A
 non-loopback plain-HTTP external URL is rejected. Telegram uses long polling;
 unknown user IDs receive no plan data. Claim leases make failed alert sends
 retryable across restarts; the notifier scan interval controls how quickly
-persisted transitions are delivered.
+persisted transitions are delivered. `history_retention_days` bounds accepted
+snapshot history, completed-task calibration evidence and already-notified
+transitions. Current machine and plan read models, observed state, and every
+unnotified alert remain durable beyond that window.
 
 ### Coding machine
 

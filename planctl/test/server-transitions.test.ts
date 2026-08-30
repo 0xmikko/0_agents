@@ -96,6 +96,7 @@ async function server(root: string, clock: { value: string }): Promise<INestAppl
   return await NestFactory.createApplicationContext(ServerAppModule.register({
     databasePath: join(root, "state/server.sqlite"),
     machineOfflineAfterSeconds: 60,
+    historyRetentionDays: 90,
     transitionScanMs: null,
     now: () => clock.value,
   }), { logger: false });

@@ -120,6 +120,7 @@ export function runDistributedBenchmark(root: string, now: string): DistributedB
   const options: ServerStoreOptions = {
     databasePath: join(root, "server.sqlite"),
     machineOfflineAfterSeconds: 60,
+    historyRetentionDays: 90,
     transitionScanMs: null,
     now: () => now,
   };

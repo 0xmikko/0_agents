@@ -170,6 +170,92 @@ afterEach(() => {
 
 describe("distributed planctl observer", () => {
   /**
+   * @test-id: tst_int_planctl_lost_ack_001
+   * @scenario: scn_planctl_lost_ack_001
+   * @covers: planctl/src/machine/collector.service.ts::CollectorService.collectOnce
+   * @covers: planctl/src/server/ingest/ingest.service.ts::IngestService.accept
+   * @covers: planctl/src/server/persistence/server-store.ts::ServerStore.acceptSnapshot
+   * @invariant: CTL-007 an exact committed retry is acknowledged without duplicating history
+   * @deterministic: yes
+   * @fixtures: real collector/server SQLite and a response lost after server commit
+   */
+  it("tst_int_planctl_lost_ack_001 clears a committed retry and continues with heartbeats after a lost response", async () => {
+    const root = mkdtempSync(join(tmpdir(), "planctl-lost-ack-e2e-"));
+    roots.push(root);
+    mkdirSync(join(root, "server"), { recursive: true });
+    const clock = new FixtureClock();
+    const app = await NestFactory.createApplicationContext(ServerAppModule.register({
+      databasePath: join(root, "server/server.sqlite"),
+      machineOfflineAfterSeconds: 60,
+      historyRetentionDays: 90,
+      transitionScanMs: null,
+      now: () => clock.iso(),
+    }), { logger: false });
+    const machineStore = new MachineStore(join(root, "machine.sqlite"));
+    try {
+      const machineId = "machine-a";
+      const token = "machine-a-private-token-001";
+      const tokenFile = join(root, "machine.token");
+      writeFileSync(tokenFile, `${token}\n`, { mode: 0o600 });
+      app.get(MachineAdminService).registerMachine(machineId, token);
+      const guard = app.get(MachineAuthGuard);
+      const ingest = app.get(IngestService);
+      const store = app.get(ServerStore);
+      let loseNextResponse = true;
+      const requestKinds: string[] = [];
+      const client = new ServerClient({
+        machineId,
+        baseUrl: "https://planctl.fixture.test",
+        tokenFile,
+        requestTimeoutMs: 500,
+        fetch: async (request) => {
+          const subject = guard.authorize(machineId, request.headers.get("authorization") ?? undefined);
+          const body = JSON.parse(await request.text()) as { readonly kind: string };
+          requestKinds.push(body.kind);
+          const acknowledgement = ingest.accept(machineId, body, subject);
+          if (loseNextResponse) {
+            loseNextResponse = false;
+            throw new Error("fixture response lost after commit");
+          }
+          return new Response(JSON.stringify(acknowledgement), { status: 200 });
+        },
+      });
+      const collector = new CollectorService({
+        machineId,
+        scanMs: 5_000,
+        heartbeatMs: 15_000,
+        store: machineStore,
+        source: new FixtureSource(observation(
+          observedAgent("codex:retry", "stale", CANONICAL_REVISION, "PLAN_002"),
+          CANONICAL_REVISION,
+        )),
+        transport: client,
+        clock,
+        scheduler: new FixtureScheduler(),
+      });
+
+      expect((await collector.collectOnce()).status).toBe("degraded");
+      expect(machineStore.outboxCount()).toBe(1);
+      expect(store.snapshotCount(machineId)).toBe(1);
+      const transitionKeys = store.transitions().map((transition) => transition.transitionKey);
+
+      clock.advance(2_000);
+      expect((await collector.collectOnce()).status).toBe("healthy");
+      expect(machineStore.outboxCount()).toBe(0);
+      expect(store.snapshotCount(machineId)).toBe(1);
+      expect(store.transitions().map((transition) => transition.transitionKey)).toEqual(transitionKeys);
+
+      clock.advance(15_000);
+      expect((await collector.collectOnce()).status).toBe("healthy");
+      expect(store.latestSnapshot(machineId)?.sequence).toBe(2);
+      expect(requestKinds).toEqual(["snapshot", "snapshot", "heartbeat"]);
+    } finally {
+      machineStore.close();
+      await app.close();
+    }
+  });
+
+  /**
    * @test-id: tst_int_planctl_unassigned_visibility_001
    * @scenario: scn_planctl_unassigned_visibility_001
    * @covers: planctl/src/server/progress/progress.service.ts::ProgressService.portfolio
@@ -186,6 +272,7 @@ describe("distributed planctl observer", () => {
     const app = await NestFactory.createApplicationContext(ServerAppModule.register({
       databasePath: join(root, "server/server.sqlite"),
       machineOfflineAfterSeconds: 60,
+      historyRetentionDays: 90,
       transitionScanMs: null,
       now: () => clock.iso(),
     }), { logger: false });
@@ -269,6 +356,7 @@ describe("distributed planctl observer", () => {
     const app = await NestFactory.createApplicationContext(ServerAppModule.register({
       databasePath: join(root, "server/server.sqlite"),
       machineOfflineAfterSeconds: 60,
+      historyRetentionDays: 90,
       transitionScanMs: null,
       now: () => clock.iso(),
     }), { logger: false });

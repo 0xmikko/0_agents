@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { NestFactory } from "@nestjs/core";
 import { HTTP_CODE_METADATA, PATH_METADATA } from "@nestjs/common/constants";
 
-import { SNAPSHOT_PROTOCOL_VERSION } from "../src/core/snapshot-protocol";
+import { decodeMachineSnapshot, SNAPSHOT_PROTOCOL_VERSION } from "../src/core/snapshot-protocol";
 import { MachineAdminService } from "../src/server/admin/machine-admin.service";
 import { ServerAppModule } from "../src/server/app.module";
 import { MachineAuthGuard } from "../src/server/auth/machine-auth.guard";
@@ -75,6 +75,7 @@ async function server(root: string): Promise<INestApplicationContext> {
   return await NestFactory.createApplicationContext(ServerAppModule.register({
     databasePath: join(root, "state/server.sqlite"),
     machineOfflineAfterSeconds: 60,
+    historyRetentionDays: 90,
     transitionScanMs: null,
     now: () => "2026-08-29T00:01:00.000Z",
   }), { logger: false });
@@ -85,6 +86,84 @@ afterEach(() => {
 });
 
 describe("authenticated snapshot ingest", () => {
+  /**
+   * @test-id: tst_int_planctl_retention_001
+   * @scenario: scn_planctl_retention_001
+   * @covers: planctl/src/server/persistence/server-store.ts::ServerStore.acceptSnapshot
+   * @invariant: CTL-003 current read models and pending alerts survive deterministic history pruning
+   * @deterministic: yes
+   * @fixtures: two snapshots two days apart, calibration samples and notified/pending transitions
+   */
+  it("tst_int_planctl_retention_001 prunes expired history without dropping current state or pending alerts", () => {
+    const root = fixtureRoot();
+    const store = new ServerStore({
+      databasePath: join(root, "state/server.sqlite"),
+      machineOfflineAfterSeconds: 60,
+      historyRetentionDays: 1,
+      transitionScanMs: null,
+      now: () => "2026-08-31T00:00:00.000Z",
+    });
+    try {
+      store.registerMachine("machine-a", "fixture-credential-hash");
+      store.acceptSnapshot(decodeMachineSnapshot(snapshot("machine-a", 1)), "2026-08-29T00:00:00.000Z");
+      store.recordCalibrationSample("fixture/repository", "old-sample", 10, 20, "2026-08-29T00:00:00.000Z");
+      store.recordCalibrationSample("fixture/repository", "new-sample", 10, 10, "2026-08-31T00:00:00.000Z");
+
+      const pending = store.changeObservedState({
+        entityKey: "agent:machine-a:codex:pending",
+        currentState: "stale",
+        attentionKind: "stale",
+        machineId: "machine-a",
+        agentId: "codex:pending",
+        planId: null,
+        taskId: null,
+        occurredAt: "2026-08-29T00:00:00.000Z",
+        detail: { state: "stale" },
+      });
+      const notified = store.changeObservedState({
+        entityKey: "agent:machine-a:codex:notified",
+        currentState: "stale",
+        attentionKind: "stale",
+        machineId: "machine-a",
+        agentId: "codex:notified",
+        planId: null,
+        taskId: null,
+        occurredAt: "2026-08-29T00:00:00.000Z",
+        detail: { state: "stale" },
+      });
+      if (pending === null || notified === null) throw new Error("fixture transitions were not created");
+      store.markAlertNotified(notified.transitionKey, "2026-08-29T00:01:00.000Z");
+      const driftChange = {
+        entityKey: "plan:fixture/repository:docs/plans/example.md",
+        currentState: "plan_drift",
+        attentionKind: "plan_drift" as const,
+        machineId: null,
+        agentId: null,
+        planId: "fixture/repository:docs/plans/example.md",
+        taskId: null,
+        occurredAt: "2026-08-29T00:00:00.000Z",
+        detail: { state: "plan_drift" },
+      };
+      const nonAlertable = store.changeObservedState(driftChange);
+      if (nonAlertable === null) throw new Error("fixture drift transition was not created");
+
+      store.acceptSnapshot(decodeMachineSnapshot(snapshot("machine-a", 2)), "2026-08-31T00:00:00.000Z");
+
+      expect(store.snapshotCount("machine-a")).toBe(1);
+      expect(store.calibrationSamples("fixture/repository")).toEqual([{
+        predictedActiveMinutes: 10,
+        actualActiveMinutes: 10,
+      }]);
+      expect(store.transitions().map((transition) => transition.transitionKey)).toEqual([pending.transitionKey]);
+      expect(store.latestSnapshot("machine-a")?.sequence).toBe(2);
+      expect(store.claimPendingAlerts("2026-08-31T00:00:00.000Z", 60).map((alert) => alert.transitionKey))
+        .toEqual([pending.transitionKey]);
+      expect(store.changeObservedState({ ...driftChange, occurredAt: "2026-08-31T00:00:00.000Z" })).toBeNull();
+    } finally {
+      store.onModuleDestroy();
+    }
+  });
+
   /**
    * @test-id: tst_int_planctl_calibration_001
    * @scenario: scn_planctl_calibration_001
@@ -207,7 +286,10 @@ describe("authenticated snapshot ingest", () => {
       expect(store.latestSnapshot("machine-a")?.receivedAt).toBe("2026-08-29T00:01:00.000Z");
       expect(readFileSync(join(root, "state/server.sqlite"))).not.toContain("fixture-bearer-secret");
 
-      expect(() => controller.accept("machine-a", snapshotRequest("machine-a", 1), request)).toThrow("sequence");
+      expect(controller.accept("machine-a", snapshotRequest("machine-a", 1), request)).toEqual(accepted);
+      expect(store.snapshotCount("machine-a")).toBe(1);
+      expect(() => controller.accept("machine-a", snapshotRequest("machine-a", 1, "f".repeat(64)), request))
+        .toThrow("sequence");
       expect(() => controller.accept("machine-a", snapshotRequest("machine-a", 0), request)).toThrow("sequence");
 
       const heartbeat = controller.accept(
@@ -220,6 +302,11 @@ describe("authenticated snapshot ingest", () => {
         sequence: 2,
         snapshotHash: "1".padStart(64, "0"),
       });
+      expect(() => controller.accept(
+        "machine-a",
+        snapshotRequest("machine-a", 2, "1".padStart(64, "0")),
+        request,
+      )).toThrow("sequence");
       expect(store.latestSnapshot("machine-a")?.snapshot.agents).toHaveLength(1);
       expect(() => controller.accept(
         "machine-a",

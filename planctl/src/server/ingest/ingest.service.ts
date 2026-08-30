@@ -79,17 +79,22 @@ export class IngestService {
       throw new BadRequestException("snapshot machine identity does not match URL identity");
     }
     let stored: StoredMachineSnapshot;
+    let shouldEvaluateTransitions = true;
     try {
-      stored = request.kind === "snapshot"
-        ? this.store.acceptSnapshot(request.snapshot, this.options.now())
-        : this.store.acceptHeartbeat(request.heartbeat, this.options.now());
+      if (request.kind === "snapshot") {
+        const acceptance = this.store.acceptSnapshot(request.snapshot, this.options.now());
+        stored = acceptance;
+        shouldEvaluateTransitions = !acceptance.replayed;
+      } else {
+        stored = this.store.acceptHeartbeat(request.heartbeat, this.options.now());
+      }
     } catch (error: unknown) {
       if (error instanceof SnapshotSequenceError || error instanceof SnapshotReplayError) {
         throw new ConflictException(error.message);
       }
       throw error;
     }
-    this.transitions.evaluate(stored.receivedAt);
+    if (shouldEvaluateTransitions) this.transitions.evaluate(stored.receivedAt);
     return {
       machineId: stored.machineId,
       sequence: stored.sequence,

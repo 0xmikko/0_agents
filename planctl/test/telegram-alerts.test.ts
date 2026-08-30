@@ -21,6 +21,7 @@ function store(path: string): ServerStore {
   return new ServerStore({
     databasePath: path,
     machineOfflineAfterSeconds: 60,
+    historyRetentionDays: 90,
     transitionScanMs: null,
     now: () => "2026-08-29T20:00:00.000Z",
   });

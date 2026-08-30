@@ -12,6 +12,7 @@ export const SERVER_STORE_OPTIONS = Symbol("SERVER_STORE_OPTIONS");
 export interface ServerStoreOptions {
   readonly databasePath: string;
   readonly machineOfflineAfterSeconds: number;
+  readonly historyRetentionDays: number;
   readonly transitionScanMs: number | null;
   readonly now: () => string;
 }
@@ -23,6 +24,10 @@ export interface StoredMachineSnapshot {
   readonly observedAt: string;
   readonly receivedAt: string;
   readonly snapshot: MachineSnapshot;
+}
+
+export interface StoredSnapshotAcceptance extends StoredMachineSnapshot {
+  readonly replayed: boolean;
 }
 
 export interface CurrentMachineState extends StoredMachineSnapshot {
@@ -228,6 +233,9 @@ export class ServerStore implements OnModuleDestroy {
   readonly #database: Database;
 
   constructor(@Inject(SERVER_STORE_OPTIONS) readonly options: ServerStoreOptions) {
+    if (!Number.isSafeInteger(options.historyRetentionDays) || options.historyRetentionDays <= 0) {
+      throw new Error("server history retention days must be a positive integer");
+    }
     this.#database = new Database(options.databasePath, { create: true, strict: true });
     this.#database.exec("PRAGMA journal_mode = WAL");
     this.#database.exec("PRAGMA foreign_keys = ON");
@@ -294,6 +302,12 @@ export class ServerStore implements OnModuleDestroy {
         completed_at TEXT NOT NULL,
         UNIQUE (repository_id, sample_id)
       );
+      CREATE INDEX IF NOT EXISTS machine_snapshots_received_at_idx
+        ON machine_snapshots(received_at);
+      CREATE INDEX IF NOT EXISTS calibration_samples_completed_at_idx
+        ON calibration_samples(completed_at);
+      CREATE INDEX IF NOT EXISTS transitions_occurred_at_idx
+        ON transitions(occurred_at);
     `);
   }
 
@@ -328,19 +342,45 @@ export class ServerStore implements OnModuleDestroy {
     return row?.credential_hash ?? null;
   }
 
+  #pruneHistory(referenceAt: string): void {
+    const cutoff = new Date(
+      Date.parse(referenceAt) - this.options.historyRetentionDays * 86_400_000,
+    ).toISOString();
+    this.#database.query("DELETE FROM machine_snapshots WHERE received_at < ?").run(cutoff);
+    this.#database.query("DELETE FROM calibration_samples WHERE completed_at < ?").run(cutoff);
+    this.#database.query(`
+      DELETE FROM transitions
+      WHERE occurred_at < ?
+        AND (notified_at IS NOT NULL
+          OR kind NOT IN ('stale', 'owner_wait', 'machine_offline', 'recovery'))
+    `).run(cutoff);
+  }
+
   /**
    * @tested-by: tst_int_planctl_ingest_001
    * @invariant: CTL-003 sequence, snapshot and server receipt time advance in one WAL transaction.
    */
-  acceptSnapshot(snapshot: MachineSnapshot, receivedAtInput: string): StoredMachineSnapshot {
+  acceptSnapshot(snapshot: MachineSnapshot, receivedAtInput: string): StoredSnapshotAcceptance {
     const receivedAt = requireTimestamp(receivedAtInput, "snapshot receivedAt");
     const heartbeat = snapshot.heartbeat;
     const body = JSON.stringify(snapshot);
-    const transaction = this.#database.transaction(() => {
+    const transaction = this.#database.transaction((): StoredSnapshotAcceptance => {
       const machine = this.#database.query<MachineRow, [string]>(
         "SELECT * FROM machines WHERE machine_id = ?",
       ).get(heartbeat.machineId);
       if (machine === null) throw new Error(`machine ${heartbeat.machineId} is not enrolled`);
+      const committed = machineSnapshotFromRow(machine);
+      if (committed !== null
+        && heartbeat.sequence === committed.snapshot.heartbeat.sequence
+        && heartbeat.snapshotHash === committed.snapshot.heartbeat.snapshotHash) {
+        return {
+          ...committed,
+          sequence: heartbeat.sequence,
+          snapshotHash: heartbeat.snapshotHash,
+          observedAt: committed.snapshot.heartbeat.observedAt,
+          replayed: true,
+        };
+      }
       if (machine.last_sequence !== null && heartbeat.sequence <= machine.last_sequence) {
         throw new SnapshotSequenceError(
           `snapshot sequence ${heartbeat.sequence} is not greater than ${machine.last_sequence}`,
@@ -411,16 +451,18 @@ export class ServerStore implements OnModuleDestroy {
           `).run(plan.goal, JSON.stringify(plan.progress), receivedAt, plan.planId);
         }
       }
+      this.#pruneHistory(receivedAt);
+      return {
+        machineId: heartbeat.machineId,
+        sequence: heartbeat.sequence,
+        snapshotHash: heartbeat.snapshotHash,
+        observedAt: heartbeat.observedAt,
+        receivedAt,
+        snapshot,
+        replayed: false,
+      };
     });
-    transaction.immediate();
-    return {
-      machineId: heartbeat.machineId,
-      sequence: heartbeat.sequence,
-      snapshotHash: heartbeat.snapshotHash,
-      observedAt: heartbeat.observedAt,
-      receivedAt,
-      snapshot,
-    };
+    return transaction.immediate();
   }
 
   /**
@@ -450,6 +492,7 @@ export class ServerStore implements OnModuleDestroy {
         SET last_sequence = ?, last_observed_at = ?, last_received_at = ?, machine_state = 'online'
         WHERE machine_id = ?
       `).run(heartbeat.sequence, heartbeat.observedAt, receivedAt, heartbeat.machineId);
+      this.#pruneHistory(receivedAt);
     });
     transaction.immediate();
     const stored = this.latestSnapshot(heartbeat.machineId);

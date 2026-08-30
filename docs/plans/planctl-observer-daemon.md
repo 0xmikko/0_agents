@@ -2,7 +2,7 @@
 
 Status: APPROVED
 Spec lock: sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
-Implementation lock: sha256:016ce4d1d53920f696b841046839b64635ee23171b4a575425114392f96d64b5 owner:fix it until approved
+Implementation lock: sha256:cf3289f70bdfeaf56c73fa8e54344c15ca9f37d3408e110a3795f00e34fa8e2e owner:fix it until approved
 Active Delivery: D1
 Unattended decisions: allowed
 
@@ -472,7 +472,7 @@ LLM summaries and UI work require separate owner-approved plans.
 
 Branch: `feat/planctl-observer-daemon`; Depends: none; Gate: cd planctl && bun run agent:verify:pr.
 
-Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7 -> D1-S8 -> D1-S9 -> D1-S10 -> D1-S11 -> D1-S12 -> D1-S13`.
+Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7 -> D1-S8 -> D1-S9 -> D1-S10 -> D1-S11 -> D1-S12 -> D1-S13 -> D1-S14`.
 
 <!-- plan:stage:D1-S1:start -->
 <!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["planctl/package.json","planctl/bun.lock","planctl/tsconfig.json","planctl/src/cli/main.ts","planctl/src/core/plan-gate.ts","planctl/src/core/plan-update.ts","planctl/test/package-boundary.test.ts","planctl/test/planctl.test.ts","planctl/test/plan-gate.test.ts","planctl/test/plan-update.test.ts","shared/code-production/runtime/planctl.ts","shared/code-production/runtime/plan-gate.ts","shared/code-production/runtime/plan-update.ts","shared/code-production/runtime/planctl.test.ts","shared/code-production/runtime/plan-gate.test.ts","shared/code-production/runtime/plan-update.test.ts","shared/code-production/agent-stack.ts","shared/code-production/agent-stack.test.ts","shared/code-production/README.md","shared/code-production/laws/development-process.md","shared/code-production/laws/git-workflow.md","shared/code-production/laws/plan-format.md","shared/code-production/laws/plan-protocol.md","bin/planctl"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S1"} -->
@@ -991,6 +991,44 @@ Predict: 150 active min / 60 credits.
 | PLCTL_027 | 15ce2dd4064765a6f5bc1a532c67f147398396a2 | 2026-08-30T10:16:23.265Z–2026-08-30T10:40:44.000Z | 23 / 24.35 min | unavailable: runner did not expose per-Stage token or credit usage | Global owner queries retain unassigned and unbound-stale sessions without affecting plan ETA; TaskRunV2 now accounts structured owner-wait intervals once before resume so blocked time stays out of active forecasts. |
 <!-- plan:results:D1-S13:end -->
 <!-- plan:stage:D1-S13:end -->
+
+<!-- plan:stage:D1-S14:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S13"],"parallelWith":[],"writes":["planctl/src/server/main.ts","planctl/src/server/persistence/server-store.ts","planctl/src/server/ingest/ingest.service.ts","planctl/bench/distributed-benchmark.ts","planctl/test/server-ingest.test.ts","planctl/test/distributed-e2e.test.ts","planctl/test/server-transitions.test.ts","planctl/test/server-progress.test.ts","planctl/test/telegram-alerts.test.ts","planctl/README.md"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S14"} -->
+#### Stage D1-S14 — Make distributed retries and retained history operationally bounded
+
+Owner: integrator; Profile: strong; Depends: D1-S13; Parallel with: none.
+Writes: `planctl/src/server/main.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/src/server/ingest/ingest.service.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/telegram-alerts.test.ts`, `planctl/README.md`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S14` (must be absent at handoff).
+Predict: 100 active min / 40 credits.
+
+##### Tasks
+
+- [ ] PLCTL_028 — acknowledge an already-committed exact snapshot retry without replaying transitions so a lost response cannot wedge its collector
+      Writes: `planctl/src/server/persistence/server-store.ts`, `planctl/src/server/ingest/ingest.service.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/distributed-e2e.test.ts`.
+      Predict: 55 active min / 22 credits.
+      How: distinguish the current machine snapshot triplet from conflicting or older sequences, return its original acknowledgement as an idempotent acceptance, skip transition evaluation for that retry, and prove outbox recovery plus the next heartbeat across the real client/server boundary
+      RED: `bun run agent:test:e2e -- test/distributed-e2e.test.ts -t tst_int_planctl_lost_ack_001`
+- [ ] PLCTL_029 — enforce the configured server history retention window deterministically without dropping pending alerts or current read models
+      Writes: `planctl/src/server/main.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/telegram-alerts.test.ts`, `planctl/README.md`.
+      Predict: 45 active min / 18 credits.
+      How: thread `history_retention_days` into persistence, prune expired snapshot and calibration history plus already-notified transitions on accepted writes using the server receipt clock, and retain machines, canonical plans, observed states and every unnotified alert
+      RED: `bun run agent:test:backend -- test/server-ingest.test.ts -t tst_int_planctl_retention_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:e2e -- test/distributed-e2e.test.ts -t tst_int_planctl_lost_ack_001` exits 0 — a committed snapshot whose response is lost is acknowledged on retry, clears the outbox and permits the next heartbeat exactly once
+- [ ] `cd planctl && bun run agent:test:backend -- test/server-ingest.test.ts -t tst_int_planctl_retention_001` exits 0 — expired durable history is removed while current state and pending alert delivery remain intact
+- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green
+- [ ] The registered Stage temp root is absent before publication
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S14:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S14:end -->
+<!-- plan:stage:D1-S14:end -->
 <!-- plan:delivery:D1:end -->
 <!-- plan:implementation:end -->
 
@@ -1122,4 +1160,8 @@ Predict: 150 active min / 60 credits.
 - record-result D1-S13 commit:15ce2dd4064765a6f5bc1a532c67f147398396a2
 
 - close D1-S13 partial commit:15ce2dd4064765a6f5bc1a532c67f147398396a2
+
+- amend implementation owner:fix it until approved sha256:1162bf20d889fb0d8ea3ecec94766c9b6a3e92d1c1cd235ea28babceee2c3d15
+
+- amend implementation owner:fix it until approved sha256:cf3289f70bdfeaf56c73fa8e54344c15ca9f37d3408e110a3795f00e34fa8e2e
 <!-- plan:execution:end -->
