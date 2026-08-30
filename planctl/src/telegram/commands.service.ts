@@ -122,11 +122,11 @@ export class CommandsService {
   }
 
   /**
-   * @tested-by: tst_svc_planctl_telegram_001
-   * @invariant: CTL-009 only authorized command text is classified; raw update payload fields never enter replies.
+   * @tested-by: tst_svc_planctl_telegram_001, tst_svc_planctl_private_chat_001
+   * @invariant: CTL-009 only authorized private-chat command text is classified; raw update payload fields never enter replies.
    */
   handle(update: TelegramUpdate): string | null {
-    if (!this.options.allowedUserIds.includes(update.userId)) return null;
+    if (!this.options.allowedUserIds.includes(update.userId) || update.chatId !== update.userId) return null;
     const parts = update.text.trim().split(/\s+/);
     const command = parts[0];
     if (command === "/progress" && parts.length === 1) return portfolioMessage(this.progress.portfolio());
