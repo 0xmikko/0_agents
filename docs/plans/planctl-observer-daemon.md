@@ -2,7 +2,7 @@
 
 Status: APPROVED
 Spec lock: sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
-Implementation lock: sha256:cc72a20367b5251240a02ea6c02a85cd310db621679b4d24982b00840e4b4fc1 owner:fix it until approved
+Implementation lock: sha256:831a994cd4946083662499070f3a5bc62f30e8229ab39219b014c00d4e6102e7 owner:fix it until approved
 Active Delivery: D1
 Unattended decisions: allowed
 
@@ -850,36 +850,39 @@ Predict: 240 active min / 95 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_021 — emit TaskRunV2 from real start-task execution whenever explicit machine, repository and session identity are available
+- [x] PLCTL_021 — emit TaskRunV2 from real start-task execution whenever explicit machine, repository and session identity are available — 6daace29e4af2a846dded1d22d34f578aae51bc5
       Writes: `planctl/src/cli/main.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/README.md`.
       Predict: 90 active min / 35 credits.
       How: derive machine and repository identity from validated machine config, accept or detect one explicit Codex/Claude session identity, retain V1 when telemetry identity is absent, and prove the resulting receipt binds through the real local collector
       RED: `bun run agent:test:backend -- test/distributed-correlation.test.ts -t tst_int_planctl_correlation_001`
-- [ ] PLCTL_022 — ingest idempotent completed-work samples from canonical Stage Results into forecast calibration
+- [x] PLCTL_022 — ingest idempotent completed-work samples from canonical Stage Results into forecast calibration — 6daace29e4af2a846dded1d22d34f578aae51bc5
       Writes: `planctl/src/core/plan-update.ts`, `planctl/src/core/snapshot-protocol.ts`, `planctl/src/machine/app.module.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/task-run.test.ts`.
       Predict: 100 active min / 40 credits.
       How: extend the canonical plan parser with stable completed-Stage samples, carry only predicted/actual timing evidence on the versioned snapshot, deduplicate it transactionally by sample identity, and prove real ingest changes calibration
       RED: `bun run agent:test:backend -- test/server-ingest.test.ts -t tst_int_planctl_calibration_001`
-- [ ] PLCTL_023 — retain structured owner-wait start time through snapshots, persistence and Telegram rendering
-      Writes: `planctl/src/core/snapshot-protocol.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/server/transitions/transition.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/distributed-benchmark.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/machine-collector.test.ts`, `planctl/test/machine-outbox.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/setup-planctl.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/telegram-alerts.test.ts`, `planctl/test/telegram-commands.test.ts`.
+- [x] PLCTL_023 — retain structured owner-wait start time through snapshots, persistence and Telegram rendering — 6daace29e4af2a846dded1d22d34f578aae51bc5
+      Writes: `planctl/src/core/snapshot-protocol.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/server/transitions/transition.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/machine-collector.test.ts`, `planctl/test/machine-outbox.test.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/setup-planctl.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/telegram-commands.test.ts`.
       Predict: 50 active min / 20 credits.
       How: carry the validated marker timestamp beside its safe reason, retain it in the read model and transition evidence, and render a deterministic duration relative to the server-generated progress time
       RED: `bun run agent:test:backend -- test/telegram-commands.test.ts -t tst_svc_planctl_wait_duration_001`
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/distributed-correlation.test.ts` exits 0 — a real CLI receipt is observed as assigned by the collector
-- [ ] `cd planctl && bun run agent:test:backend -- test/server-ingest.test.ts test/server-progress.test.ts` exits 0 — completed evidence is idempotent and changes calibrated forecast
-- [ ] `cd planctl && bun run agent:test:backend -- test/telegram-commands.test.ts` exits 0 — waiting output includes the evidence-based duration
-- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate is green
+- [x] `cd planctl && bun run agent:test:backend -- test/distributed-correlation.test.ts` exits 0 — a real CLI receipt is observed as assigned by the collector — 6daace29e4af2a846dded1d22d34f578aae51bc5
+- [x] `cd planctl && bun run agent:test:backend -- test/server-ingest.test.ts test/server-progress.test.ts` exits 0 — completed evidence is idempotent and changes calibrated forecast — 6daace29e4af2a846dded1d22d34f578aae51bc5
+- [x] `cd planctl && bun run agent:test:backend -- test/telegram-commands.test.ts` exits 0 — waiting output includes the evidence-based duration — 6daace29e4af2a846dded1d22d34f578aae51bc5
+- [x] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate is green — 6daace29e4af2a846dded1d22d34f578aae51bc5
 - [ ] The registered Stage temp root is absent before publication
-- [ ] Commit
+- [x] Commit — 6daace29e4af2a846dded1d22d34f578aae51bc5
 
 ##### Results
 
 <!-- plan:results:D1-S10:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_021 | 6daace29e4af2a846dded1d22d34f578aae51bc5 | 2026-08-30T07:54:44.307Z–2026-08-30T08:50:52.000Z | 50 / 56.13 min | unavailable: runner did not expose per-Stage token or credit usage | Real task starts correlate through collectors; completed Stage evidence calibrates forecasts idempotently; owner-wait duration reaches Telegram. |
+| PLCTL_022 | 6daace29e4af2a846dded1d22d34f578aae51bc5 | 2026-08-30T07:54:44.307Z–2026-08-30T08:50:52.000Z | 50 / 56.13 min | unavailable: runner did not expose per-Stage token or credit usage | Real task starts correlate through collectors; completed Stage evidence calibrates forecasts idempotently; owner-wait duration reaches Telegram. |
+| PLCTL_023 | 6daace29e4af2a846dded1d22d34f578aae51bc5 | 2026-08-30T07:54:44.307Z–2026-08-30T08:50:52.000Z | 50 / 56.13 min | unavailable: runner did not expose per-Stage token or credit usage | Real task starts correlate through collectors; completed Stage evidence calibrates forecasts idempotently; owner-wait duration reaches Telegram. |
 <!-- plan:results:D1-S10:end -->
 <!-- plan:stage:D1-S10:end -->
 <!-- plan:delivery:D1:end -->
@@ -971,4 +974,10 @@ Predict: 240 active min / 95 credits.
 - close D1-S9 partial commit:fd8de4da888961c1e24c4c647b2fad050143975a
 
 - amend implementation owner:fix it until approved sha256:cc72a20367b5251240a02ea6c02a85cd310db621679b4d24982b00840e4b4fc1
+
+- amend implementation owner:fix it until approved sha256:831a994cd4946083662499070f3a5bc62f30e8229ab39219b014c00d4e6102e7
+
+- record-result D1-S10 commit:6daace29e4af2a846dded1d22d34f578aae51bc5
+
+- close D1-S10 partial commit:6daace29e4af2a846dded1d22d34f578aae51bc5
 <!-- plan:execution:end -->
