@@ -930,7 +930,7 @@ Predict: 90 active min / 35 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_025 — subtract canonical active Task elapsed time from raw and calibrated server forecasts without double-counting duplicate observations
+- [x] PLCTL_025 — subtract canonical active Task elapsed time from raw and calibrated server forecasts without double-counting duplicate observations — adf8cd96dc53e43b6a9add1058abeb77139e9fcf
       Writes: `planctl/src/core/plan-progress.ts`, `planctl/src/core/snapshot-protocol.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/cli/main.ts`, `planctl/src/cli/server-client.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/plan-progress.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/focus.test.ts`.
       Predict: 90 active min / 35 credits.
       How: add strict unfinished Task forecast evidence to the canonical progress snapshot, carry it through protocol validation, map canonical agent timing by Task using the greatest observed elapsed value, and calculate both raw and calibrated Stage DAG weights after subtracting that elapsed time
@@ -938,16 +938,17 @@ Predict: 90 active min / 35 credits.
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/plan-progress.test.ts test/server-progress.test.ts` exits 0 — unfinished Task evidence is canonical and elapsed active time reduces raw and calibrated server forecasts exactly once
-- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green
+- [x] `cd planctl && bun run agent:test:backend -- test/plan-progress.test.ts test/server-progress.test.ts` exits 0 — unfinished Task evidence is canonical and elapsed active time reduces raw and calibrated server forecasts exactly once — adf8cd96dc53e43b6a9add1058abeb77139e9fcf
+- [x] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green — adf8cd96dc53e43b6a9add1058abeb77139e9fcf
 - [ ] The registered Stage temp root is absent before publication
-- [ ] Commit
+- [x] Commit — adf8cd96dc53e43b6a9add1058abeb77139e9fcf
 
 ##### Results
 
 <!-- plan:results:D1-S12:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_025 | adf8cd96dc53e43b6a9add1058abeb77139e9fcf | 2026-08-30T09:33:31.049Z–2026-08-30T09:59:55.000Z | 25 / 26.4 min | unavailable: runner did not expose per-Stage token or credit usage | Canonical snapshots carry unfinished Task estimates; server and CLI forecasts now subtract the greatest elapsed observation per Task exactly once while retaining calibrated dependency-path ETA. |
 <!-- plan:results:D1-S12:end -->
 <!-- plan:stage:D1-S12:end -->
 <!-- plan:delivery:D1:end -->
@@ -1063,4 +1064,8 @@ Predict: 90 active min / 35 credits.
 - amend implementation owner:fix it until approved sha256:d4508400b59b73da419eac67e350fe1bb2576a2d50f6ce3b384bfe21822ab080
 
 - amend implementation owner:fix it until approved sha256:4ce1b734a12326db27214a6e02f1f5fccc401d7fd826b5f2b63c67c4178ab7d8
+
+- record-result D1-S12 commit:adf8cd96dc53e43b6a9add1058abeb77139e9fcf
+
+- close D1-S12 partial commit:adf8cd96dc53e43b6a9add1058abeb77139e9fcf
 <!-- plan:execution:end -->
