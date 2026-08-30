@@ -1043,17 +1043,17 @@ Predict: 180 active min / 72 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_030 — make emitted CLI commands bundle-complete and reuse normalized Git identity for remote focus
+- [x] PLCTL_030 — make emitted CLI commands bundle-complete and reuse normalized Git identity for remote focus — 3eb07b56dfc075cabe19ad8e36f927cad0b725c8
       Writes: `planctl/src/cli/main.ts`, `planctl/test/package-build.test.ts`.
       Predict: 70 active min / 28 credits.
       How: replace source-path-only dynamic imports with bundle-resolvable module edges, consolidate one worktree identity resolver across start-task and focus, and exercise a built non-help command plus remote focus in a Git-remote-only repository with an empty explicit mapping
       RED: `bun run agent:test:backend -- test/package-build.test.ts -t tst_cert_planctl_built_focus_001`
-- [ ] PLCTL_031 — keep stale and owner-wait state independent from plan revision drift in every owner view
+- [x] PLCTL_031 — keep stale and owner-wait state independent from plan revision drift in every owner view — 3eb07b56dfc075cabe19ad8e36f927cad0b725c8
       Writes: `planctl/src/server/progress/progress.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/telegram-commands.test.ts`.
       Predict: 45 active min / 18 credits.
       How: retain the observed AgentState, add an orthogonal plan-drift flag, calculate each attention count independently, and prove drifted stale and owner-wait agents remain visible to /stale and /waiting
       RED: `bun run agent:test:backend -- test/server-progress.test.ts -t tst_int_planctl_progress_001`
-- [ ] PLCTL_032 — reject delayed snapshot retries and enforce distinct connection and request deadlines in every machine client
+- [x] PLCTL_032 — reject delayed snapshot retries and enforce distinct connection and request deadlines in every machine client — 3eb07b56dfc075cabe19ad8e36f927cad0b725c8
       Writes: `planctl/src/cli/main.ts`, `planctl/src/cli/server-client.ts`, `planctl/src/config/config.ts`, `planctl/src/core/http-timeouts.ts`, `planctl/src/machine/app.module.ts`, `planctl/src/machine/transport/server-client.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/test/config.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/focus.test.ts`, `planctl/test/machine-collector.test.ts`, `planctl/test/server-ingest.test.ts`.
       Predict: 65 active min / 26 credits.
       How: acknowledge an exact snapshot only while its sequence remains the machine's current accepted sequence, share a bounded HTTP helper that ends connection establishment at connect_timeout_ms while retaining the full request deadline, and thread both validated values through collector and CLI server reads
@@ -1061,18 +1061,21 @@ Predict: 180 active min / 72 credits.
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/package-build.test.ts` exits 0 — built non-help commands work and remote-only Git identity drives server focus without an explicit repository mapping
-- [ ] `cd planctl && bun run agent:test:backend -- test/server-progress.test.ts test/telegram-commands.test.ts` exits 0 — drift is orthogonal and never hides stale or owner-wait intervention evidence
-- [ ] `cd planctl && bun run agent:test:backend -- test/server-ingest.test.ts test/machine-collector.test.ts test/focus.test.ts test/config.test.ts` exits 0 — delayed retries conflict and configured connection/request deadlines are distinct and effective
-- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green
+- [x] `cd planctl && bun run agent:test:backend -- test/package-build.test.ts` exits 0 — built non-help commands work and remote-only Git identity drives server focus without an explicit repository mapping — 3eb07b56dfc075cabe19ad8e36f927cad0b725c8
+- [x] `cd planctl && bun run agent:test:backend -- test/server-progress.test.ts test/telegram-commands.test.ts` exits 0 — drift is orthogonal and never hides stale or owner-wait intervention evidence — 3eb07b56dfc075cabe19ad8e36f927cad0b725c8
+- [x] `cd planctl && bun run agent:test:backend -- test/server-ingest.test.ts test/machine-collector.test.ts test/focus.test.ts test/config.test.ts` exits 0 — delayed retries conflict and configured connection/request deadlines are distinct and effective — 3eb07b56dfc075cabe19ad8e36f927cad0b725c8
+- [x] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green — 3eb07b56dfc075cabe19ad8e36f927cad0b725c8
 - [ ] The registered Stage temp root is absent before publication
-- [ ] Commit
+- [x] Commit — 3eb07b56dfc075cabe19ad8e36f927cad0b725c8
 
 ##### Results
 
 <!-- plan:results:D1-S15:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_030 | 3eb07b56dfc075cabe19ad8e36f927cad0b725c8 | 2026-08-30T12:01:09.637Z–2026-08-30T12:38:29.000Z | 35 / 37.32 min | unavailable: runner did not expose per-Stage token or credit usage | Built CLI commands now carry every runtime dependency and share Git identity discovery; plan drift stays orthogonal to stale/owner-wait evidence; delayed retries remain monotonic; and collector plus CLI requests enforce distinct configured connection and request deadlines. |
+| PLCTL_031 | 3eb07b56dfc075cabe19ad8e36f927cad0b725c8 | 2026-08-30T12:01:09.637Z–2026-08-30T12:38:29.000Z | 35 / 37.32 min | unavailable: runner did not expose per-Stage token or credit usage | Built CLI commands now carry every runtime dependency and share Git identity discovery; plan drift stays orthogonal to stale/owner-wait evidence; delayed retries remain monotonic; and collector plus CLI requests enforce distinct configured connection and request deadlines. |
+| PLCTL_032 | 3eb07b56dfc075cabe19ad8e36f927cad0b725c8 | 2026-08-30T12:01:09.637Z–2026-08-30T12:38:29.000Z | 35 / 37.32 min | unavailable: runner did not expose per-Stage token or credit usage | Built CLI commands now carry every runtime dependency and share Git identity discovery; plan drift stays orthogonal to stale/owner-wait evidence; delayed retries remain monotonic; and collector plus CLI requests enforce distinct configured connection and request deadlines. |
 <!-- plan:results:D1-S15:end -->
 <!-- plan:stage:D1-S15:end -->
 <!-- plan:delivery:D1:end -->
@@ -1224,4 +1227,8 @@ Predict: 180 active min / 72 credits.
 - amend implementation owner:fix it until approved sha256:a6fe4b781eaa07a63c56187a4751fb0b68b04472c02cc766f53107ccd2162b18
 
 - amend implementation owner:fix it until approved sha256:e9ea8dd7323fe19415081e97c7b624c1862ec70a3effd7074144d32a90eef13f
+
+- record-result D1-S15 commit:3eb07b56dfc075cabe19ad8e36f927cad0b725c8
+
+- close D1-S15 partial commit:3eb07b56dfc075cabe19ad8e36f927cad0b725c8
 <!-- plan:execution:end -->
