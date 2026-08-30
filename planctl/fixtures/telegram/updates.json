@@ -1,12 +1,12 @@
 {
   "ok": true,
   "result": [
-    {"update_id": 1, "message": {"message_id": 1, "from": {"id": 101}, "chat": {"id": 501}, "date": 1788033600, "text": "/progress"}},
-    {"update_id": 2, "message": {"message_id": 2, "from": {"id": 101}, "chat": {"id": 501}, "date": 1788033601, "text": "/progress 0xmikko/0_agents:docs/plans/example.md"}},
-    {"update_id": 3, "message": {"message_id": 3, "from": {"id": 101}, "chat": {"id": 501}, "date": 1788033602, "text": "/agents"}},
-    {"update_id": 4, "message": {"message_id": 4, "from": {"id": 101}, "chat": {"id": 501}, "date": 1788033603, "text": "/stale"}},
-    {"update_id": 5, "message": {"message_id": 5, "from": {"id": 101}, "chat": {"id": 501}, "date": 1788033604, "text": "/waiting"}},
+    {"update_id": 1, "message": {"message_id": 1, "from": {"id": 101}, "chat": {"id": 101}, "date": 1788033600, "text": "/progress"}},
+    {"update_id": 2, "message": {"message_id": 2, "from": {"id": 101}, "chat": {"id": 101}, "date": 1788033601, "text": "/progress 0xmikko/0_agents:docs/plans/example.md"}},
+    {"update_id": 3, "message": {"message_id": 3, "from": {"id": 101}, "chat": {"id": 101}, "date": 1788033602, "text": "/agents"}},
+    {"update_id": 4, "message": {"message_id": 4, "from": {"id": 101}, "chat": {"id": 101}, "date": 1788033603, "text": "/stale"}},
+    {"update_id": 5, "message": {"message_id": 5, "from": {"id": 101}, "chat": {"id": 101}, "date": 1788033604, "text": "/waiting"}},
     {"update_id": 6, "message": {"message_id": 6, "from": {"id": 999}, "chat": {"id": 999}, "date": 1788033605, "text": "/progress", "private_payload": "DO_NOT_UPLOAD_TELEGRAM_PAYLOAD"}},
-    {"update_id": 7, "message": {"message_id": 7, "from": {"id": 101}, "chat": {"id": 501}, "date": 1788033606, "text": "DO_NOT_UPLOAD_TELEGRAM_PAYLOAD"}}
+    {"update_id": 7, "message": {"message_id": 7, "from": {"id": 101}, "chat": {"id": 101}, "date": 1788033606, "text": "DO_NOT_UPLOAD_TELEGRAM_PAYLOAD"}}
   ]
 }
