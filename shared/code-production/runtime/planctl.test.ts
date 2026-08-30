@@ -417,4 +417,39 @@ describe("planctl", () => {
       rmSync(fixture.root, { recursive: true, force: true });
     }
   });
+
+  /*
+   * @test-id: tst_scripts_planctl_007
+   * @scenario: scn_plan_control_007
+   * @covers: scripts/planctl.ts::put-stage-help
+   * @deterministic: yes
+   * @fixtures: temporary SPEC_LOCKED plan and the help command's JSON example
+   * Test environment: isolated local Git repository
+   * Clients: CLI
+   * Mocks: none
+   * Data: copyable Stage JSON printed by planctl itself
+   */
+  it("tst_scripts_planctl_007 accepts the copyable Stage printed by put-stage help", () => {
+    const fixture = fixtureRepository();
+    try {
+      expect(run(fixture.root, "init", fixture.plan, "--title", "Fixture plan").status).toBe(0);
+      expect(run(fixture.root, "set-spec", fixture.plan, "--from", fixture.spec).status).toBe(0);
+      git(fixture.root, "commit", "-qam", "docs: draft plan");
+      expect(run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes").status).toBe(0);
+      expect(run(fixture.root, "put-delivery", fixture.plan, "--from", fixture.delivery).status).toBe(0);
+
+      const help = run(fixture.root, "put-stage", "--help");
+      expect(help.status, `${help.stdout}\n${help.stderr}`).toBe(0);
+      const match = help.stdout.match(/Good Task in a complete stage\.json \(copy this shape\):\n(\{[\s\S]*?\n\})\n\nBad Task/);
+      expect(match).not.toBeNull();
+      const json = match?.[1];
+      if (json === undefined) throw new Error("put-stage help did not contain copyable Stage JSON");
+      writeFileSync(fixture.stage, `${json}\n`);
+
+      const stage = run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage);
+      expect(stage.status, `${stage.stdout}\n${stage.stderr}`).toBe(0);
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
 });

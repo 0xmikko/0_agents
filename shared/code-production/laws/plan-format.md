@@ -37,49 +37,60 @@ lives in [development-process.md](development-process.md).
    written RED before the stage that makes it true.
 5. **Implementation** — sequential PR Deliveries, each containing Stages:
 
-   The owner-facing part is deliberately small:
+   `planctl` renders this owner-view shape; the hidden comment is abbreviated
+   below and agents never hand-author it:
 
    ```markdown
    ### PR Delivery D1 — <one coherent PR result>
 
-   #### Stage D1-S1 — <one observable commit result>
-   Result: <what becomes true, one sentence>.
-   Route: depends <IDs|none>; parallel <IDs|none>; forecast <min>/<credits>.
+   #### Stage D1-S1 — Reject overlapping scheduler work
+
+   Owner: agent-1; Profile: fast; Depends: none; Parallel with: none.
+   Writes: `src/scheduler/parse-lanes.ts`, `test/scheduler/parse-lanes.test.ts`.
+   Temp root: `.tmp/code-production/scheduler-overlap/D1-S1` (must be absent at handoff).
+   Predict: 12 active min / 3 credits.
+   Of which verification: 2 active min / 1 credits.
 
    ##### Tasks
-   - [ ] D1-S1-T1 — <one concrete change in one exact primary file>.
-   - [ ] D1-S1-T2 — <one concrete change in one exact primary file>.
+
+   - [ ] D1-S1-T1 — Reject overlapping Stage writes in `src/scheduler/parse-lanes.ts` and cover the refusal in `test/scheduler/parse-lanes.test.ts`. (10 min)
+   <!-- plan:task-meta:<hidden writes, credits, How and RED> -->
 
    ##### Acceptance criteria
-   - [ ] `<command>` exits 0 — <behavior proved>
-   - [ ] <reviewable outcome>
+
+   - [ ] `<scoped command>` exits 0 — overlap is rejected
    - [ ] Commit
 
    ##### Results
-   - <measured result, appended during execution>
+   | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+   |---|---|---|---:|---|---|
    ```
 
-   `planctl` also stores the exact writes, RED command, forecast, owner/profile
-   and temp root as machine-owned execution metadata in this same Markdown.
-   The normal owner view does not expand or repeat that metadata; before work,
-   `planctl start-task` prints it to the executor.
+   The Task is exactly two source lines: one rendered story with its active-time
+   forecast, then one hidden `plan:task-meta` comment containing exact writes,
+   credits, How and RED. `planctl start-task` prints that hidden contract to the
+   executor. Legacy five-line Tasks remain readable but are never generated.
 
-   A visible Task is one sentence, no more than 180 characters or two rendered
-   lines, and owns at most three exact write paths. At least its primary path
-   appears in the sentence. Split independent actions instead of joining them
-   with semicolons, rename maps or “and then”.
+   A Task story is one concrete change, no more than 200 characters, and owns
+   at most four write paths. Every write appears in the story as its full path
+   or unambiguous basename. Split independent actions instead of hiding them in
+   a rename map or branch history.
 
    ```markdown
    Bad:  D1-S2-T1 — Finish the colleague's half-landed Verify rewire in the named files.
-   Good: D1-S2-T1 — Restore the missing `creditOperationMarket` export in `src/onchain/market/credit/index.ts`.
-   Good: D1-S2-T2 — Remove obsolete `underlyingToken` assignment from `src/onchain/market/credit/CreditSuite.ts`.
+   Good: D1-S2-T1 — Restore `creditOperationMarket` in `src/onchain/market/credit/index.ts`. (8 min)
    ```
 
-   A Stage title and Result explain the outcome, not branch history or a list
-   of mechanics. A task must make sense by itself without its `How`, another
-   Task, chat context or a colleague's branch. Terms such as “existing”, “new”,
-   “named files” or “map above” must be resolved to an exact symbol or path in
-   the same sentence.
+   The Stage metadata is visible once; it is not copied into every Task. The
+   Stage title names the commit result, not branch history. A Task must make
+   sense without its hidden How, another Task, chat or a colleague's branch.
+   “New files”, “rename map” and “as discussed” are unresolved references and
+   are rejected.
+
+   Stage forecast is derived, never guessed independently:
+   `Stage = sum(Tasks) + verification`, for both active minutes and credits.
+   The Task minutes stay beside each story; the verification share and total
+   stay in the Stage block.
 
    A criterion carries its asserted RESULT in its own line: the number
    reached, the behavior proven, the thing now absent. A bare "test file
@@ -106,8 +117,8 @@ lives in [development-process.md](development-process.md).
    branch were exactly this class, found after the code instead of in
    ten minutes of planning.
 
-   Read in order, Stage titles and Task sentences tell the plan's whole story
-   without opening execution metadata. A Stage is a coherent commit, not a
+   Read in order, Stage titles and Task stories tell the plan's whole story
+   without exposing execution metadata. A Stage is a coherent commit, not a
    bucket for unrelated cleanup.
 6. **Amendments** — owner-approved plan changes, one dated line each,
    written before the edit they license.

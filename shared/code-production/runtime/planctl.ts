@@ -81,7 +81,7 @@ Good Task in a complete stage.json (copy this shape):
   "predictedCredits": 3,
   "tasks": [{
     "id": "PLANCTL_001",
-    "story": "when two ready Stages declare the same write, reject the second lane assignment",
+    "story": "Reject overlapping Stage writes in src/scheduler/parse-lanes.ts and cover the refusal in test/scheduler/parse-lanes.test.ts.",
     "writes": ["src/scheduler/parse-lanes.ts", "test/scheduler/parse-lanes.test.ts"],
     "predictedActiveMinutes": 10,
     "predictedCredits": 2,
