@@ -1090,33 +1090,39 @@ Of which verification: 30 active min / 12 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_033 — make bin/planctl symlink-safe for install-planctl.sh and cover the installed package entrypoint in bin/planctl.test.ts (25 min)
+- [x] PLCTL_033 — make bin/planctl symlink-safe for install-planctl.sh and cover the installed package entrypoint in bin/planctl.test.ts (25 min) — a4d656ea65034134b5a35dc4246e5e53c3aa6563
 <!-- plan:task-meta:{"writes":["bin/planctl","bin/planctl.test.ts","install-planctl.sh"],"predictedActiveMinutes":25,"predictedCredits":10,"how":"combine main's physical symlink resolution with the package entrypoint and verify the installed launcher still reaches the relocated CLI","red":"bun run agent:test:backend -- ../bin/planctl.test.ts"} -->
-- [ ] PLCTL_034 — port the compact Task contract through main.ts and plan-update.ts, then retain planctl.test.ts and plan-update.test.ts behavior (40 min)
+- [x] PLCTL_034 — port the compact Task contract through main.ts and plan-update.ts, then retain planctl.test.ts and plan-update.test.ts behavior (40 min) — a4d656ea65034134b5a35dc4246e5e53c3aa6563
 <!-- plan:task-meta:{"writes":["planctl/src/cli/main.ts","planctl/src/core/plan-update.ts","planctl/test/planctl.test.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":40,"predictedCredits":16,"how":"resolve rename-aware base changes into the canonical package owners, preserve legacy plan parsing, and run the new compact-contract tests before the full package gate","red":"bun run agent:test:backend -- test/planctl.test.ts test/plan-update.test.ts"} -->
-- [ ] PLCTL_035 — preserve external CI in agent-stack.ts and pre-commit, cover it in agent-stack.test.ts, and document it in package-contract.md (25 min)
+- [x] PLCTL_035 — preserve external CI in agent-stack.ts and pre-commit, cover it in agent-stack.test.ts, and document it in package-contract.md (25 min) — a4d656ea65034134b5a35dc4246e5e53c3aa6563
 <!-- plan:task-meta:{"writes":["shared/code-production/agent-stack.ts","shared/code-production/agent-stack.test.ts","shared/code-production/templates/hooks/pre-commit","shared/code-production/package-contract.md"],"predictedActiveMinutes":25,"predictedCredits":10,"how":"retain main's explicit external-CI contract and legacy-plan hook exception while resolving this branch's relocated runtime imports","red":"bun run agent:test:backend -- ../shared/code-production/agent-stack.test.ts"} -->
-- [ ] PLCTL_036 — align README.md, development-process.md, git-workflow.md, and plan-format.md with the package-owned compact contract (15 min)
+- [x] PLCTL_036 — align README.md, development-process.md, git-workflow.md, and plan-format.md with the package-owned compact contract (15 min) — a4d656ea65034134b5a35dc4246e5e53c3aa6563
 <!-- plan:task-meta:{"writes":["shared/code-production/README.md","shared/code-production/laws/development-process.md","shared/code-production/laws/git-workflow.md","shared/code-production/laws/plan-format.md"],"predictedActiveMinutes":15,"predictedCredits":6,"how":"accept the current base laws while keeping every path and command pointed at the relocated planctl package","red":"bun run agent:test:backend -- test/package-boundary.test.ts"} -->
-- [ ] PLCTL_037 — align plan-protocol.md, blueprint SKILL.md, and both review-implementation SKILL.md files with exact-head package review (15 min)
+- [x] PLCTL_037 — align plan-protocol.md, blueprint SKILL.md, and both review-implementation SKILL.md files with exact-head package review (15 min) — a4d656ea65034134b5a35dc4246e5e53c3aa6563
 <!-- plan:task-meta:{"writes":["shared/code-production/laws/plan-protocol.md","shared/skills/blueprint/SKILL.md","codex/skills/review-implementation/SKILL.md","claude/skills/review-implementation/SKILL.md"],"predictedActiveMinutes":15,"predictedCredits":6,"how":"keep main's compact planning and exact-head review laws while preserving repository-neutral package commands","red":"bun run agent:test:backend -- test/package-boundary.test.ts"} -->
-- [ ] PLCTL_039 — add verification shares to delivery-forecast.test.ts, distributed-correlation.test.ts, and plan-progress.test.ts StageInput fixtures (15 min)
+- [x] PLCTL_039 — add verification shares to delivery-forecast.test.ts, distributed-correlation.test.ts, and plan-progress.test.ts StageInput fixtures (15 min) — a4d656ea65034134b5a35dc4246e5e53c3aa6563
 <!-- plan:task-meta:{"writes":["planctl/test/delivery-forecast.test.ts","planctl/test/distributed-correlation.test.ts","planctl/test/plan-progress.test.ts"],"predictedActiveMinutes":15,"predictedCredits":6,"how":"extend the existing StageInput fixture owners with the explicit verification share introduced by the compact forecast contract","red":"bun run agent:test:backend -- test/delivery-forecast.test.ts test/distributed-correlation.test.ts test/plan-progress.test.ts"} -->
 
 ##### Acceptance criteria
 
-- [ ] `bun test bin/planctl.test.ts shared/code-production/agent-stack.test.ts` exits 0 — symlink installation, external CI, and legacy plan adoption survive the merge
-- [ ] `cd planctl && bun run agent:test:backend -- test/planctl.test.ts test/plan-update.test.ts test/package-boundary.test.ts` exits 0 — the compact contract lives only in the package runtime
-- [ ] `git merge-base --is-ancestor origin/main HEAD` exits 0 — the PR contains the current base without unresolved conflict
-- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green after the base integration
-- [ ] The registered Stage temp root is absent before publication
-- [ ] Commit
+- [x] `bun test bin/planctl.test.ts shared/code-production/agent-stack.test.ts` exits 0 — symlink installation, external CI, and legacy plan adoption survive the merge — a4d656ea65034134b5a35dc4246e5e53c3aa6563
+- [x] `cd planctl && bun run agent:test:backend -- test/planctl.test.ts test/plan-update.test.ts test/package-boundary.test.ts` exits 0 — the compact contract lives only in the package runtime — a4d656ea65034134b5a35dc4246e5e53c3aa6563
+- [x] `git merge-base --is-ancestor origin/main HEAD` exits 0 — the PR contains the current base without unresolved conflict — a4d656ea65034134b5a35dc4246e5e53c3aa6563
+- [x] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green after the base integration — a4d656ea65034134b5a35dc4246e5e53c3aa6563
+- [x] The registered Stage temp root is absent before publication — a4d656ea65034134b5a35dc4246e5e53c3aa6563
+- [x] Commit — a4d656ea65034134b5a35dc4246e5e53c3aa6563
 
 ##### Results
 
 <!-- plan:results:D1-S16:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_033 | a4d656ea65034134b5a35dc4246e5e53c3aa6563 | 2026-08-30T13:19:41.452Z–2026-08-30T14:19:37Z | 58 / 60 min | unavailable: runner did not expose per-Stage token or credit usage | Current main now merges cleanly into the package-owned planctl runtime; compact Tasks, symlink installation, external CI, exact-head review, legacy approved plans and first-parent merge receipts remain operational. |
+| PLCTL_034 | a4d656ea65034134b5a35dc4246e5e53c3aa6563 | 2026-08-30T13:19:41.452Z–2026-08-30T14:19:37Z | 58 / 60 min | unavailable: runner did not expose per-Stage token or credit usage | Current main now merges cleanly into the package-owned planctl runtime; compact Tasks, symlink installation, external CI, exact-head review, legacy approved plans and first-parent merge receipts remain operational. |
+| PLCTL_035 | a4d656ea65034134b5a35dc4246e5e53c3aa6563 | 2026-08-30T13:19:41.452Z–2026-08-30T14:19:37Z | 58 / 60 min | unavailable: runner did not expose per-Stage token or credit usage | Current main now merges cleanly into the package-owned planctl runtime; compact Tasks, symlink installation, external CI, exact-head review, legacy approved plans and first-parent merge receipts remain operational. |
+| PLCTL_036 | a4d656ea65034134b5a35dc4246e5e53c3aa6563 | 2026-08-30T13:19:41.452Z–2026-08-30T14:19:37Z | 58 / 60 min | unavailable: runner did not expose per-Stage token or credit usage | Current main now merges cleanly into the package-owned planctl runtime; compact Tasks, symlink installation, external CI, exact-head review, legacy approved plans and first-parent merge receipts remain operational. |
+| PLCTL_037 | a4d656ea65034134b5a35dc4246e5e53c3aa6563 | 2026-08-30T13:19:41.452Z–2026-08-30T14:19:37Z | 58 / 60 min | unavailable: runner did not expose per-Stage token or credit usage | Current main now merges cleanly into the package-owned planctl runtime; compact Tasks, symlink installation, external CI, exact-head review, legacy approved plans and first-parent merge receipts remain operational. |
+| PLCTL_039 | a4d656ea65034134b5a35dc4246e5e53c3aa6563 | 2026-08-30T13:19:41.452Z–2026-08-30T14:19:37Z | 58 / 60 min | unavailable: runner did not expose per-Stage token or credit usage | Current main now merges cleanly into the package-owned planctl runtime; compact Tasks, symlink installation, external CI, exact-head review, legacy approved plans and first-parent merge receipts remain operational. |
 <!-- plan:results:D1-S16:end -->
 <!-- plan:stage:D1-S16:end -->
 <!-- plan:delivery:D1:end -->
@@ -1280,4 +1286,12 @@ Of which verification: 30 active min / 12 credits.
 - amend implementation owner:fix it until approved sha256:3d68d4c2480894f5a531b95525e69227907c152f5c5e7a5784b14c5e5de9a3a7
 
 - amend implementation owner:fix it until approved sha256:ab1e64d0462b5f2b332aaac205960451a143959b7ee7c721b7074cb2c1254813
+
+- record-result D1-S16 commit:a4d656ea65034134b5a35dc4246e5e53c3aa6563
+
+- close D1-S16 partial commit:a4d656ea65034134b5a35dc4246e5e53c3aa6563
+
+- amend implementation owner:fix it until approved sha256:ab1e64d0462b5f2b332aaac205960451a143959b7ee7c721b7074cb2c1254813
+
+- close D1-S16 closed commit:a4d656ea65034134b5a35dc4246e5e53c3aa6563
 <!-- plan:execution:end -->
