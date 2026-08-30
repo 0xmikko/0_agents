@@ -137,6 +137,25 @@ function observedAgent(
   };
 }
 
+function unboundStaleAgent(): AgentSnapshot {
+  return {
+    agentId: "claude:unbound-stale",
+    provider: "claude",
+    state: "stale",
+    repositoryId: "0xmikko/0_agents",
+    worktree: "/fixture/unbound-stale",
+    branch: "feat/unbound",
+    planId: null,
+    planRevision: null,
+    taskId: null,
+    lastActivityAt: "2026-08-29T19:40:00.000Z",
+    idleSeconds: 1_200,
+    elapsedActiveMinutes: null,
+    ownerWaitReason: null,
+    ownerWaitStartedAt: null,
+  };
+}
+
 function observation(agent: AgentSnapshot, revision: string): MachineObservation {
   return { agents: [agent], plans: [reportedPlan(revision)], sourceIssues: [] };
 }
@@ -150,6 +169,81 @@ afterEach(() => {
 });
 
 describe("distributed planctl observer", () => {
+  /**
+   * @test-id: tst_int_planctl_unassigned_visibility_001
+   * @scenario: scn_planctl_unassigned_visibility_001
+   * @covers: planctl/src/server/progress/progress.service.ts::ProgressService.portfolio
+   * @covers: planctl/src/telegram/commands.service.ts::CommandsService.handle
+   * @invariant: CTL-004 unbound stale agents remain globally visible without entering plan ETA
+   * @deterministic: yes
+   * @fixtures: real collector/server SQLite, one bound agent and one unbound stale agent
+   */
+  it("tst_int_planctl_unassigned_visibility_001 reports unbound stale agents without changing plan ETA", async () => {
+    const root = mkdtempSync(join(tmpdir(), "planctl-unassigned-e2e-"));
+    roots.push(root);
+    mkdirSync(join(root, "server"), { recursive: true });
+    const clock = new FixtureClock();
+    const app = await NestFactory.createApplicationContext(ServerAppModule.register({
+      databasePath: join(root, "server/server.sqlite"),
+      machineOfflineAfterSeconds: 60,
+      transitionScanMs: null,
+      now: () => clock.iso(),
+    }), { logger: false });
+    const machineStore = new MachineStore(join(root, "machine.sqlite"));
+    try {
+      const machineId = "machine-a";
+      const token = "machine-a-private-token-001";
+      const tokenFile = join(root, "machine.token");
+      writeFileSync(tokenFile, `${token}\n`, { mode: 0o600 });
+      app.get(MachineAdminService).registerMachine(machineId, token);
+      const guard = app.get(MachineAuthGuard);
+      const ingest = app.get(IngestService);
+      const client = new ServerClient({
+        machineId,
+        baseUrl: "https://planctl.fixture.test",
+        tokenFile,
+        requestTimeoutMs: 500,
+        fetch: async (request) => {
+          const subject = guard.authorize(machineId, request.headers.get("authorization") ?? undefined);
+          const acknowledgement = ingest.accept(machineId, JSON.parse(await request.text()), subject);
+          return new Response(JSON.stringify(acknowledgement), { status: 200 });
+        },
+      });
+      const collector = new CollectorService({
+        machineId,
+        scanMs: 5_000,
+        heartbeatMs: 15_000,
+        store: machineStore,
+        source: new FixtureSource({
+          agents: [
+            observedAgent("codex:bound", "working", CANONICAL_REVISION, "PLAN_002"),
+            unboundStaleAgent(),
+          ],
+          plans: [reportedPlan(CANONICAL_REVISION)],
+          sourceIssues: [],
+        }),
+        transport: client,
+        clock,
+        scheduler: new FixtureScheduler(),
+      });
+      expect((await collector.collectOnce()).status).toBe("healthy");
+      const progress = app.get(ProgressService);
+      const portfolio = progress.portfolio();
+      expect(portfolio.plans[0]?.activeAgents).toHaveLength(1);
+      expect(portfolio.plans[0]?.criticalPathMinutes).toBe(20);
+      const commands = new CommandsService(progress, { allowedUserIds: [101] });
+      expect(commands.handle(command("/agents"))).toContain(
+        "machine-a · claude:unbound-stale · unassigned · stale",
+      );
+      expect(commands.handle(command("/stale"))).toContain(
+        "STALE machine-a · claude:unbound-stale · unassigned",
+      );
+    } finally {
+      machineStore.close();
+      await app.close();
+    }
+  });
+
   /**
    * @test-id: tst_int_planctl_distributed_001
    * @scenario: scn_planctl_distributed_001

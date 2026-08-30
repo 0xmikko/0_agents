@@ -23,6 +23,7 @@ const PLAN: PlanProgressView = {
     machineState: "online",
     agentId: "codex:waiting",
     state: "awaiting_owner",
+    planId: PLAN_ID,
     taskId: "PLCTL_011",
     planRevision: "a".repeat(64),
     lastActivityAt: "2026-08-29T19:55:00.000Z",
@@ -35,6 +36,7 @@ const PLAN: PlanProgressView = {
     machineState: "online",
     agentId: "claude:stale",
     state: "stale",
+    planId: PLAN_ID,
     taskId: "PLCTL_012",
     planRevision: "a".repeat(64),
     lastActivityAt: "2026-08-29T19:40:00.000Z",
@@ -47,6 +49,7 @@ const PLAN: PlanProgressView = {
     machineState: "offline",
     agentId: "codex:working",
     state: "working",
+    planId: PLAN_ID,
     taskId: "PLCTL_013",
     planRevision: "a".repeat(64),
     lastActivityAt: "2026-08-29T19:59:00.000Z",
@@ -66,6 +69,7 @@ const PLAN: PlanProgressView = {
 const PORTFOLIO: PortfolioProgressView = {
   generatedAt: "2026-08-29T20:00:00.000Z",
   plans: [PLAN],
+  agents: PLAN.activeAgents,
 };
 
 class FixtureProgress implements ProgressReader {

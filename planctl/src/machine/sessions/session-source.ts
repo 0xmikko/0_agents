@@ -134,9 +134,19 @@ export function classifySessionActivities(input: SessionClassificationInput): re
             ? "unassigned"
             : "working";
       const processLive = liveAgents.has(activity.agentId);
+      const activityEndMs = Math.min(nowMs, lastActivityMs);
+      const currentOwnerWaitMs = correlated !== null && ownerWait !== null
+        && correlated.lastAccountedOwnerWaitStartedAt !== ownerWait.startedAt
+        ? Math.max(0, activityEndMs - timestampMs(ownerWait.startedAt, "owner wait startedAt"))
+        : 0;
       const elapsedActiveMinutes = correlated === null
         ? null
-        : Math.max(0, (Math.min(nowMs, lastActivityMs) - timestampMs(correlated.startedAt, "TaskRun startedAt")) / 60_000);
+        : Math.max(0, (
+          activityEndMs
+          - timestampMs(correlated.startedAt, "TaskRun startedAt")
+          - correlated.accumulatedOwnerWaitSeconds * 1_000
+          - currentOwnerWaitMs
+        ) / 60_000);
       return {
         agentId: activity.agentId,
         provider: activity.provider,

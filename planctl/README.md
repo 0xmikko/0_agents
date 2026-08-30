@@ -178,6 +178,9 @@ available and server unavailability never blocks the Task. A later explicit
 identity upgrades that V1 receipt without resetting its start time. Repository
 identity reuses the collector's normalized Git origin before requiring an
 explicit `repository_ids` entry.
+Structured owner-wait intervals are accumulated idempotently in TaskRunV2
+before `resume-task` clears the marker, so blocked calendar time never becomes
+active work in a later forecast.
 
 Observer progress reads authenticate with the configured machine ID and its
 enrollment bearer token. Telegram reads the same internal progress service
@@ -188,6 +191,8 @@ Telegram owner commands are `/progress`, `/progress <plan>`, `/agents`,
 machine-offline, and recovery transitions. Messages use structured plan,
 machine, task, timing, and owner-wait fields only—never transcript excerpts.
 `/waiting` calculates duration from the structured owner-wait start time.
+`/agents` and `/stale` use the global observation list, so unbound sessions stay
+visible while remaining excluded from plan progress and ETA.
 Completed Stage Result timing is carried as stable, idempotent samples so the
 server can calibrate forecasts from actual deliveries. Collectors discover
 approved plans from known worktrees independently of active Task receipts, so

@@ -2,7 +2,7 @@
 
 Status: APPROVED
 Spec lock: sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
-Implementation lock: sha256:4ce1b734a12326db27214a6e02f1f5fccc401d7fd826b5f2b63c67c4178ab7d8 owner:fix it until approved
+Implementation lock: sha256:d1ddcaa16f0682ecc61d3e17c0a0c23daf023f757bfa6da9c316256fe6bca083 owner:fix it until approved
 Active Delivery: D1
 Unattended decisions: allowed
 
@@ -472,7 +472,7 @@ LLM summaries and UI work require separate owner-approved plans.
 
 Branch: `feat/planctl-observer-daemon`; Depends: none; Gate: cd planctl && bun run agent:verify:pr.
 
-Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7 -> D1-S8 -> D1-S9 -> D1-S10 -> D1-S11 -> D1-S12`.
+Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7 -> D1-S8 -> D1-S9 -> D1-S10 -> D1-S11 -> D1-S12 -> D1-S13`.
 
 <!-- plan:stage:D1-S1:start -->
 <!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["planctl/package.json","planctl/bun.lock","planctl/tsconfig.json","planctl/src/cli/main.ts","planctl/src/core/plan-gate.ts","planctl/src/core/plan-update.ts","planctl/test/package-boundary.test.ts","planctl/test/planctl.test.ts","planctl/test/plan-gate.test.ts","planctl/test/plan-update.test.ts","shared/code-production/runtime/planctl.ts","shared/code-production/runtime/plan-gate.ts","shared/code-production/runtime/plan-update.ts","shared/code-production/runtime/planctl.test.ts","shared/code-production/runtime/plan-gate.test.ts","shared/code-production/runtime/plan-update.test.ts","shared/code-production/agent-stack.ts","shared/code-production/agent-stack.test.ts","shared/code-production/README.md","shared/code-production/laws/development-process.md","shared/code-production/laws/git-workflow.md","shared/code-production/laws/plan-format.md","shared/code-production/laws/plan-protocol.md","bin/planctl"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S1"} -->
@@ -951,6 +951,44 @@ Predict: 90 active min / 35 credits.
 | PLCTL_025 | adf8cd96dc53e43b6a9add1058abeb77139e9fcf | 2026-08-30T09:33:31.049Z–2026-08-30T09:59:55.000Z | 25 / 26.4 min | unavailable: runner did not expose per-Stage token or credit usage | Canonical snapshots carry unfinished Task estimates; server and CLI forecasts now subtract the greatest elapsed observation per Task exactly once while retaining calibrated dependency-path ETA. |
 <!-- plan:results:D1-S12:end -->
 <!-- plan:stage:D1-S12:end -->
+
+<!-- plan:stage:D1-S13:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S12"],"parallelWith":[],"writes":["planctl/src/core/task-run.ts","planctl/src/cli/main.ts","planctl/src/machine/sessions/session-source.ts","planctl/src/server/progress/progress.service.ts","planctl/src/telegram/commands.service.ts","planctl/test/task-run.test.ts","planctl/test/owner-wait.test.ts","planctl/test/machine-sessions.test.ts","planctl/test/server-progress.test.ts","planctl/test/telegram-commands.test.ts","planctl/test/distributed-e2e.test.ts","planctl/test/distributed-correlation.test.ts","planctl/README.md"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S13"} -->
+#### Stage D1-S13 — Preserve every agent and active-time lifecycle in owner views
+
+Owner: integrator; Profile: strong; Depends: D1-S12; Parallel with: none.
+Writes: `planctl/src/core/task-run.ts`, `planctl/src/cli/main.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/test/task-run.test.ts`, `planctl/test/owner-wait.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/telegram-commands.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/README.md`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S13` (must be absent at handoff).
+Predict: 150 active min / 60 credits.
+
+##### Tasks
+
+- [ ] PLCTL_026 — keep bound, unassigned and unbound-stale observations in global owner queries without crediting unbound work to a plan
+      Writes: `planctl/src/server/progress/progress.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/telegram-commands.test.ts`, `planctl/test/distributed-e2e.test.ts`.
+      Predict: 65 active min / 25 credits.
+      How: expose one global sorted agent read model beside per-plan views, preserve unbound state evidence, and drive /agents plus /stale from the global list while plan progress and ETA still use only aligned Task observations
+      RED: `bun run agent:test:e2e -- test/distributed-e2e.test.ts -t tst_int_planctl_unassigned_visibility_001`
+- [ ] PLCTL_027 — exclude every structured owner-wait interval from resumed Task active time idempotently
+      Writes: `planctl/src/core/task-run.ts`, `planctl/src/cli/main.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/test/task-run.test.ts`, `planctl/test/owner-wait.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/README.md`.
+      Predict: 85 active min / 35 credits.
+      How: persist accumulated owner-wait seconds and the last accounted marker on TaskRunV2, update that evidence before clearing a wait on resume/start, and subtract both accumulated and current structured waits from collector active time
+      RED: `bun run agent:test:backend -- test/machine-sessions.test.ts -t tst_svc_planctld_active_pause_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:e2e -- test/distributed-e2e.test.ts` exits 0 — unassigned and unbound-stale sessions appear in /agents and /stale but never change plan ETA
+- [ ] `cd planctl && bun run agent:test:backend -- test/task-run.test.ts test/owner-wait.test.ts test/machine-sessions.test.ts` exits 0 — owner-wait accounting survives resume idempotently and excludes blocked calendar time
+- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green
+- [ ] The registered Stage temp root is absent before publication
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S13:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S13:end -->
+<!-- plan:stage:D1-S13:end -->
 <!-- plan:delivery:D1:end -->
 <!-- plan:implementation:end -->
 
@@ -1068,4 +1106,8 @@ Predict: 90 active min / 35 credits.
 - record-result D1-S12 commit:adf8cd96dc53e43b6a9add1058abeb77139e9fcf
 
 - close D1-S12 partial commit:adf8cd96dc53e43b6a9add1058abeb77139e9fcf
+
+- amend implementation owner:fix it until approved sha256:ca4133361fada56453f40629579ed7597b395cf23577328c51b7aab1055b06a5
+
+- amend implementation owner:fix it until approved sha256:d1ddcaa16f0682ecc61d3e17c0a0c23daf023f757bfa6da9c316256fe6bca083
 <!-- plan:execution:end -->

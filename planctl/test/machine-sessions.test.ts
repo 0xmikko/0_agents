@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { decodeTaskRun } from "../src/core/task-run";
+import { accountOwnerWait, decodeTaskRun } from "../src/core/task-run";
 import { discoverGitWorktrees } from "../src/machine/discovery/git-worktree.source";
 import { scanClaudeSessionFile } from "../src/machine/sessions/claude-session.source";
 import { scanCodexSessionFile } from "../src/machine/sessions/codex-session.source";
@@ -33,6 +33,62 @@ function temporaryRoot(): string {
 }
 
 describe("planctld session discovery", () => {
+  /**
+   * @test-id: tst_svc_planctld_active_pause_001
+   * @scenario: scn_planctld_active_pause_001
+   * @covers: planctl/src/core/task-run.ts::accountOwnerWait
+   * @covers: planctl/src/machine/sessions/session-source.ts::classifySessionActivities
+   * @invariant: CTL-005 structured owner-wait time is never reported as active Task time
+   * @deterministic: yes
+   * @fixtures: fixed TaskRunV2, owner-wait interval and post-resume activity
+   */
+  it("tst_svc_planctld_active_pause_001 excludes an idempotently accounted owner wait from active time", () => {
+    const run = decodeTaskRun({
+      version: 2,
+      plan: "docs/plans/feature.md",
+      deliveryId: "D1",
+      stageId: "D1-S1",
+      taskId: "FEATURE_001",
+      startedAt: "2026-08-29T11:00:00.000Z",
+      baseHead: "a".repeat(40),
+      machineId: "machine-a",
+      agentId: "codex:codex-session-1",
+      repositoryId: "repo-1",
+      worktree: "/work/repo/.worktrees/feature",
+      branch: "feat/feature",
+      planRevision: "b".repeat(64),
+      ownerWait: null,
+      accumulatedOwnerWaitSeconds: 0,
+      lastAccountedOwnerWaitStartedAt: null,
+    });
+    const marker = {
+      reason: "Choose the public endpoint",
+      startedAt: "2026-08-29T11:10:00.000Z",
+    };
+    const resumed = accountOwnerWait(run, marker, "2026-08-29T12:10:00.000Z");
+    expect(accountOwnerWait(resumed, marker, "2026-08-29T12:10:00.000Z")).toEqual(resumed);
+    const agents = classifySessionActivities({
+      activities: [{
+        agentId: "codex:codex-session-1",
+        provider: "codex",
+        sessionId: "codex-session-1",
+        cwd: "/work/repo/.worktrees/feature",
+        sourcePath: "/sessions/codex-session-1.jsonl",
+        lastActivityAt: "2026-08-29T12:20:00.000Z",
+      }],
+      processes: [],
+      worktrees: [{
+        path: "/work/repo/.worktrees/feature",
+        repositoryId: "repo-1",
+        branch: "feat/feature",
+      }],
+      taskRuns: [resumed],
+      now: new Date("2026-08-29T12:20:00.000Z"),
+      staleAfterSeconds: 900,
+    });
+    expect(agents[0]?.elapsedActiveMinutes).toBe(20);
+  });
+
   /**
    * @test-id: tst_svc_planctld_sessions_001
    * @scenario: scn_planctld_sessions_001
@@ -122,6 +178,8 @@ describe("planctld session discovery", () => {
       branch: "feat/feature",
       planRevision: "b".repeat(64),
       ownerWait: null,
+      accumulatedOwnerWaitSeconds: 0,
+      lastAccountedOwnerWaitStartedAt: null,
     });
     const agents = classifySessionActivities({
       activities: [codex.activity, claude.activity].filter((value) => value !== null),

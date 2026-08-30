@@ -59,8 +59,7 @@ function planMessage(plan: PlanProgressView): string {
 }
 
 function agentsMessage(portfolio: PortfolioProgressView): string {
-  const agents = portfolio.plans.flatMap((plan) => plan.activeAgents)
-    .sort((left, right) => left.machineId.localeCompare(right.machineId) || left.agentId.localeCompare(right.agentId));
+  const agents = portfolio.agents;
   return bounded([
     `Agents — ${agents.length}`,
     ...agents.map((agent) => `${agent.machineId} · ${agent.agentId} · ${agent.taskId ?? "unassigned"} · ${agent.state} · `
@@ -69,7 +68,7 @@ function agentsMessage(portfolio: PortfolioProgressView): string {
 }
 
 function staleMessage(portfolio: PortfolioProgressView): string {
-  const agents = portfolio.plans.flatMap((plan) => plan.activeAgents);
+  const agents = portfolio.agents;
   const stale = agents.filter((agent) => agent.state === "stale");
   const offline = agents.filter((agent) => agent.machineState === "offline");
   return bounded([
@@ -80,7 +79,7 @@ function staleMessage(portfolio: PortfolioProgressView): string {
 }
 
 function waitingMessage(portfolio: PortfolioProgressView): string {
-  const waiting = portfolio.plans.flatMap((plan) => plan.activeAgents)
+  const waiting = portfolio.agents
     .filter((agent) => agent.state === "awaiting_owner");
   return bounded([
     `Waiting for owner — ${waiting.length}`,

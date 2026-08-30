@@ -40,6 +40,8 @@ export interface TaskRunV2 extends Omit<TaskRunV1, "version"> {
   readonly branch: string;
   readonly planRevision: string;
   readonly ownerWait: OwnerWaitMarker | null;
+  readonly accumulatedOwnerWaitSeconds: number;
+  readonly lastAccountedOwnerWaitStartedAt: string | null;
 }
 
 export type TaskRun = TaskRunV1 | TaskRunV2;
@@ -69,6 +71,13 @@ function timestamp(value: unknown, name: string): string {
   const parsed = text(value, name);
   if (!Number.isFinite(Date.parse(parsed))) throw new Error(`${name} is invalid`);
   return parsed;
+}
+
+function nonNegativeSeconds(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative number`);
+  }
+  return value;
 }
 
 function baseFields(value: Readonly<Record<string, unknown>>): Omit<TaskRunV1, "version"> {
@@ -101,7 +110,13 @@ export function decodeTaskRun(input: unknown): TaskRun {
   if (value.version !== 2) throw new Error("TaskRun version is unsupported");
   const worktree = text(value.worktree, "TaskRunV2 worktree");
   if (!isAbsolute(worktree)) throw new Error("TaskRunV2 worktree must be absolute");
-  return {
+  const lastAccountedOwnerWaitStartedAt = value.lastAccountedOwnerWaitStartedAt === null
+    ? null
+    : timestamp(
+      value.lastAccountedOwnerWaitStartedAt,
+      "TaskRunV2 lastAccountedOwnerWaitStartedAt",
+    );
+  const result: TaskRunV2 = {
     version: 2,
     ...base,
     machineId: text(value.machineId, "TaskRunV2 machineId", /^[a-z0-9][a-z0-9-]{0,62}$/),
@@ -111,7 +126,47 @@ export function decodeTaskRun(input: unknown): TaskRun {
     branch: text(value.branch, "TaskRunV2 branch"),
     planRevision: text(value.planRevision, "TaskRunV2 planRevision", /^[0-9a-f]{64}$/),
     ownerWait: decodeOwnerWaitMarker(value.ownerWait),
+    accumulatedOwnerWaitSeconds: nonNegativeSeconds(
+      value.accumulatedOwnerWaitSeconds,
+      "TaskRunV2 accumulatedOwnerWaitSeconds",
+    ),
+    lastAccountedOwnerWaitStartedAt,
   };
+  if (lastAccountedOwnerWaitStartedAt !== null
+    && Date.parse(lastAccountedOwnerWaitStartedAt) < Date.parse(result.startedAt)) {
+    throw new Error("TaskRunV2 accounted owner wait predates Task start");
+  }
+  return result;
+}
+
+/**
+ * @tested-by: tst_svc_planctld_active_pause_001
+ * @invariant: CTL-005 a structured owner wait is accumulated once and never becomes active Task time.
+ */
+export function accountOwnerWait(
+  run: TaskRun,
+  markerInput: OwnerWaitMarker,
+  resumedAtInput: string,
+): TaskRun {
+  if (run.version === 1) return run;
+  const marker = decodeOwnerWaitMarker(markerInput);
+  if (marker === null) throw new Error("owner wait marker is missing");
+  const resumedAt = timestamp(resumedAtInput, "owner wait resumedAt");
+  if (run.lastAccountedOwnerWaitStartedAt === marker.startedAt) return run;
+  if (Date.parse(marker.startedAt) < Date.parse(run.startedAt)) {
+    throw new Error("owner wait predates Task start");
+  }
+  if (run.lastAccountedOwnerWaitStartedAt !== null
+    && Date.parse(marker.startedAt) <= Date.parse(run.lastAccountedOwnerWaitStartedAt)) {
+    throw new Error("owner wait marker is older than the last accounted wait");
+  }
+  const durationSeconds = (Date.parse(resumedAt) - Date.parse(marker.startedAt)) / 1_000;
+  if (durationSeconds < 0) throw new Error("owner wait resume predates its marker");
+  return decodeTaskRun({
+    ...run,
+    accumulatedOwnerWaitSeconds: run.accumulatedOwnerWaitSeconds + durationSeconds,
+    lastAccountedOwnerWaitStartedAt: marker.startedAt,
+  });
 }
 
 export function taskRunCorrelation(run: TaskRun): TaskRunCorrelation | null {

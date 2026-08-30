@@ -18,6 +18,7 @@ export interface ProgressAgentView {
   readonly machineState: "online" | "offline";
   readonly agentId: string;
   readonly state: ProgressAgentState;
+  readonly planId: string | null;
   readonly taskId: string | null;
   readonly planRevision: string | null;
   readonly lastActivityAt: string;
@@ -60,6 +61,7 @@ export interface PlanProgressView {
 export interface PortfolioProgressView {
   readonly generatedAt: string;
   readonly plans: readonly PlanProgressView[];
+  readonly agents: readonly ProgressAgentView[];
 }
 
 function median(values: readonly number[]): number {
@@ -164,6 +166,43 @@ function attentionScore(attention: PlanAttentionView): number {
     + attention.unassigned * 10;
 }
 
+function remainingTaskIds(plan: CanonicalPlanRecord): ReadonlySet<string> {
+  return new Set(plan.progress.stages.flatMap((stage) =>
+    stage.remainingTasks.map((task) => task.taskId)
+  ));
+}
+
+function alignedObservation(agent: StoredAgentObservation, plan: CanonicalPlanRecord): boolean {
+  return agent.planRevision === plan.planRevision
+    && agent.taskId !== null
+    && remainingTaskIds(plan).has(agent.taskId);
+}
+
+function agentView(
+  agent: StoredAgentObservation,
+  plan: CanonicalPlanRecord | undefined,
+): ProgressAgentView {
+  const state = agent.planId === null
+    ? agent.state
+    : plan !== undefined && alignedObservation(agent, plan)
+      ? agent.state
+      : "plan_drift";
+  return {
+    machineId: agent.machineId,
+    machineState: agent.machineState,
+    agentId: agent.agentId,
+    state,
+    planId: agent.planId,
+    taskId: agent.taskId,
+    planRevision: agent.planRevision,
+    lastActivityAt: agent.lastActivityAt,
+    idleSeconds: agent.idleSeconds,
+    elapsedActiveMinutes: agent.elapsedActiveMinutes,
+    ownerWaitReason: agent.ownerWaitReason,
+    ownerWaitStartedAt: agent.ownerWaitStartedAt,
+  };
+}
+
 @Injectable()
 export class ProgressService {
   constructor(
@@ -179,7 +218,18 @@ export class ProgressService {
   portfolio(): PortfolioProgressView {
     const generatedAt = this.options.now();
     if (!Number.isFinite(Date.parse(generatedAt))) throw new Error("progress clock must be an ISO timestamp");
-    const plans = this.store.canonicalPlans().map((plan) => this.#plan(plan, generatedAt));
+    const canonicalPlans = this.store.canonicalPlans();
+    const plansById = new Map(canonicalPlans.map((plan) => [plan.planId, plan]));
+    const agents = this.store.agentObservations()
+      .filter((agent) => agent.state !== "finished")
+      .map((agent) => agentView(
+        agent,
+        agent.planId === null ? undefined : plansById.get(agent.planId),
+      ))
+      .sort((left, right) => statePriority(left) - statePriority(right)
+        || left.machineId.localeCompare(right.machineId)
+        || left.agentId.localeCompare(right.agentId));
+    const plans = canonicalPlans.map((plan) => this.#plan(plan, generatedAt));
     plans.sort((left, right) => {
       const attention = attentionScore(right.attention) - attentionScore(left.attention);
       if (attention !== 0) return attention;
@@ -187,7 +237,7 @@ export class ProgressService {
       const rightEta = right.estimatedDeliveryAt ?? "9999";
       return leftEta.localeCompare(rightEta) || left.planId.localeCompare(right.planId);
     });
-    return { generatedAt, plans };
+    return { generatedAt, plans, agents };
   }
 
   plan(planId: string): PlanProgressView | null {
@@ -197,26 +247,9 @@ export class ProgressService {
   #plan(plan: CanonicalPlanRecord, generatedAt: string): PlanProgressView {
     const observations = this.store.agentObservations()
       .filter((agent) => agent.planId === plan.planId && agent.state !== "finished");
-    const remainingTaskIds = new Set(plan.progress.stages.flatMap((stage) =>
-      stage.remainingTasks.map((task) => task.taskId)
-    ));
-    const aligned = (agent: StoredAgentObservation): boolean =>
-      agent.planRevision === plan.planRevision
-      && agent.taskId !== null
-      && remainingTaskIds.has(agent.taskId);
-    const activeAgents = observations.map((agent): ProgressAgentView => ({
-      machineId: agent.machineId,
-      machineState: agent.machineState,
-      agentId: agent.agentId,
-      state: aligned(agent) ? agent.state : "plan_drift",
-      taskId: agent.taskId,
-      planRevision: agent.planRevision,
-      lastActivityAt: agent.lastActivityAt,
-      idleSeconds: agent.idleSeconds,
-      elapsedActiveMinutes: agent.elapsedActiveMinutes,
-      ownerWaitReason: agent.ownerWaitReason,
-      ownerWaitStartedAt: agent.ownerWaitStartedAt,
-    })).sort((left, right) => statePriority(left) - statePriority(right)
+    const aligned = (agent: StoredAgentObservation): boolean => alignedObservation(agent, plan);
+    const activeAgents = observations.map((agent) => agentView(agent, plan))
+      .sort((left, right) => statePriority(left) - statePriority(right)
       || left.machineId.localeCompare(right.machineId)
       || left.agentId.localeCompare(right.agentId));
     const canonicalAgents = observations.filter(aligned);

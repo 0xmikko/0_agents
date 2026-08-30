@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, u
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import type { DeliveryMeta, ParsedStageInput, TaskExecutionBrief } from "../core/plan-update";
-import type { TaskRun, TaskRunV1 } from "../core/task-run";
+import type { OwnerWaitMarker, TaskRun, TaskRunV1 } from "../core/task-run";
 import type { GitWorktreeIdentity } from "../machine/sessions/session-source";
 import type { FocusView, ProgressPlanView } from "./render";
 
@@ -386,10 +386,22 @@ async function ownerWaitRuntime(): Promise<typeof import("../core/task-run")> {
   return import(resolve(import.meta.dir, "../core/task-run.ts"));
 }
 
-async function clearOwnerWaitForTask(rootPath: string, plan: string, taskId: string): Promise<boolean> {
-  if (basename(import.meta.dir) !== "cli") return false;
-  const ownerWait = await ownerWaitRuntime();
-  return ownerWait.clearOwnerWait(ownerWait.ownerWaitPath(gitCommonDir(rootPath), plan, taskId));
+async function accountAndClearOwnerWait(
+  rootPath: string,
+  plan: string,
+  taskId: string,
+  run: TaskRun,
+  resumedAt: string,
+): Promise<{ readonly run: TaskRun; readonly marker: OwnerWaitMarker | null }> {
+  if (basename(import.meta.dir) !== "cli") return { run, marker: null };
+  const runtime = await ownerWaitRuntime();
+  const waitPath = runtime.ownerWaitPath(gitCommonDir(rootPath), plan, taskId);
+  const marker = runtime.readOwnerWait(waitPath);
+  if (marker === null) return { run, marker: null };
+  const updated = runtime.accountOwnerWait(run, marker, resumedAt);
+  if (updated.version === 2) writeTaskRun(taskRunPath(rootPath, plan, taskId), updated);
+  runtime.clearOwnerWait(waitPath);
+  return { run: updated, marker };
 }
 
 async function startTask(args: readonly string[]): Promise<void> {
@@ -404,11 +416,17 @@ async function startTask(args: readonly string[]): Promise<void> {
     if (spawnSync("git", ["-C", rootPath, "merge-base", "--is-ancestor", existing.baseHead, "HEAD"]).status !== 0) {
       throw new Error(`Task ${brief.id} start base is not ancestral to HEAD`);
     }
-    const run = existing.version === 1
+    let run = existing.version === 1
       ? await distributedTaskRun(args, rootPath, target.relative, body, existing)
       : existing;
-    if (existing.version === 1 && run.version === 2) writeTaskRun(path, run);
-    await clearOwnerWaitForTask(rootPath, target.relative, brief.id);
+    run = (await accountAndClearOwnerWait(
+      rootPath,
+      target.relative,
+      brief.id,
+      run,
+      new Date().toISOString(),
+    )).run;
+    writeTaskRun(path, run);
     printTaskStart(brief, run);
     return;
   }
@@ -421,8 +439,14 @@ async function startTask(args: readonly string[]): Promise<void> {
     startedAt: new Date().toISOString(),
     baseHead: git(rootPath, "rev-parse", "HEAD"),
   };
-  const run = await distributedTaskRun(args, rootPath, target.relative, body, legacy);
-  await clearOwnerWaitForTask(rootPath, target.relative, brief.id);
+  let run = await distributedTaskRun(args, rootPath, target.relative, body, legacy);
+  run = (await accountAndClearOwnerWait(
+    rootPath,
+    target.relative,
+    brief.id,
+    run,
+    new Date().toISOString(),
+  )).run;
   writeTaskRun(path, run);
   printTaskStart(brief, run);
 }
@@ -479,6 +503,8 @@ async function distributedTaskRun(
     branch: identity.branch,
     planRevision: protocolImplementationHash(body),
     ownerWait: null,
+    accumulatedOwnerWaitSeconds: 0,
+    lastAccountedOwnerWaitStartedAt: null,
   };
   const taskRuntime = await import(resolve(import.meta.dir, "../core/task-run.ts"));
   return taskRuntime.decodeTaskRun(candidate);
@@ -735,12 +761,17 @@ async function resumeTask(args: readonly string[]): Promise<void> {
   const { rootPath, target, body } = approvedPlan(args);
   const taskId = flag(args, "--task");
   taskExecutionBrief(body, taskId);
-  const waits = await ownerWaitRuntime();
-  const path = waits.ownerWaitPath(gitCommonDir(rootPath), target.relative, taskId);
-  const receipt = waits.readOwnerWait(path);
-  if (receipt === null) throw new Error(`Task ${taskId} has no structured owner wait`);
-  waits.clearOwnerWait(path);
-  console.log(`Task ${taskId} RESUMED\nCleared owner wait: ${receipt.reason}`);
+  const run = await existingTaskRun(rootPath, target.relative, taskId);
+  if (run === null) throw new Error(`Task ${taskId} has no start receipt; run start-task first`);
+  const resumed = await accountAndClearOwnerWait(
+    rootPath,
+    target.relative,
+    taskId,
+    run,
+    new Date().toISOString(),
+  );
+  if (resumed.marker === null) throw new Error(`Task ${taskId} has no structured owner wait`);
+  console.log(`Task ${taskId} RESUMED\nCleared owner wait: ${resumed.marker.reason}`);
 }
 
 function completionHeader(value: unknown): CompletionHeader {

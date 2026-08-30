@@ -46,6 +46,8 @@ describe("Task run and snapshot contracts", () => {
       branch: "feat/example",
       planRevision: "b".repeat(64),
       ownerWait: null,
+      accumulatedOwnerWaitSeconds: 0,
+      lastAccountedOwnerWaitStartedAt: null,
     });
     expect(taskRunCorrelation(distributed)).toEqual({
       machineId: "u3775",

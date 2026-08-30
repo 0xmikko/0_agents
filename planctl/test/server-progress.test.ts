@@ -168,7 +168,11 @@ describe("central progress read model", () => {
         headers: { authorization: "Bearer fixture-progress-token", "x-planctl-machine-id": "machine-a" },
       });
       expect(accepted.status).toBe(200);
-      expect(await accepted.json()).toEqual({ generatedAt: "2026-08-30T00:00:00.000Z", plans: [] });
+      expect(await accepted.json()).toEqual({
+        generatedAt: "2026-08-30T00:00:00.000Z",
+        plans: [],
+        agents: [],
+      });
     } finally {
       await app.close();
     }

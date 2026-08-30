@@ -189,7 +189,8 @@ claude_sessions = "${join(root, "sessions/claude")}"
   const receiptRoot = join(root, ".git/planctl/task-runs");
   const receiptFile = readdirSync(receiptRoot).find((entry) => entry.endsWith(".json"));
   if (receiptFile === undefined) throw new Error("start-task receipt was not written");
-  expect(JSON.parse(readFileSync(join(receiptRoot, receiptFile), "utf8"))).toMatchObject({
+  const receiptPath = join(receiptRoot, receiptFile);
+  expect(JSON.parse(readFileSync(receiptPath, "utf8"))).toMatchObject({
     version: 2,
     machineId: "machine-a",
     agentId: "codex:fixture-session",
@@ -197,6 +198,38 @@ claude_sessions = "${join(root, "sessions/claude")}"
     worktree: root,
     branch: "feat/correlation",
   });
+
+  const waiting = spawnSync("bun", [
+    CLI,
+    "needs-owner",
+    plan,
+    "--task",
+    "CORR_001",
+    "--reason",
+    "Choose the fixture endpoint",
+  ], { cwd: root, encoding: "utf8" });
+  expect(waiting.status, waiting.stderr).toBe(0);
+  const waitRoot = join(root, ".git/planctl/owner-waits");
+  const waitFile = readdirSync(waitRoot).find((entry) => entry.endsWith(".json"));
+  if (waitFile === undefined) throw new Error("owner-wait receipt was not written");
+  const startedReceipt = JSON.parse(readFileSync(receiptPath, "utf8")) as { readonly startedAt: string };
+  const waitPath = join(waitRoot, waitFile);
+  const waitReceipt = JSON.parse(readFileSync(waitPath, "utf8")) as Readonly<Record<string, unknown>>;
+  writeFileSync(waitPath, `${JSON.stringify({ ...waitReceipt, startedAt: startedReceipt.startedAt }, null, 2)}\n`);
+  const resumed = spawnSync("bun", [CLI, "resume-task", plan, "--task", "CORR_001"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  expect(resumed.status, resumed.stderr).toBe(0);
+  expect(resumed.stdout).toContain("Task CORR_001 RESUMED");
+  expect(JSON.parse(readFileSync(receiptPath, "utf8"))).toMatchObject({
+    lastAccountedOwnerWaitStartedAt: startedReceipt.startedAt,
+  });
+  const accounted = JSON.parse(readFileSync(receiptPath, "utf8")) as {
+    readonly accumulatedOwnerWaitSeconds: number;
+  };
+  expect(accounted.accumulatedOwnerWaitSeconds).toBeGreaterThan(0);
+  expect(readdirSync(waitRoot).filter((entry) => entry.endsWith(".json"))).toEqual([]);
 
   const config = loadPlanctlConfig(configPath, "machine");
   if (config.role !== "machine") throw new Error("machine fixture decoded as server");
@@ -235,7 +268,7 @@ claude_sessions = "${join(root, "sessions/claude")}"
       pathExists: () => false,
     });
     writeFileSync(join(root, plan), completed.body);
-    unlinkSync(join(receiptRoot, receiptFile));
+    unlinkSync(receiptPath);
     const afterCompletion = new LocalMachineObservationSource(config, store).scan(
       new Date("2026-08-30T00:00:03.000Z"),
     );
