@@ -93,13 +93,28 @@ describe("planctl focus and progress", () => {
         const headers = new Headers(init?.headers);
         expect(headers.get("x-planctl-machine-id")).toBe("machine-a");
         expect(headers.get("authorization")).toBe("Bearer machine-token");
-        return new Response(JSON.stringify({ generatedAt: "2026-08-29T20:00:00.000Z", plans: [] }), {
+        return new Response(JSON.stringify({
+          generatedAt: "2026-08-29T20:00:00.000Z",
+          plans: [{
+            planId: "fixture/repository:docs/plans/observer.md",
+            planRevision: "a".repeat(64),
+            goal: "Keep coding agents focused",
+            completionPercent: 40,
+            tasks: { completed: 4, total: 10 },
+            activeMinutes: { completed: 90, remaining: 60, total: 150 },
+            attention: { ownerWait: 0, stale: 0, unassigned: 0 },
+            remainingActiveMinutes: 45,
+            criticalPathMinutes: 35,
+            calibratedCriticalPathMinutes: 57.5,
+            estimatedDeliveryAt: "2026-08-29T20:57:30.000Z",
+          }],
+        }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
       },
     });
     expect(remote.generatedAt).toBe("2026-08-29T20:00:00.000Z");
-    expect(remote.plans).toEqual([]);
+    expect(remote.plans[0]?.remainingActiveMinutes).toBe(45);
   });
 });

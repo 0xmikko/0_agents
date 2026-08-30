@@ -66,6 +66,7 @@ function progress(planRevision: string): MachineSnapshot["plans"][number] {
         activeMinutes: { completed: 0, remaining: 20, total: 20 },
         credits: { completed: 0, remaining: 5, total: 5 },
         completionPercent: 0,
+        remainingTasks: [{ taskId: "PLAN_001", predictedActiveMinutes: 20 }],
       }],
     },
   };

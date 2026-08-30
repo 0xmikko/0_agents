@@ -91,5 +91,10 @@ describe("plan progress", () => {
       { id: "D1-S3", percent: 0 },
     ]);
     expect(progress.stages[1]?.parallelWith).toEqual(["D1-S3"]);
+    expect(progress.stages.map((entry) => entry.remainingTasks)).toEqual([
+      [{ taskId: "PROG_002", predictedActiveMinutes: 40 }],
+      [{ taskId: "PROG_003", predictedActiveMinutes: 30 }],
+      [{ taskId: "PROG_004", predictedActiveMinutes: 10 }],
+    ]);
   });
 });

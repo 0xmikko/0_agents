@@ -11,6 +11,11 @@ export interface TaskCount {
   readonly total: number;
 }
 
+export interface RemainingTaskForecast {
+  readonly taskId: string;
+  readonly predictedActiveMinutes: number;
+}
+
 export interface StageProgressSnapshot {
   readonly id: string;
   readonly depends: readonly string[];
@@ -19,6 +24,7 @@ export interface StageProgressSnapshot {
   readonly activeMinutes: ProgressAmount;
   readonly credits: ProgressAmount;
   readonly completionPercent: number;
+  readonly remainingTasks: readonly RemainingTaskForecast[];
 }
 
 export interface PlanProgressSnapshot {
@@ -66,6 +72,12 @@ export function projectPlanProgress(body: string): PlanProgressSnapshot {
       activeMinutes: amount(completedMinutes, totalMinutes),
       credits: amount(completedCredits, totalCredits),
       completionPercent: percent(completedMinutes, totalMinutes),
+      remainingTasks: stage.tasks
+        .filter((task) => !task.completed)
+        .map((task) => ({
+          taskId: task.id,
+          predictedActiveMinutes: task.predictedActiveMinutes,
+        })),
     };
   });
 

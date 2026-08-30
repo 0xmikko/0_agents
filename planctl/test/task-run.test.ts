@@ -138,6 +138,7 @@ describe("Task run and snapshot contracts", () => {
             activeMinutes: { completed: 0, remaining: 10, total: 10 },
             credits: { completed: 0, remaining: 1, total: 1 },
             completionPercent: 0,
+            remainingTasks: [{ taskId: "TASK_001", predictedActiveMinutes: 10 }],
           }],
         },
       }],

@@ -4,7 +4,12 @@ import { SERVER_STORE_OPTIONS, ServerStore } from "../persistence/server-store";
 
 import type { AgentState } from "../../core/snapshot-protocol";
 import type { PlanProgressSnapshot, ProgressAmount, TaskCount } from "../../core/plan-progress";
-import type { CalibrationSampleRecord, CanonicalPlanRecord, ServerStoreOptions } from "../persistence/server-store";
+import type {
+  CalibrationSampleRecord,
+  CanonicalPlanRecord,
+  ServerStoreOptions,
+  StoredAgentObservation,
+} from "../persistence/server-store";
 
 export type ProgressAgentState = AgentState | "plan_drift";
 
@@ -81,7 +86,10 @@ function calibration(samples: readonly CalibrationSampleRecord[]): PlanProgressV
   };
 }
 
-function dependencyCriticalPath(progress: PlanProgressSnapshot): number {
+function dependencyCriticalPath(
+  progress: PlanProgressSnapshot,
+  stageWeights: ReadonlyMap<string, number>,
+): number {
   const stages = new Map(progress.stages.map((stage) => [stage.id, stage]));
   const memo = new Map<string, number>();
   const visiting = new Set<string>();
@@ -96,11 +104,46 @@ function dependencyCriticalPath(progress: PlanProgressSnapshot): number {
       ? 0
       : Math.max(...stage.depends.map((dependency) => endingAt(dependency)));
     visiting.delete(stageId);
-    const result = dependencyPath + stage.activeMinutes.remaining;
+    const result = dependencyPath + (stageWeights.get(stageId) ?? 0);
     memo.set(stageId, result);
     return result;
   };
   return Math.max(...progress.stages.map((stage) => endingAt(stage.id)));
+}
+
+function activeElapsedByTask(
+  agents: readonly StoredAgentObservation[],
+): ReadonlyMap<string, number> {
+  const elapsedByTask = new Map<string, number>();
+  for (const agent of agents) {
+    if (agent.taskId === null || agent.elapsedActiveMinutes === null) continue;
+    elapsedByTask.set(
+      agent.taskId,
+      Math.max(elapsedByTask.get(agent.taskId) ?? 0, agent.elapsedActiveMinutes),
+    );
+  }
+  return elapsedByTask;
+}
+
+function stageForecastWeights(
+  progress: PlanProgressSnapshot,
+  calibrationFactor: number,
+  elapsedByTask: ReadonlyMap<string, number>,
+): { readonly raw: ReadonlyMap<string, number>; readonly calibrated: ReadonlyMap<string, number> } {
+  const raw = new Map<string, number>();
+  const calibrated = new Map<string, number>();
+  for (const stage of progress.stages) {
+    let rawMinutes = 0;
+    let calibratedMinutes = 0;
+    for (const task of stage.remainingTasks) {
+      const elapsed = elapsedByTask.get(task.taskId) ?? 0;
+      rawMinutes += Math.max(0, task.predictedActiveMinutes - elapsed);
+      calibratedMinutes += Math.max(0, task.predictedActiveMinutes * calibrationFactor - elapsed);
+    }
+    raw.set(stage.id, rawMinutes);
+    calibrated.set(stage.id, calibratedMinutes);
+  }
+  return { raw, calibrated };
 }
 
 function statePriority(agent: ProgressAgentView): number {
@@ -154,11 +197,18 @@ export class ProgressService {
   #plan(plan: CanonicalPlanRecord, generatedAt: string): PlanProgressView {
     const observations = this.store.agentObservations()
       .filter((agent) => agent.planId === plan.planId && agent.state !== "finished");
+    const remainingTaskIds = new Set(plan.progress.stages.flatMap((stage) =>
+      stage.remainingTasks.map((task) => task.taskId)
+    ));
+    const aligned = (agent: StoredAgentObservation): boolean =>
+      agent.planRevision === plan.planRevision
+      && agent.taskId !== null
+      && remainingTaskIds.has(agent.taskId);
     const activeAgents = observations.map((agent): ProgressAgentView => ({
       machineId: agent.machineId,
       machineState: agent.machineState,
       agentId: agent.agentId,
-      state: agent.planRevision === plan.planRevision ? agent.state : "plan_drift",
+      state: aligned(agent) ? agent.state : "plan_drift",
       taskId: agent.taskId,
       planRevision: agent.planRevision,
       lastActivityAt: agent.lastActivityAt,
@@ -169,13 +219,16 @@ export class ProgressService {
     })).sort((left, right) => statePriority(left) - statePriority(right)
       || left.machineId.localeCompare(right.machineId)
       || left.agentId.localeCompare(right.agentId));
-    const canonicalAgents = observations.filter((agent) => agent.planRevision === plan.planRevision);
+    const canonicalAgents = observations.filter(aligned);
     const repositoryId = canonicalAgents.map((agent) => agent.repositoryId)
       .find((candidate): candidate is string => candidate !== null) ?? plan.planId.split(":", 1)[0];
     if (repositoryId === undefined || repositoryId === "") throw new Error(`plan ${plan.planId} has no repository identity`);
     const observedCalibration = calibration(this.store.calibrationSamples(repositoryId));
-    const criticalPathMinutes = dependencyCriticalPath(plan.progress);
-    const calibratedCriticalPathMinutes = criticalPathMinutes * observedCalibration.factor;
+    const elapsedByTask = activeElapsedByTask(canonicalAgents);
+    const weights = stageForecastWeights(plan.progress, observedCalibration.factor, elapsedByTask);
+    const remainingActiveMinutes = [...weights.raw.values()].reduce((total, value) => total + value, 0);
+    const criticalPathMinutes = dependencyCriticalPath(plan.progress, weights.raw);
+    const calibratedCriticalPathMinutes = dependencyCriticalPath(plan.progress, weights.calibrated);
     const attention: PlanAttentionView = {
       ownerWait: activeAgents.filter((agent) => agent.state === "awaiting_owner").length,
       stale: activeAgents.filter((agent) => agent.state === "stale").length,
@@ -196,7 +249,7 @@ export class ProgressService {
       credits: plan.progress.credits,
       activeAgents,
       attention,
-      remainingActiveMinutes: plan.progress.activeMinutes.remaining,
+      remainingActiveMinutes,
       criticalPathMinutes,
       calibratedCriticalPathMinutes,
       estimatedDeliveryAt: attention.ownerWait > 0

@@ -2,7 +2,7 @@
 
 Status: APPROVED
 Spec lock: sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
-Implementation lock: sha256:b19c9926ae6da74c571a7b1152b523c2f84ce5a39160354f7ae687462e50613e owner:fix it until approved
+Implementation lock: sha256:4ce1b734a12326db27214a6e02f1f5fccc401d7fd826b5f2b63c67c4178ab7d8 owner:fix it until approved
 Active Delivery: D1
 Unattended decisions: allowed
 
@@ -472,7 +472,7 @@ LLM summaries and UI work require separate owner-approved plans.
 
 Branch: `feat/planctl-observer-daemon`; Depends: none; Gate: cd planctl && bun run agent:verify:pr.
 
-Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7 -> D1-S8 -> D1-S9 -> D1-S10 -> D1-S11`.
+Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7 -> D1-S8 -> D1-S9 -> D1-S10 -> D1-S11 -> D1-S12`.
 
 <!-- plan:stage:D1-S1:start -->
 <!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["planctl/package.json","planctl/bun.lock","planctl/tsconfig.json","planctl/src/cli/main.ts","planctl/src/core/plan-gate.ts","planctl/src/core/plan-update.ts","planctl/test/package-boundary.test.ts","planctl/test/planctl.test.ts","planctl/test/plan-gate.test.ts","planctl/test/plan-update.test.ts","shared/code-production/runtime/planctl.ts","shared/code-production/runtime/plan-gate.ts","shared/code-production/runtime/plan-update.ts","shared/code-production/runtime/planctl.test.ts","shared/code-production/runtime/plan-gate.test.ts","shared/code-production/runtime/plan-update.test.ts","shared/code-production/agent-stack.ts","shared/code-production/agent-stack.test.ts","shared/code-production/README.md","shared/code-production/laws/development-process.md","shared/code-production/laws/git-workflow.md","shared/code-production/laws/plan-format.md","shared/code-production/laws/plan-protocol.md","bin/planctl"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S1"} -->
@@ -918,6 +918,38 @@ Predict: 80 active min / 30 credits.
 | PLCTL_024 | 8c60c2dfceb0b5fdbb5c9ac373a7ab7a10e04e9f | 2026-08-30T09:01:07.426Z–2026-08-30T09:15:15.000Z | 13 / 14.13 min | unavailable: runner did not expose per-Stage token or credit usage | V1 receipts upgrade without resetting time, Git origin supplies repository identity, and final completed samples survive Task receipt consumption. |
 <!-- plan:results:D1-S11:end -->
 <!-- plan:stage:D1-S11:end -->
+
+<!-- plan:stage:D1-S12:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S11"],"parallelWith":[],"writes":["planctl/src/core/plan-progress.ts","planctl/src/core/snapshot-protocol.ts","planctl/src/server/progress/progress.service.ts","planctl/src/cli/main.ts","planctl/src/cli/server-client.ts","planctl/bench/distributed-benchmark.ts","planctl/test/plan-progress.test.ts","planctl/test/task-run.test.ts","planctl/test/server-ingest.test.ts","planctl/test/server-transitions.test.ts","planctl/test/server-progress.test.ts","planctl/test/distributed-e2e.test.ts","planctl/test/focus.test.ts"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S12"} -->
+#### Stage D1-S12 — Make live active time reduce the server delivery forecast
+
+Owner: integrator; Profile: strong; Depends: D1-S11; Parallel with: none.
+Writes: `planctl/src/core/plan-progress.ts`, `planctl/src/core/snapshot-protocol.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/cli/main.ts`, `planctl/src/cli/server-client.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/plan-progress.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/focus.test.ts`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S12` (must be absent at handoff).
+Predict: 90 active min / 35 credits.
+
+##### Tasks
+
+- [ ] PLCTL_025 — subtract canonical active Task elapsed time from raw and calibrated server forecasts without double-counting duplicate observations
+      Writes: `planctl/src/core/plan-progress.ts`, `planctl/src/core/snapshot-protocol.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/cli/main.ts`, `planctl/src/cli/server-client.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/plan-progress.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/focus.test.ts`.
+      Predict: 90 active min / 35 credits.
+      How: add strict unfinished Task forecast evidence to the canonical progress snapshot, carry it through protocol validation, map canonical agent timing by Task using the greatest observed elapsed value, and calculate both raw and calibrated Stage DAG weights after subtracting that elapsed time
+      RED: `bun run agent:test:backend -- test/server-progress.test.ts -t tst_int_planctl_active_eta_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/plan-progress.test.ts test/server-progress.test.ts` exits 0 — unfinished Task evidence is canonical and elapsed active time reduces raw and calibrated server forecasts exactly once
+- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green
+- [ ] The registered Stage temp root is absent before publication
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S12:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S12:end -->
+<!-- plan:stage:D1-S12:end -->
 <!-- plan:delivery:D1:end -->
 <!-- plan:implementation:end -->
 
@@ -1021,4 +1053,14 @@ Predict: 80 active min / 30 credits.
 - record-result D1-S11 commit:8c60c2dfceb0b5fdbb5c9ac373a7ab7a10e04e9f
 
 - close D1-S11 partial commit:8c60c2dfceb0b5fdbb5c9ac373a7ab7a10e04e9f
+
+- amend implementation owner:fix it until approved sha256:3bdcd83d0d293922df66904bc514cb4e54048d6fc31c17955e5cbf4de3270fd4
+
+- amend implementation owner:fix it until approved sha256:8aa069337dd65b7faa4fa9e73e1f7aa157c19896f69853f0f6c58e60133a3467
+
+- amend implementation owner:fix it until approved sha256:303d64854a248d2e30b3de717dd3ee77bf965de6b04ecb9732fe9868d300bae9
+
+- amend implementation owner:fix it until approved sha256:d4508400b59b73da419eac67e350fe1bb2576a2d50f6ce3b384bfe21822ab080
+
+- amend implementation owner:fix it until approved sha256:4ce1b734a12326db27214a6e02f1f5fccc401d7fd826b5f2b63c67c4178ab7d8
 <!-- plan:execution:end -->

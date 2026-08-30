@@ -6,6 +6,7 @@ export interface ServerPlanProgress {
   readonly tasks: { readonly completed: number; readonly total: number };
   readonly activeMinutes: { readonly completed: number; readonly remaining: number; readonly total: number };
   readonly attention: { readonly ownerWait: number; readonly stale: number; readonly unassigned: number };
+  readonly remainingActiveMinutes: number;
   readonly criticalPathMinutes: number;
   readonly calibratedCriticalPathMinutes: number;
   readonly estimatedDeliveryAt: string | null;
@@ -97,6 +98,10 @@ function serverPlan(value: unknown): ServerPlanProgress {
     tasks: count(plan.tasks, "server plan tasks"),
     activeMinutes: activeMinutes(plan.activeMinutes),
     attention: attention(plan.attention),
+    remainingActiveMinutes: nonNegative(
+      plan.remainingActiveMinutes,
+      "server plan remainingActiveMinutes",
+    ),
     criticalPathMinutes: nonNegative(plan.criticalPathMinutes, "server plan criticalPathMinutes"),
     calibratedCriticalPathMinutes: nonNegative(
       plan.calibratedCriticalPathMinutes,

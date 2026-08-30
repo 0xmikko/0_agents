@@ -121,6 +121,7 @@ describe("authenticated snapshot ingest", () => {
                 activeMinutes: { completed: 10, remaining: 10, total: 20 },
                 credits: { completed: 1, remaining: 1, total: 2 },
                 completionPercent: 50,
+                remainingTasks: [{ taskId: "FIXTURE_002", predictedActiveMinutes: 10 }],
               }],
             },
             completedTaskSamples: [{

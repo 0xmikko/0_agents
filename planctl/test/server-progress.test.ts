@@ -49,6 +49,7 @@ function plan(planRevision: string): ReportedPlanProgress {
         activeMinutes: { completed: 20, remaining: 0, total: 20 },
         credits: { completed: 5, remaining: 0, total: 5 },
         completionPercent: 100,
+        remainingTasks: [],
       }, {
         id: "D1-S2",
         depends: ["D1-S1"],
@@ -57,6 +58,7 @@ function plan(planRevision: string): ReportedPlanProgress {
         activeMinutes: { completed: 0, remaining: 30, total: 30 },
         credits: { completed: 0, remaining: 6, total: 6 },
         completionPercent: 0,
+        remainingTasks: [{ taskId: "PLAN_002", predictedActiveMinutes: 30 }],
       }, {
         id: "D1-S3",
         depends: ["D1-S1"],
@@ -65,6 +67,7 @@ function plan(planRevision: string): ReportedPlanProgress {
         activeMinutes: { completed: 0, remaining: 10, total: 10 },
         credits: { completed: 0, remaining: 3, total: 3 },
         completionPercent: 0,
+        remainingTasks: [{ taskId: "PLAN_003", predictedActiveMinutes: 10 }],
       }, {
         id: "D1-S4",
         depends: ["D1-S2", "D1-S3"],
@@ -73,6 +76,7 @@ function plan(planRevision: string): ReportedPlanProgress {
         activeMinutes: { completed: 0, remaining: 15, total: 15 },
         credits: { completed: 0, remaining: 6, total: 6 },
         completionPercent: 0,
+        remainingTasks: [{ taskId: "PLAN_004", predictedActiveMinutes: 15 }],
       }],
     },
   };
@@ -171,6 +175,43 @@ describe("central progress read model", () => {
   });
 
   /**
+   * @test-id: tst_int_planctl_active_eta_001
+   * @scenario: scn_planctl_active_eta_001
+   * @covers: planctl/src/server/progress/progress.service.ts::ProgressService.portfolio
+   * @invariant: CTL-005 active Task elapsed time reduces raw and calibrated critical-path forecasts exactly once
+   * @deterministic: yes
+   * @fixtures: temporary SQLite, one active Task and three fixed calibration samples
+   */
+  it("tst_int_planctl_active_eta_001 subtracts active Task elapsed time from server forecasts", async () => {
+    const root = fixtureRoot();
+    const clock = { value: "2026-08-29T00:00:00.000Z" };
+    const app = await server(root, clock);
+    try {
+      const admin = app.get(MachineAdminService);
+      const ingest = app.get(IngestService);
+      const store = app.get(ServerStore);
+      const controller = app.get(ProgressController);
+      admin.registerMachine("machine-a", "fixture-token-for-machine-a");
+      ingest.accept("machine-a", { kind: "snapshot", snapshot: snapshot("machine-a", 1, [
+        agent("codex:active", "working", CANONICAL_REVISION, "PLAN_002"),
+      ], CANONICAL_REVISION) }, "machine-a");
+      store.recordCalibrationSample("0xmikko/0_agents", "sample-1", 10, 20, clock.value);
+      store.recordCalibrationSample("0xmikko/0_agents", "sample-2", 20, 30, clock.value);
+      store.recordCalibrationSample("0xmikko/0_agents", "sample-3", 10, 10, clock.value);
+
+      const view = controller.portfolio().plans[0];
+      if (view === undefined) throw new Error("fixture plan is missing");
+      expect(view.activeMinutes.remaining).toBe(55);
+      expect(view.remainingActiveMinutes).toBe(45);
+      expect(view.criticalPathMinutes).toBe(35);
+      expect(view.calibratedCriticalPathMinutes).toBe(57.5);
+      expect(view.estimatedDeliveryAt).toBe("2026-08-29T00:57:30.000Z");
+    } finally {
+      await app.close();
+    }
+  });
+
+  /**
    * @test-id: tst_int_planctl_progress_001
    * @scenario: scn_planctl_progress_001
    * @covers: planctl/src/server/progress/progress.service.ts::ProgressService.portfolio
@@ -222,9 +263,9 @@ describe("central progress read model", () => {
       expect(view.planRevision).toBe(CANONICAL_REVISION);
       expect(view.tasks).toEqual({ completed: 1, total: 4 });
       expect(view.activeMinutes).toEqual({ completed: 20, remaining: 55, total: 75 });
-      expect(view.remainingActiveMinutes).toBe(55);
-      expect(view.criticalPathMinutes).toBe(45);
-      expect(view.calibratedCriticalPathMinutes).toBe(67.5);
+      expect(view.remainingActiveMinutes).toBe(35);
+      expect(view.criticalPathMinutes).toBe(35);
+      expect(view.calibratedCriticalPathMinutes).toBe(57.5);
       expect(view.estimatedDeliveryAt).toBeNull();
       expect(view.calibration).toEqual({ factor: 1.5, completedTaskSamples: 3, confidence: "medium" });
       expect(view.attention).toEqual({

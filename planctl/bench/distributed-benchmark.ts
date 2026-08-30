@@ -70,6 +70,10 @@ function progress(): ReportedPlanProgress {
         activeMinutes: { completed: 50, remaining: 50, total: 100 },
         credits: { completed: 20, remaining: 20, total: 40 },
         completionPercent: 50,
+        remainingTasks: Array.from({ length: 5 }, (_, index) => ({
+          taskId: `BENCH_${String(index + 6).padStart(3, "0")}`,
+          predictedActiveMinutes: 10,
+        })),
       }],
     },
   };

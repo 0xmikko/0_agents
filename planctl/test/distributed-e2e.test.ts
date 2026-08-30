@@ -101,6 +101,13 @@ function reportedPlan(revision: string): ReportedPlanProgress {
         activeMinutes: { completed: 20, remaining: 40, total: 60 },
         credits: { completed: 5, remaining: 10, total: 15 },
         completionPercent: 100 / 3,
+        remainingTasks: [{
+          taskId: "PLAN_002",
+          predictedActiveMinutes: 20,
+        }, {
+          taskId: "PLAN_003",
+          predictedActiveMinutes: 20,
+        }],
       }],
     },
   };
@@ -298,11 +305,14 @@ describe("distributed planctl observer", () => {
       expect(sender.messages.some((message) => message.includes("MACHINE OFFLINE\nMachine: machine-c"))).toBeTrue();
 
       const recoveredAgentIds = ["codex:waiting", "codex:stale", "codex:drift"] as const;
+      const recoveredTaskIds = ["PLAN_002", "PLAN_003", "PLAN_002"] as const;
       for (const [index, machine] of machines.entries()) {
         const recoveredAgentId = recoveredAgentIds[index];
+        const recoveredTaskId = recoveredTaskIds[index];
         if (recoveredAgentId === undefined) throw new Error("fixture recovery identity is missing");
+        if (recoveredTaskId === undefined) throw new Error("fixture recovery Task is missing");
         machine.source.observation = observation(
-          observedAgent(recoveredAgentId, "working", CANONICAL_REVISION, "PLAN_005"),
+          observedAgent(recoveredAgentId, "working", CANONICAL_REVISION, recoveredTaskId),
           CANONICAL_REVISION,
         );
         await machine.collector.collectOnce();

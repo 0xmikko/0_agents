@@ -104,7 +104,7 @@ function stringArray(input: unknown, name: string): readonly string[] {
 function progressSnapshot(input: unknown): PlanProgressSnapshot {
   const value = record(input, "plan progress");
   if (!Array.isArray(value.stages)) throw new Error("plan progress stages must be an array");
-  return {
+  const progress: PlanProgressSnapshot = {
     deliveryId: text(value.deliveryId, "plan progress deliveryId", /^D[1-9]\d*$/),
     tasks: count(value.tasks, "plan progress tasks"),
     activeMinutes: amount(value.activeMinutes, "plan progress activeMinutes"),
@@ -112,17 +112,48 @@ function progressSnapshot(input: unknown): PlanProgressSnapshot {
     completionPercent: percentage(value.completionPercent, "plan progress completionPercent"),
     stages: value.stages.map((entry) => {
       const stage = record(entry, "Stage progress");
+      if (!Array.isArray(stage.remainingTasks)) {
+        throw new Error("Stage progress remainingTasks must be an array");
+      }
+      const activeMinutes = amount(stage.activeMinutes, "Stage progress activeMinutes");
+      const remainingTasks = stage.remainingTasks.map((entry) => {
+        const task = record(entry, "remaining Task forecast");
+        const predictedActiveMinutes = nonNegative(
+          task.predictedActiveMinutes,
+          "remaining Task predictedActiveMinutes",
+        );
+        if (predictedActiveMinutes <= 0) {
+          throw new Error("remaining Task prediction must be positive");
+        }
+        return {
+          taskId: text(task.taskId, "remaining Task taskId", /^[A-Z][A-Z0-9_-]*$/),
+          predictedActiveMinutes,
+        };
+      });
+      const predictedRemaining = remainingTasks.reduce(
+        (total, task) => total + task.predictedActiveMinutes,
+        0,
+      );
+      if (Math.abs(predictedRemaining - activeMinutes.remaining) > Number.EPSILON) {
+        throw new Error("Stage progress remaining Task predictions are inconsistent");
+      }
       return {
         id: text(stage.id, "Stage progress id", /^D[1-9]\d*-S[1-9]\d*$/),
         depends: stringArray(stage.depends, "Stage progress depends"),
         parallelWith: stringArray(stage.parallelWith, "Stage progress parallelWith"),
         tasks: count(stage.tasks, "Stage progress tasks"),
-        activeMinutes: amount(stage.activeMinutes, "Stage progress activeMinutes"),
+        activeMinutes,
         credits: amount(stage.credits, "Stage progress credits"),
         completionPercent: percentage(stage.completionPercent, "Stage progress completionPercent"),
+        remainingTasks,
       };
     }),
   };
+  const taskIds = progress.stages.flatMap((stage) => stage.remainingTasks.map((task) => task.taskId));
+  if (new Set(taskIds).size !== taskIds.length) {
+    throw new Error("plan progress contains duplicate remaining Task identities");
+  }
+  return progress;
 }
 
 function timestamp(value: unknown, name: string): string {

@@ -667,7 +667,7 @@ async function progress(args: readonly string[]): Promise<void> {
         completionPercent: plan.completionPercent,
         completedTasks: plan.tasks.completed,
         totalTasks: plan.tasks.total,
-        remainingActiveMinutes: plan.activeMinutes.remaining,
+        remainingActiveMinutes: plan.remainingActiveMinutes,
         criticalPathMinutes: plan.calibratedCriticalPathMinutes,
         estimatedDeliveryAt: plan.estimatedDeliveryAt,
       }));
