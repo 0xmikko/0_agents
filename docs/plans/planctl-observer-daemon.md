@@ -2,7 +2,7 @@
 
 Status: APPROVED
 Spec lock: sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
-Implementation lock: sha256:d1ddcaa16f0682ecc61d3e17c0a0c23daf023f757bfa6da9c316256fe6bca083 owner:fix it until approved
+Implementation lock: sha256:016ce4d1d53920f696b841046839b64635ee23171b4a575425114392f96d64b5 owner:fix it until approved
 Active Delivery: D1
 Unattended decisions: allowed
 
@@ -953,40 +953,42 @@ Predict: 90 active min / 35 credits.
 <!-- plan:stage:D1-S12:end -->
 
 <!-- plan:stage:D1-S13:start -->
-<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S12"],"parallelWith":[],"writes":["planctl/src/core/task-run.ts","planctl/src/cli/main.ts","planctl/src/machine/sessions/session-source.ts","planctl/src/server/progress/progress.service.ts","planctl/src/telegram/commands.service.ts","planctl/test/task-run.test.ts","planctl/test/owner-wait.test.ts","planctl/test/machine-sessions.test.ts","planctl/test/server-progress.test.ts","planctl/test/telegram-commands.test.ts","planctl/test/distributed-e2e.test.ts","planctl/test/distributed-correlation.test.ts","planctl/README.md"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S13"} -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S12"],"parallelWith":[],"writes":["planctl/src/core/task-run.ts","planctl/src/cli/main.ts","planctl/src/machine/sessions/session-source.ts","planctl/src/server/progress/progress.service.ts","planctl/src/telegram/commands.service.ts","planctl/test/task-run.test.ts","planctl/test/machine-sessions.test.ts","planctl/test/server-progress.test.ts","planctl/test/telegram-commands.test.ts","planctl/test/distributed-e2e.test.ts","planctl/test/distributed-correlation.test.ts","planctl/README.md"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S13"} -->
 #### Stage D1-S13 — Preserve every agent and active-time lifecycle in owner views
 
 Owner: integrator; Profile: strong; Depends: D1-S12; Parallel with: none.
-Writes: `planctl/src/core/task-run.ts`, `planctl/src/cli/main.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/test/task-run.test.ts`, `planctl/test/owner-wait.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/telegram-commands.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/README.md`.
+Writes: `planctl/src/core/task-run.ts`, `planctl/src/cli/main.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/test/task-run.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/telegram-commands.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/README.md`.
 Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S13` (must be absent at handoff).
 Predict: 150 active min / 60 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_026 — keep bound, unassigned and unbound-stale observations in global owner queries without crediting unbound work to a plan
+- [x] PLCTL_026 — keep bound, unassigned and unbound-stale observations in global owner queries without crediting unbound work to a plan — 15ce2dd4064765a6f5bc1a532c67f147398396a2
       Writes: `planctl/src/server/progress/progress.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/telegram-commands.test.ts`, `planctl/test/distributed-e2e.test.ts`.
       Predict: 65 active min / 25 credits.
       How: expose one global sorted agent read model beside per-plan views, preserve unbound state evidence, and drive /agents plus /stale from the global list while plan progress and ETA still use only aligned Task observations
       RED: `bun run agent:test:e2e -- test/distributed-e2e.test.ts -t tst_int_planctl_unassigned_visibility_001`
-- [ ] PLCTL_027 — exclude every structured owner-wait interval from resumed Task active time idempotently
-      Writes: `planctl/src/core/task-run.ts`, `planctl/src/cli/main.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/test/task-run.test.ts`, `planctl/test/owner-wait.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/README.md`.
+- [x] PLCTL_027 — exclude every structured owner-wait interval from resumed Task active time idempotently — 15ce2dd4064765a6f5bc1a532c67f147398396a2
+      Writes: `planctl/src/core/task-run.ts`, `planctl/src/cli/main.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/test/task-run.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/README.md`.
       Predict: 85 active min / 35 credits.
       How: persist accumulated owner-wait seconds and the last accounted marker on TaskRunV2, update that evidence before clearing a wait on resume/start, and subtract both accumulated and current structured waits from collector active time
       RED: `bun run agent:test:backend -- test/machine-sessions.test.ts -t tst_svc_planctld_active_pause_001`
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:e2e -- test/distributed-e2e.test.ts` exits 0 — unassigned and unbound-stale sessions appear in /agents and /stale but never change plan ETA
-- [ ] `cd planctl && bun run agent:test:backend -- test/task-run.test.ts test/owner-wait.test.ts test/machine-sessions.test.ts` exits 0 — owner-wait accounting survives resume idempotently and excludes blocked calendar time
-- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green
+- [x] `cd planctl && bun run agent:test:e2e -- test/distributed-e2e.test.ts` exits 0 — unassigned and unbound-stale sessions appear in /agents and /stale but never change plan ETA — 15ce2dd4064765a6f5bc1a532c67f147398396a2
+- [x] `cd planctl && bun run agent:test:backend -- test/task-run.test.ts test/owner-wait.test.ts test/machine-sessions.test.ts` exits 0 — owner-wait accounting survives resume idempotently and excludes blocked calendar time — 15ce2dd4064765a6f5bc1a532c67f147398396a2
+- [x] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green — 15ce2dd4064765a6f5bc1a532c67f147398396a2
 - [ ] The registered Stage temp root is absent before publication
-- [ ] Commit
+- [x] Commit — 15ce2dd4064765a6f5bc1a532c67f147398396a2
 
 ##### Results
 
 <!-- plan:results:D1-S13:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_026 | 15ce2dd4064765a6f5bc1a532c67f147398396a2 | 2026-08-30T10:16:23.265Z–2026-08-30T10:40:44.000Z | 23 / 24.35 min | unavailable: runner did not expose per-Stage token or credit usage | Global owner queries retain unassigned and unbound-stale sessions without affecting plan ETA; TaskRunV2 now accounts structured owner-wait intervals once before resume so blocked time stays out of active forecasts. |
+| PLCTL_027 | 15ce2dd4064765a6f5bc1a532c67f147398396a2 | 2026-08-30T10:16:23.265Z–2026-08-30T10:40:44.000Z | 23 / 24.35 min | unavailable: runner did not expose per-Stage token or credit usage | Global owner queries retain unassigned and unbound-stale sessions without affecting plan ETA; TaskRunV2 now accounts structured owner-wait intervals once before resume so blocked time stays out of active forecasts. |
 <!-- plan:results:D1-S13:end -->
 <!-- plan:stage:D1-S13:end -->
 <!-- plan:delivery:D1:end -->
@@ -1110,4 +1112,14 @@ Predict: 150 active min / 60 credits.
 - amend implementation owner:fix it until approved sha256:ca4133361fada56453f40629579ed7597b395cf23577328c51b7aab1055b06a5
 
 - amend implementation owner:fix it until approved sha256:d1ddcaa16f0682ecc61d3e17c0a0c23daf023f757bfa6da9c316256fe6bca083
+
+- amend implementation owner:fix it until approved sha256:5af3616b1afffac81890c75f02deebb55980fb20a76f37b9ad8c38632c8adc17
+
+- amend implementation owner:fix it until approved sha256:fb8450b88b8612969056e332195b7170537fc7d6ec686fa11deff7af516ed224
+
+- amend implementation owner:fix it until approved sha256:016ce4d1d53920f696b841046839b64635ee23171b4a575425114392f96d64b5
+
+- record-result D1-S13 commit:15ce2dd4064765a6f5bc1a532c67f147398396a2
+
+- close D1-S13 partial commit:15ce2dd4064765a6f5bc1a532c67f147398396a2
 <!-- plan:execution:end -->
