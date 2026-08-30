@@ -81,6 +81,8 @@ bot_token_file = "${telegramToken}"
 allowed_user_ids = [123456789]
 default_chat_id = 123456789
 long_poll_seconds = 30
+claim_lease_seconds = 60
+notifier_scan_milliseconds = 5000
 `;
     writeFileSync(machinePath, machineToml);
     writeFileSync(serverPath, serverToml);
@@ -95,6 +97,8 @@ long_poll_seconds = 30
     expect(server.role).toBe("server");
     if (server.role !== "server") throw new Error("server fixture decoded as machine");
     expect(server.telegram.allowedUserIds).toEqual([123456789]);
+    expect(server.telegram.claimLeaseSeconds).toBe(60);
+    expect(server.telegram.notifierScanMilliseconds).toBe(5000);
 
     writeFileSync(serverPath, serverToml.replace("https://planctl.example.ts.net", "http://planctl.lan"));
     expect(() => loadPlanctlConfig(serverPath, "server")).toThrow("plain HTTP");

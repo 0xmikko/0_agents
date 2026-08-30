@@ -436,6 +436,7 @@ function existingTaskRun(rootPath: string, plan: string, taskId: string): TaskRu
 }
 
 interface MachineServerSettings {
+  readonly machineId: string;
   readonly url: string;
   readonly token: string;
   readonly requestTimeoutMs: number;
@@ -452,6 +453,7 @@ async function machineServerSettings(args: readonly string[]): Promise<MachineSe
   const token = readFileSync(loaded.server.tokenFile, "utf8").trim();
   if (token === "") throw new Error("machine server token file is empty");
   return {
+    machineId: loaded.machineId,
     url: loaded.server.url,
     token,
     requestTimeoutMs: loaded.server.requestTimeoutMs,
@@ -474,6 +476,7 @@ async function serverProgress(args: readonly string[]): Promise<{
   const client = await import(resolve(import.meta.dir, "server-client.ts"));
   const response = await client.readServerProgress({
     baseUrl: settings.url,
+    machineId: settings.machineId,
     token: settings.token,
     requestTimeoutMs: settings.requestTimeoutMs,
     fetch,

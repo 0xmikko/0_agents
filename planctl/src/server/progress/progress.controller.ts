@@ -1,10 +1,12 @@
-import { BadRequestException, Controller, Get, NotFoundException, Param } from "@nestjs/common";
+import { BadRequestException, Controller, Get, NotFoundException, Param, UseGuards } from "@nestjs/common";
 
+import { ProgressAuthGuard } from "../auth/progress-auth.guard";
 import { ProgressService } from "./progress.service";
 
 import type { PlanProgressView, PortfolioProgressView } from "./progress.service";
 
 @Controller("v1/progress")
+@UseGuards(ProgressAuthGuard)
 export class ProgressController {
   constructor(private readonly progress: ProgressService) {}
 

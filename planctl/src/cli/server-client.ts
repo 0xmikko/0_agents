@@ -20,6 +20,7 @@ export type FetchLike = (input: string | URL | Request, init?: RequestInit) => P
 
 export interface ServerReadOptions {
   readonly baseUrl: string;
+  readonly machineId: string;
   readonly token: string;
   readonly requestTimeoutMs: number;
   readonly fetch: FetchLike;
@@ -128,10 +129,14 @@ export async function readServerProgress(
     throw new Error("server request timeout must be a positive integer");
   }
   if (options.token.trim() === "") throw new Error("server token must not be empty");
+  if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(options.machineId)) throw new Error("server machineId is invalid");
   const suffix = planId === undefined ? "/v1/progress" : `/v1/progress/${encodeURIComponent(planId)}`;
   const response = await options.fetch(`${baseUrl(options.baseUrl)}${suffix}`, {
     method: "GET",
-    headers: { authorization: `Bearer ${options.token}` },
+    headers: {
+      authorization: `Bearer ${options.token}`,
+      "x-planctl-machine-id": options.machineId,
+    },
     signal: AbortSignal.timeout(options.requestTimeoutMs),
   });
   if (!response.ok) throw new Error(`server progress request failed with HTTP ${response.status}`);

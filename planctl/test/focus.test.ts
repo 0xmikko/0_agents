@@ -86,12 +86,18 @@ describe("planctl focus and progress", () => {
 
     const remote = await readServerProgress({
       baseUrl: "https://planctl.example.test",
+      machineId: "machine-a",
       token: "machine-token",
       requestTimeoutMs: 250,
-      fetch: async () => new Response(JSON.stringify({ generatedAt: "2026-08-29T20:00:00.000Z", plans: [] }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+      fetch: async (_input, init) => {
+        const headers = new Headers(init?.headers);
+        expect(headers.get("x-planctl-machine-id")).toBe("machine-a");
+        expect(headers.get("authorization")).toBe("Bearer machine-token");
+        return new Response(JSON.stringify({ generatedAt: "2026-08-29T20:00:00.000Z", plans: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
     });
     expect(remote.generatedAt).toBe("2026-08-29T20:00:00.000Z");
     expect(remote.plans).toEqual([]);

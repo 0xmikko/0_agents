@@ -778,7 +778,7 @@ Predict: 25 active min / 10 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_018 — publish runnable CLI, machine and server artifacts without requiring unused Nest optional integrations
+- [x] PLCTL_018 — publish runnable CLI, machine and server artifacts without requiring unused Nest optional integrations — 04baa0e0d1e5c5bb27f9431dc82c12e493a6ef95
       Writes: `planctl/package.json`, `planctl/bun.lock`, `planctl/src/cli/main.ts`, `planctl/src/core/plan-gate.ts`, `planctl/src/core/plan-update.ts`, `planctl/src/machine/main.ts`, `planctl/test/package-build.test.ts`.
       Predict: 25 active min / 10 credits.
       How: make bundled runtime-module resolution explicit, emit every required internal entrypoint, install and bundle the Nest peer modules referenced by framework runtime loaders, and smoke-run every artifact from an isolated output tree
@@ -786,16 +786,17 @@ Predict: 25 active min / 10 credits.
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/package-build.test.ts` exits 0 — all three declared production entrypoints build and their deterministic help paths execute from an isolated output tree
-- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — typecheck, lint, deterministic tests and package build are green
+- [x] `cd planctl && bun run agent:test:backend -- test/package-build.test.ts` exits 0 — all three declared production entrypoints build and their deterministic help paths execute from an isolated output tree — 04baa0e0d1e5c5bb27f9431dc82c12e493a6ef95
+- [x] `cd planctl && bun run agent:verify:pr` exits 0 — typecheck, lint, deterministic tests and package build are green — 04baa0e0d1e5c5bb27f9431dc82c12e493a6ef95
 - [ ] The registered Stage temp root is absent before publication
-- [ ] Commit
+- [x] Commit — 04baa0e0d1e5c5bb27f9431dc82c12e493a6ef95
 
 ##### Results
 
 <!-- plan:results:D1-S8:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_018 | 04baa0e0d1e5c5bb27f9431dc82c12e493a6ef95 | 2026-08-30T06:33:50.184Z–2026-08-30T07:35:25.000Z | 55 / 61.58 min | unavailable: runner did not expose per-Stage token or credit usage | All emitted CLI, core, machine and server bundles execute deterministically from an isolated output tree. |
 <!-- plan:results:D1-S8:end -->
 <!-- plan:stage:D1-S8:end -->
 
@@ -958,4 +959,8 @@ Predict: 240 active min / 95 credits.
 - amend implementation owner:fix it until approved sha256:3028c3559c908520a3426c4de1f9f5b751355ea194be642f08129fe8019a95dc
 
 - amend implementation owner:fix it until approved sha256:0689bd837271577b2f09beba3f289c26b8266ff8978735713775bdf6e4b664d0
+
+- record-result D1-S8 commit:04baa0e0d1e5c5bb27f9431dc82c12e493a6ef95
+
+- close D1-S8 partial commit:04baa0e0d1e5c5bb27f9431dc82c12e493a6ef95
 <!-- plan:execution:end -->

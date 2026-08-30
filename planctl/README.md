@@ -60,11 +60,15 @@ bot_token_file = "/home/planctl/.config/planctl/telegram.token"
 allowed_user_ids = [123456789]
 default_chat_id = 123456789
 long_poll_seconds = 30
+claim_lease_seconds = 60
+notifier_scan_milliseconds = 5000
 ```
 
 Bind to loopback behind Tailscale Serve or an HTTPS reverse proxy. A
 non-loopback plain-HTTP external URL is rejected. Telegram uses long polling;
-unknown user IDs receive no plan data.
+unknown user IDs receive no plan data. Claim leases make failed alert sends
+retryable across restarts; the notifier scan interval controls how quickly
+persisted transitions are delivered.
 
 ### Coding machine
 
@@ -165,6 +169,10 @@ planctl needs-owner docs/plans/example.md --task EXAMPLE_001 --reason "Approve t
 planctl resume-task docs/plans/example.md --task EXAMPLE_001
 ```
 
+Observer progress reads authenticate with the configured machine ID and its
+enrollment bearer token. Telegram reads the same internal progress service
+without exposing an unauthenticated HTTP route.
+
 Telegram owner commands are `/progress`, `/progress <plan>`, `/agents`,
 `/stale`, and `/waiting`. Alerts are emitted once for stale, owner-wait,
 machine-offline, and recovery transitions. Messages use structured plan,
@@ -184,10 +192,6 @@ flaky pass/fail thresholds.
 
 ## Delivery 1 limitations
 
-- The Telegram Nest module and durable alert worker exist, but the production
-  `planctl-server` bootstrap does not yet pass Telegram configuration into that
-  module. Commands and alerts are therefore integration-tested but not active
-  in the installed server process.
 - Snapshots do not yet carry completed-Task timing receipts, so collectors
   cannot populate empirical ETA calibration samples.
 - Agent snapshots do not carry owner-wait start time; `/waiting` reports the

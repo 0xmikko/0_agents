@@ -13,6 +13,8 @@ import { ProgressController } from "../src/server/progress/progress.controller";
 import { TransitionService } from "../src/server/transitions/transition.service";
 
 import type { INestApplicationContext } from "@nestjs/common";
+import type { INestApplication } from "@nestjs/common";
+import type { AddressInfo } from "node:net";
 import type { AgentSnapshot, MachineSnapshot, ReportedPlanProgress } from "../src/core/snapshot-protocol";
 
 const PLAN_ID = "0xmikko/0_agents:docs/plans/example.md";
@@ -132,6 +134,40 @@ afterEach(() => {
 });
 
 describe("central progress read model", () => {
+  /**
+   * @test-id: tst_int_planctl_progress_auth_001
+   * @scenario: scn_planctl_progress_auth_001
+   * @covers: planctl/src/server/auth/progress-auth.guard.ts::ProgressAuthGuard
+   * @deterministic: yes
+   * @fixtures: temporary SQLite and one enrolled machine credential
+   */
+  it("tst_int_planctl_progress_auth_001 protects HTTP progress with machine identity and bearer auth", async () => {
+    const root = fixtureRoot();
+    const app: INestApplication = await NestFactory.create(ServerAppModule.register({
+      databasePath: join(root, "state/server.sqlite"),
+      machineOfflineAfterSeconds: 60,
+      transitionScanMs: null,
+      now: () => "2026-08-30T00:00:00.000Z",
+    }), { logger: false });
+    try {
+      app.get(MachineAdminService).registerMachine("machine-a", "fixture-progress-token");
+      await app.listen(0, "127.0.0.1");
+      const address = app.getHttpServer().address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}/v1/progress`;
+      expect((await fetch(url)).status).toBe(401);
+      expect((await fetch(url, {
+        headers: { authorization: "Bearer wrong", "x-planctl-machine-id": "machine-a" },
+      })).status).toBe(401);
+      const accepted = await fetch(url, {
+        headers: { authorization: "Bearer fixture-progress-token", "x-planctl-machine-id": "machine-a" },
+      });
+      expect(accepted.status).toBe(200);
+      expect(await accepted.json()).toEqual({ generatedAt: "2026-08-30T00:00:00.000Z", plans: [] });
+    } finally {
+      await app.close();
+    }
+  });
+
   /**
    * @test-id: tst_int_planctl_progress_001
    * @scenario: scn_planctl_progress_001

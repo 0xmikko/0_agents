@@ -2,6 +2,8 @@
 
 import "reflect-metadata";
 
+import { readFileSync } from "node:fs";
+
 import { NestFactory } from "@nestjs/core";
 
 import { defaultPlanctlConfigPath, loadPlanctlConfig } from "../config/config";
@@ -10,6 +12,12 @@ import { ServerAppModule } from "./app.module";
 
 import type { INestApplication, INestApplicationContext } from "@nestjs/common";
 import type { ServerConfig } from "../config/config";
+import type { TelegramFetch } from "../telegram/telegram-client";
+
+export interface ServerRuntime {
+  readonly telegramFetch: TelegramFetch;
+  readonly now: () => string;
+}
 
 function option(args: readonly string[], name: string): string | undefined {
   const position = args.indexOf(name);
@@ -36,21 +44,47 @@ function address(bind: string): { readonly host: string; readonly port: number }
   return { host, port };
 }
 
-function moduleFor(config: ServerConfig): ReturnType<typeof ServerAppModule.register> {
-  return ServerAppModule.register({
+function storeOptions(config: ServerConfig, now: () => string) {
+  return {
     databasePath: config.database,
     machineOfflineAfterSeconds: config.machineOfflineAfterSeconds,
     transitionScanMs: 5_000,
-    now: () => new Date().toISOString(),
+    now,
+  };
+}
+
+function moduleFor(
+  config: ServerConfig,
+  runtime: ServerRuntime,
+): ReturnType<typeof ServerAppModule.registerWithTelegram> {
+  const token = readFileSync(config.telegram.botTokenFile, "utf8").trim();
+  if (token === "") throw new Error("Telegram bot token file is empty");
+  return ServerAppModule.registerWithTelegram(storeOptions(config, runtime.now), {
+    token,
+    allowedUserIds: config.telegram.allowedUserIds,
+    defaultChatId: config.telegram.defaultChatId,
+    longPollSeconds: config.telegram.longPollSeconds,
+    claimLeaseSeconds: config.telegram.claimLeaseSeconds,
+    notifierScanMilliseconds: config.telegram.notifierScanMilliseconds,
+    fetch: runtime.telegramFetch,
+    now: runtime.now,
   });
 }
 
-export async function createServerApplication(config: ServerConfig): Promise<INestApplication> {
-  return await NestFactory.create(moduleFor(config));
+export async function createServerApplication(
+  config: ServerConfig,
+  runtime: ServerRuntime = {
+    telegramFetch: async (input, init) => await fetch(input, init),
+    now: () => new Date().toISOString(),
+  },
+): Promise<INestApplication> {
+  return await NestFactory.create(moduleFor(config, runtime));
 }
 
 async function createServerContext(config: ServerConfig): Promise<INestApplicationContext> {
-  return await NestFactory.createApplicationContext(moduleFor(config));
+  return await NestFactory.createApplicationContext(
+    ServerAppModule.register(storeOptions(config, () => new Date().toISOString())),
+  );
 }
 
 export async function runServer(args: readonly string[]): Promise<void> {

@@ -37,6 +37,8 @@ export interface ServerConfig {
     readonly allowedUserIds: readonly number[];
     readonly defaultChatId: number;
     readonly longPollSeconds: number;
+    readonly claimLeaseSeconds: number;
+    readonly notifierScanMilliseconds: number;
   };
 }
 
@@ -91,6 +93,8 @@ export function planctlConfigTemplate(role: PlanctlRole): string {
     "# allowed_user_ids = [123456789]",
     "# default_chat_id = 123456789",
     "# long_poll_seconds = 30",
+    "# claim_lease_seconds = 60",
+    "# notifier_scan_milliseconds = 5000",
     "",
   ].join("\n");
 }
@@ -227,7 +231,14 @@ function serverConfig(input: Readonly<Record<string, unknown>>): ServerConfig {
   ], "server config");
   if (input.version !== 1) throw new Error("server config version must be 1");
   const telegram = record(input.telegram, "server telegram");
-  keys(telegram, ["bot_token_file", "allowed_user_ids", "default_chat_id", "long_poll_seconds"], "server telegram");
+  keys(telegram, [
+    "bot_token_file",
+    "allowed_user_ids",
+    "default_chat_id",
+    "long_poll_seconds",
+    "claim_lease_seconds",
+    "notifier_scan_milliseconds",
+  ], "server telegram");
   if (!Array.isArray(telegram.allowed_user_ids) || telegram.allowed_user_ids.length === 0) {
     throw new Error("telegram allowed_user_ids must be a non-empty array");
   }
@@ -250,6 +261,11 @@ function serverConfig(input: Readonly<Record<string, unknown>>): ServerConfig {
       allowedUserIds,
       defaultChatId,
       longPollSeconds: positiveInteger(telegram.long_poll_seconds, "telegram long_poll_seconds"),
+      claimLeaseSeconds: positiveInteger(telegram.claim_lease_seconds, "telegram claim_lease_seconds"),
+      notifierScanMilliseconds: positiveInteger(
+        telegram.notifier_scan_milliseconds,
+        "telegram notifier_scan_milliseconds",
+      ),
     },
   };
 }
