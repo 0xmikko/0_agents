@@ -1003,12 +1003,12 @@ Predict: 100 active min / 40 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_028 — acknowledge an already-committed exact snapshot retry without replaying transitions so a lost response cannot wedge its collector
+- [x] PLCTL_028 — acknowledge an already-committed exact snapshot retry without replaying transitions so a lost response cannot wedge its collector — 157733486f7ceee3a4bc223caf2be9ca360d4c42
       Writes: `planctl/src/server/persistence/server-store.ts`, `planctl/src/server/ingest/ingest.service.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/distributed-e2e.test.ts`.
       Predict: 55 active min / 22 credits.
       How: distinguish the current machine snapshot triplet from conflicting or older sequences, return its original acknowledgement as an idempotent acceptance, skip transition evaluation for that retry, and prove outbox recovery plus the next heartbeat across the real client/server boundary
       RED: `bun run agent:test:e2e -- test/distributed-e2e.test.ts -t tst_int_planctl_lost_ack_001`
-- [ ] PLCTL_029 — enforce the configured server history retention window deterministically without dropping pending alerts or current read models
+- [x] PLCTL_029 — enforce the configured server history retention window deterministically without dropping pending alerts or current read models — 157733486f7ceee3a4bc223caf2be9ca360d4c42
       Writes: `planctl/src/server/main.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/telegram-alerts.test.ts`, `planctl/README.md`.
       Predict: 45 active min / 18 credits.
       How: thread `history_retention_days` into persistence, prune expired snapshot and calibration history plus already-notified transitions on accepted writes using the server receipt clock, and retain machines, canonical plans, observed states and every unnotified alert
@@ -1016,17 +1016,19 @@ Predict: 100 active min / 40 credits.
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:e2e -- test/distributed-e2e.test.ts -t tst_int_planctl_lost_ack_001` exits 0 — a committed snapshot whose response is lost is acknowledged on retry, clears the outbox and permits the next heartbeat exactly once
-- [ ] `cd planctl && bun run agent:test:backend -- test/server-ingest.test.ts -t tst_int_planctl_retention_001` exits 0 — expired durable history is removed while current state and pending alert delivery remain intact
-- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green
+- [x] `cd planctl && bun run agent:test:e2e -- test/distributed-e2e.test.ts -t tst_int_planctl_lost_ack_001` exits 0 — a committed snapshot whose response is lost is acknowledged on retry, clears the outbox and permits the next heartbeat exactly once — 157733486f7ceee3a4bc223caf2be9ca360d4c42
+- [x] `cd planctl && bun run agent:test:backend -- test/server-ingest.test.ts -t tst_int_planctl_retention_001` exits 0 — expired durable history is removed while current state and pending alert delivery remain intact — 157733486f7ceee3a4bc223caf2be9ca360d4c42
+- [x] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green — 157733486f7ceee3a4bc223caf2be9ca360d4c42
 - [ ] The registered Stage temp root is absent before publication
-- [ ] Commit
+- [x] Commit — 157733486f7ceee3a4bc223caf2be9ca360d4c42
 
 ##### Results
 
 <!-- plan:results:D1-S14:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_028 | 157733486f7ceee3a4bc223caf2be9ca360d4c42 | 2026-08-30T11:09:41.250Z–2026-08-30T11:34:52.000Z | 24 / 25.18 min | unavailable: runner did not expose per-Stage token or credit usage | Exact committed snapshot retries now recover a lost acknowledgement without duplicate transitions or history; configured retention bounds historical rows while preserving current state and every pending alert. |
+| PLCTL_029 | 157733486f7ceee3a4bc223caf2be9ca360d4c42 | 2026-08-30T11:09:41.250Z–2026-08-30T11:34:52.000Z | 24 / 25.18 min | unavailable: runner did not expose per-Stage token or credit usage | Exact committed snapshot retries now recover a lost acknowledgement without duplicate transitions or history; configured retention bounds historical rows while preserving current state and every pending alert. |
 <!-- plan:results:D1-S14:end -->
 <!-- plan:stage:D1-S14:end -->
 <!-- plan:delivery:D1:end -->
@@ -1164,4 +1166,8 @@ Predict: 100 active min / 40 credits.
 - amend implementation owner:fix it until approved sha256:1162bf20d889fb0d8ea3ecec94766c9b6a3e92d1c1cd235ea28babceee2c3d15
 
 - amend implementation owner:fix it until approved sha256:cf3289f70bdfeaf56c73fa8e54344c15ca9f37d3408e110a3795f00e34fa8e2e
+
+- record-result D1-S14 commit:157733486f7ceee3a4bc223caf2be9ca360d4c42
+
+- close D1-S14 partial commit:157733486f7ceee3a4bc223caf2be9ca360d4c42
 <!-- plan:execution:end -->
