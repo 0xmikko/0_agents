@@ -28,6 +28,8 @@ const STAGE: StageInput = {
   tempRoot: ".tmp/code-production/fixture/D1-S1",
   predictedActiveMinutes: 13,
   predictedCredits: 3,
+  verifyActiveMinutes: 3,
+  verifyCredits: 1,
   tasks: [{
     id: "PLANCTL_001",
     story: "extend the canonical writer facade exposed by scripts/example.ts",
@@ -277,8 +279,10 @@ describe("planctl", () => {
       const expandedStage: StageInput = {
         ...STAGE,
         writes: ["scripts/example.ts", "scripts/second.ts"],
-        predictedActiveMinutes: 20,
+        predictedActiveMinutes: 21,
         predictedCredits: 4,
+        verifyActiveMinutes: 3,
+        verifyCredits: 1,
         tasks: [
           ...STAGE.tasks,
           {

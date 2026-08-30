@@ -53,6 +53,10 @@ export interface StageInput {
   readonly tempRoot: string;
   readonly predictedActiveMinutes: number;
   readonly predictedCredits: number;
+  /** Review/verification share on top of the task sum — the Stage forecast
+   * must equal tasks + verification, so estimates stay derived. */
+  readonly verifyActiveMinutes: number;
+  readonly verifyCredits: number;
   readonly tasks: readonly TaskInput[];
   readonly criteria: readonly string[];
 }
@@ -314,8 +318,15 @@ function assertStageContract(input: StageInput): void {
   for (const task of input.tasks) assertTaskContract(task, input.writes);
   const taskActiveMinutes = input.tasks.reduce((sum, task) => sum + task.predictedActiveMinutes, 0);
   const taskCredits = input.tasks.reduce((sum, task) => sum + task.predictedCredits, 0);
-  if (taskActiveMinutes > input.predictedActiveMinutes || taskCredits > input.predictedCredits) {
-    throw new Error(`Stage ${input.id} Task forecasts exceed Stage forecast`);
+  if (input.verifyActiveMinutes < 0 || input.verifyCredits < 0) {
+    throw new Error(`Stage ${input.id} verification share must be non-negative`);
+  }
+  if (taskActiveMinutes + input.verifyActiveMinutes !== input.predictedActiveMinutes
+    || taskCredits + input.verifyCredits !== input.predictedCredits) {
+    throw new Error(
+      `Stage ${input.id} forecast must equal task sum plus verification `
+      + `(${taskActiveMinutes}+${input.verifyActiveMinutes} min, ${taskCredits}+${input.verifyCredits} credits)`,
+    );
   }
 }
 
@@ -389,6 +400,8 @@ function renderStage(input: StageInput): string {
     parallelWith: input.parallelWith,
     writes: input.writes,
     tempRoot: input.tempRoot,
+    verifyActiveMinutes: input.verifyActiveMinutes,
+    verifyCredits: input.verifyCredits,
   });
   // Two visible lines per Task: the story, and a hidden metadata comment.
   // Forecast/How/RED stay machine-readable and surface through start-task.
@@ -417,6 +430,7 @@ function renderStage(input: StageInput): string {
     `Writes: ${input.writes.map((path) => `\`${path}\``).join(", ")}.`,
     `Temp root: \`${input.tempRoot}\` (must be absent at handoff).`,
     `Predict: ${input.predictedActiveMinutes} active min / ${input.predictedCredits} credits.`,
+    `Of which verification: ${input.verifyActiveMinutes} active min / ${input.verifyCredits} credits.`,
     "",
     "##### Tasks",
     "",
@@ -531,6 +545,16 @@ function stageInputs(body: string): readonly StageInput[] {
       tempRoot: typeof meta.tempRoot === "string" ? meta.tempRoot : "",
       predictedActiveMinutes: Number(capture(match, 3, "Stage active minutes")),
       predictedCredits: Number(capture(match, 4, "Stage credits")),
+      // Legacy plans carry no verification share: it derives as the gap
+      // between the stage forecast and the task sum, which is its meaning.
+      verifyActiveMinutes: typeof meta.verifyActiveMinutes === "number"
+        ? meta.verifyActiveMinutes
+        : Math.max(0, Number(capture(match, 3, "Stage active minutes"))
+          - taskMatches.reduce((sum, task) => sum + task.input.predictedActiveMinutes, 0)),
+      verifyCredits: typeof meta.verifyCredits === "number"
+        ? meta.verifyCredits
+        : Math.max(0, Number(capture(match, 4, "Stage credits"))
+          - taskMatches.reduce((sum, task) => sum + task.input.predictedCredits, 0)),
       tasks: taskMatches.map((task) => task.input),
       criteria: criteriaBlock === null
         ? []
@@ -1125,6 +1149,7 @@ function stageFrom(value: unknown): StageInput {
     parallelWith: stringArray(record.parallelWith, "parallelWith"), writes: stringArray(record.writes, "writes"),
     tempRoot: requiredString(record, "tempRoot"),
     predictedActiveMinutes: requiredNumber(record, "predictedActiveMinutes"), predictedCredits: requiredNumber(record, "predictedCredits"),
+    verifyActiveMinutes: requiredNumber(record, "verifyActiveMinutes"), verifyCredits: requiredNumber(record, "verifyCredits"),
     tasks: tasksFrom(record.tasks), criteria: stringArray(record.criteria, "criteria"),
   };
 }

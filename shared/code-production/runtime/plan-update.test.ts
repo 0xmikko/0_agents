@@ -80,6 +80,8 @@ function stage(id: string, writes: readonly string[], parallelWith: readonly str
     tempRoot: `.tmp/code-production/fixture/${id}`,
     predictedActiveMinutes: 10,
     predictedCredits: 2,
+    verifyActiveMinutes: 2,
+    verifyCredits: 1,
     tasks: [{
       id: `${id}-T1`,
       story: `produce one observable ${id} behavior in ${writes[0]}`,
@@ -293,7 +295,7 @@ describe("plan-update", () => {
       [{ ...valid, tasks: [{ ...valid.tasks[0], red: "bun test test/plan-update.test.ts" }] }, /RED.*agent:test/i],
       [{ ...valid, tempRoot: "/tmp" }, /tempRoot/i],
       [{ ...valid, tasks: [{ ...valid.tasks[0], writes: ["scripts/foreign.ts"] }] }, /outside Stage writes/i],
-      [{ ...valid, tasks: [{ ...valid.tasks[0], predictedActiveMinutes: 11 }] }, /Task forecasts exceed Stage forecast/i],
+      [{ ...valid, tasks: [{ ...valid.tasks[0], predictedActiveMinutes: 11 }] }, /must equal task sum plus verification/i],
       [{ ...valid, criteria: [] }, /acceptance criteria/i],
     ];
 
@@ -356,7 +358,7 @@ describe("two-line task contract", () => {
         id: "D1-S1-T1",
         story: "Expose the base contract from scripts/base.ts as one callable entrypoint.",
         writes: ["scripts/base.ts"],
-        predictedActiveMinutes: 9,
+        predictedActiveMinutes: 8,
         predictedCredits: 1,
         how: "one export statement",
         red: "bun run agent:test:backend -- test/plan-update.test.ts",
@@ -440,5 +442,43 @@ describe("two-line task contract", () => {
     // parsing happens on the next mutation: adding a second stage must work
     const next = putStage(legacyBody, stage("D1-S2", ["scripts/a.ts"], []));
     expect(next.body).toContain("D1-S2");
+  });
+});
+
+describe("stage estimate = tasks + verification", () => {
+  // @test-id: tst_scripts_planupdate_012
+  // @scenario: scn_codeprod_001
+  // @covers: scripts/plan-update.ts::putStage
+  // @deterministic: yes
+  // @invariant: a Stage forecast is derived, not invented — it must equal the
+  // task sum plus an explicit verification share, and the share renders.
+  it("tst_scripts_planupdate_012 derives the stage forecast from tasks plus verification", () => {
+    let body = lockPlanSpec(draft(), "spec").body;
+    body = putDelivery(body, delivery()).body;
+    const base = stage("D1-S1", ["scripts/base.ts"]);
+    // mismatched: tasks sum to 8 + verification 2 = 10, but stage claims 12
+    expect(() => putStage(body, {
+      ...base,
+      predictedActiveMinutes: 12,
+      verifyActiveMinutes: 2,
+      verifyCredits: 1,
+    })).toThrow(/must equal task sum plus verification/i);
+    // matched: renders the verification share and round-trips
+    const put = putStage(body, {
+      ...base,
+      predictedActiveMinutes: 10,
+      predictedCredits: 2,
+      verifyActiveMinutes: 2,
+      verifyCredits: 1,
+    });
+    expect(put.body).toContain("Of which verification: 2 active min / 1 credits.");
+    const again = putStage(put.body, {
+      ...stage("D1-S2", ["scripts/a.ts"], []),
+      predictedActiveMinutes: 10,
+      predictedCredits: 2,
+      verifyActiveMinutes: 2,
+      verifyCredits: 1,
+    });
+    expect(again.body).toContain("D1-S2");
   });
 });

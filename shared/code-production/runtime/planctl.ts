@@ -76,6 +76,8 @@ Good Task in a complete stage.json (copy this shape):
   "writes": ["src/scheduler/parse-lanes.ts", "test/scheduler/parse-lanes.test.ts"],
   "tempRoot": ".tmp/code-production/scheduler-overlap/D1-S1",
   "predictedActiveMinutes": 12,
+  "verifyActiveMinutes": 2,
+  "verifyCredits": 1,
   "predictedCredits": 3,
   "tasks": [{
     "id": "PLANCTL_001",
