@@ -174,7 +174,10 @@ planctl resume-task docs/plans/example.md --task EXAMPLE_001
 an explicit `--agent` identity are present. Codex/Claude session environment
 identity is used automatically when available. Without telemetry identity or
 machine configuration, the existing TaskRunV1 local execution path remains
-available and server unavailability never blocks the Task.
+available and server unavailability never blocks the Task. A later explicit
+identity upgrades that V1 receipt without resetting its start time. Repository
+identity reuses the collector's normalized Git origin before requiring an
+explicit `repository_ids` entry.
 
 Observer progress reads authenticate with the configured machine ID and its
 enrollment bearer token. Telegram reads the same internal progress service
@@ -186,7 +189,10 @@ machine-offline, and recovery transitions. Messages use structured plan,
 machine, task, timing, and owner-wait fields only—never transcript excerpts.
 `/waiting` calculates duration from the structured owner-wait start time.
 Completed Stage Result timing is carried as stable, idempotent samples so the
-server can calibrate forecasts from actual deliveries.
+server can calibrate forecasts from actual deliveries. Collectors discover
+approved plans from known worktrees independently of active Task receipts, so
+the final completion sample remains reportable after `complete-task` consumes
+its execution receipt.
 
 ## Verification and scale baseline
 

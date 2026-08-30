@@ -1,10 +1,10 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { Module } from "@nestjs/common";
 import { ScheduleModule, SchedulerRegistry } from "@nestjs/schedule";
 
-import { protocolImplementationHash } from "../core/plan-gate";
+import { protocolImplementationHash, protocolLockViolations } from "../core/plan-gate";
 import { projectPlanProgress } from "../core/plan-progress";
 import { completedStageSamples } from "../core/plan-update";
 import { decodeTaskRun } from "../core/task-run";
@@ -153,17 +153,39 @@ function planGoal(body: string): string {
   return firstParagraph.replace(/\s*\n\s*/g, " ");
 }
 
-function reportedPlans(taskRuns: readonly TaskRun[]): {
+interface PlanLocation {
+  readonly repositoryId: string;
+  readonly worktree: string;
+  readonly plan: string;
+}
+
+function reportedPlans(taskRuns: readonly TaskRun[], worktrees: readonly GitWorktreeIdentity[]): {
   readonly plans: readonly ReportedPlanProgress[];
   readonly issues: readonly string[];
 } {
   const plans = new Map<string, ReportedPlanProgress>();
+  const locations = new Map<string, PlanLocation>();
   const issues: string[] = [];
   for (const run of taskRuns) {
     if (run.version !== 2) continue;
-    const planId = `${run.repositoryId}:${run.plan}`;
+    const location = { repositoryId: run.repositoryId, worktree: run.worktree, plan: run.plan };
+    locations.set(`${location.repositoryId}:${location.worktree}:${location.plan}`, location);
+  }
+  for (const worktree of worktrees) {
+    for (const path of filesBelow(join(worktree.path, "docs/plans"), ".md", 0)) {
+      const plan = relative(worktree.path, path).replaceAll("\\", "/");
+      if (!/^docs\/plans\/[a-z0-9][a-z0-9-]*\.md$/.test(plan)) continue;
+      const location = { repositoryId: worktree.repositoryId, worktree: worktree.path, plan };
+      locations.set(`${location.repositoryId}:${location.worktree}:${location.plan}`, location);
+    }
+  }
+  for (const location of locations.values()) {
+    const planId = `${location.repositoryId}:${location.plan}`;
     try {
-      const body = readFileSync(resolve(run.worktree, run.plan), "utf8");
+      const body = readFileSync(resolve(location.worktree, location.plan), "utf8");
+      if (!/^Status: APPROVED$/m.test(body)) continue;
+      const violations = protocolLockViolations(body);
+      if (violations.length > 0) throw new Error(violations.join("; "));
       const candidate: ReportedPlanProgress = {
         planId,
         planRevision: protocolImplementationHash(body),
@@ -211,7 +233,7 @@ export class LocalMachineObservationSource implements CollectorObservationSource
     issues.push(...git.issues.map(() => "git_discovery_failed"));
     const receipts = correlationReceipts(git.worktrees, this.config.machineId);
     issues.push(...receipts.issues);
-    const planProjection = reportedPlans(receipts.taskRuns);
+    const planProjection = reportedPlans(receipts.taskRuns, git.worktrees);
     issues.push(...planProjection.issues);
     return {
       agents: classifySessionActivities({

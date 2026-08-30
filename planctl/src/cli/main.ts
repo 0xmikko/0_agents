@@ -7,6 +7,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 
 import type { DeliveryMeta, ParsedStageInput, TaskExecutionBrief } from "../core/plan-update";
 import type { TaskRun, TaskRunV1 } from "../core/task-run";
+import type { GitWorktreeIdentity } from "../machine/sessions/session-source";
 import type { FocusView, ProgressPlanView } from "./render";
 
 function portableRuntimeFile(name: "plan-gate.ts" | "plan-update.ts"): string {
@@ -288,6 +289,19 @@ function taskRunPath(rootPath: string, plan: string, taskId: string): string {
   return join(common, "planctl", "task-runs", `${planKey}-${taskId}.json`);
 }
 
+function writeTaskRun(path: string, run: TaskRun): void {
+  const parent = dirname(path);
+  mkdirSync(parent, { recursive: true });
+  const temporary = mkdtempSync(join(parent, ".task-run-"));
+  const candidate = join(temporary, "receipt.json");
+  try {
+    writeFileSync(candidate, `${JSON.stringify(run, null, 2)}\n`, { mode: 0o600 });
+    renameSync(candidate, path);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
 function gitCommonDir(rootPath: string): string {
   return git(rootPath, "rev-parse", "--path-format=absolute", "--git-common-dir");
 }
@@ -390,8 +404,12 @@ async function startTask(args: readonly string[]): Promise<void> {
     if (spawnSync("git", ["-C", rootPath, "merge-base", "--is-ancestor", existing.baseHead, "HEAD"]).status !== 0) {
       throw new Error(`Task ${brief.id} start base is not ancestral to HEAD`);
     }
+    const run = existing.version === 1
+      ? await distributedTaskRun(args, rootPath, target.relative, body, existing)
+      : existing;
+    if (existing.version === 1 && run.version === 2) writeTaskRun(path, run);
     await clearOwnerWaitForTask(rootPath, target.relative, brief.id);
-    printTaskStart(brief, existing);
+    printTaskStart(brief, run);
     return;
   }
   const legacy: TaskRunV1 = {
@@ -405,8 +423,7 @@ async function startTask(args: readonly string[]): Promise<void> {
   };
   const run = await distributedTaskRun(args, rootPath, target.relative, body, legacy);
   await clearOwnerWaitForTask(rootPath, target.relative, brief.id);
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(run, null, 2)}\n`, { mode: 0o600 });
+  writeTaskRun(path, run);
   printTaskStart(brief, run);
 }
 
@@ -441,21 +458,25 @@ async function distributedTaskRun(
   if (config.role !== "machine") throw new Error("start-task configuration has the wrong role");
   const common = gitCommonDir(rootPath);
   const repositoryRoot = basename(common) === ".git" ? dirname(common) : rootPath;
-  const repositoryId = config.repositoryIds[repositoryRoot];
-  if (repositoryId === undefined) {
+  const discoveryRuntime = await import(resolve(import.meta.dir, "../machine/discovery/git-worktree.source.ts"));
+  const discovery = discoveryRuntime.discoverGitWorktrees([repositoryRoot], config.repositoryIds);
+  const identity = discovery.worktrees.find(
+    (worktree: GitWorktreeIdentity) => resolve(worktree.path) === resolve(rootPath),
+  );
+  if (identity === undefined) {
     if (!args.includes("--agent") && !args.includes("--config")) return legacy;
-    throw new Error(`machine config has no repository ID for ${repositoryRoot}`);
+    const reason = discovery.issues[0]?.message ?? `worktree ${rootPath} was not discovered`;
+    throw new Error(`distributed start-task has no repository identity: ${reason}`);
   }
-  const branch = git(rootPath, "rev-parse", "--abbrev-ref", "HEAD");
-  if (branch === "HEAD") throw new Error("distributed start-task requires a named branch");
+  if (identity.branch === "(detached)") throw new Error("distributed start-task requires a named branch");
   const candidate: TaskRun = {
     ...legacy,
     version: 2,
     machineId: config.machineId,
     agentId,
-    repositoryId,
+    repositoryId: identity.repositoryId,
     worktree: rootPath,
-    branch,
+    branch: identity.branch,
     planRevision: protocolImplementationHash(body),
     ownerWait: null,
   };

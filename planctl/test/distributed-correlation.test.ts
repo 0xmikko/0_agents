@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -11,6 +11,7 @@ import {
   lockPlanSpec,
   putDelivery,
   putStage,
+  recordStageResult,
   replaceDraftSpec,
 } from "../src/core/plan-update";
 import { LocalMachineObservationSource } from "../src/machine/app.module";
@@ -87,7 +88,7 @@ afterEach(() => {
  * Mocks: process discovery may add unrelated agents; the asserted fixture identity is exact
  * Data: explicit machine, repository, worktree, branch and Codex session identity
  */
-it("tst_int_planctl_correlation_001 binds a real start-task receipt through the collector", () => {
+function assertCorrelationLifecycle(): void {
   const root = mkdtempSync(join(tmpdir(), "planctl-correlation-"));
   roots.push(root);
   mkdirSync(join(root, "docs/plans"), { recursive: true });
@@ -99,6 +100,7 @@ it("tst_int_planctl_correlation_001 binds a real start-task receipt through the 
   git(root, "config", "user.email", "planctl@example.test");
   git(root, "config", "user.name", "Planctl Test");
   git(root, "checkout", "-qb", "feat/correlation");
+  git(root, "remote", "add", "origin", "git@github.com:fixture/repository.git");
   const plan = "docs/plans/correlation.md";
   writeFileSync(join(root, plan), approvedPlan());
   writeFileSync(join(root, "src/example.ts"), "export {};\n");
@@ -114,7 +116,7 @@ it("tst_int_planctl_correlation_001 binds a real start-task receipt through the 
   writeFileSync(configPath, `
 version = 1
 machine_id = "machine-a"
-repository_ids = { "${root}" = "fixture/repository" }
+repository_ids = {}
 
 [server]
 url = "https://planctl.example.test"
@@ -146,7 +148,31 @@ claude_sessions = "${join(root, "sessions/claude")}"
     "",
   ].join("\n"));
 
-  const started = spawnSync("bun", [CLI, "start-task", plan, "--task", "CORR_001"], {
+  const legacy = spawnSync("bun", [CLI, "start-task", plan, "--task", "CORR_001"], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      XDG_CONFIG_HOME: configRoot,
+      CODEX_SESSION_ID: "",
+      CODEX_THREAD_ID: "",
+      CLAUDE_SESSION_ID: "",
+    },
+  });
+  expect(legacy.status, legacy.stderr).toBe(0);
+  expect(legacy.stdout).toContain("TaskRunV1");
+
+  const started = spawnSync("bun", [
+    CLI,
+    "start-task",
+    plan,
+    "--task",
+    "CORR_001",
+    "--agent",
+    "codex:fixture-session",
+    "--config",
+    configPath,
+  ], {
     cwd: root,
     encoding: "utf8",
     env: {
@@ -167,7 +193,7 @@ claude_sessions = "${join(root, "sessions/claude")}"
     version: 2,
     machineId: "machine-a",
     agentId: "codex:fixture-session",
-    repositoryId: "fixture/repository",
+    repositoryId: "github.com/fixture/repository",
     worktree: root,
     branch: "feat/correlation",
   });
@@ -181,11 +207,62 @@ claude_sessions = "${join(root, "sessions/claude")}"
     );
     expect(observation.agents.find((agent) => agent.agentId === "codex:fixture-session")).toMatchObject({
       state: "working",
-      repositoryId: "fixture/repository",
-      planId: "fixture/repository:docs/plans/correlation.md",
+      repositoryId: "github.com/fixture/repository",
+      planId: "github.com/fixture/repository:docs/plans/correlation.md",
       taskId: "CORR_001",
     });
+
+    const completed = recordStageResult(readFileSync(join(root, plan), "utf8"), {
+      version: 1,
+      plan,
+      deliveryId: "D1",
+      stageId: "D1-S1",
+      taskIds: ["CORR_001"],
+      commit: git(root, "rev-parse", "HEAD"),
+      startedAt: "2026-08-30T00:00:00.000Z",
+      endedAt: "2026-08-30T00:20:00.000Z",
+      activeMinutes: 20,
+      elapsedMinutes: 20,
+      usage: { kind: "unavailable", reason: "fixture" },
+      paths: ["src/example.ts"],
+      tests: [{ id: "tst_fixture_001", command: "bun test" }],
+      result: "Fixture Task completed.",
+      deviations: [],
+      tempRoots: [{ path: ".tmp/code-production/correlation/D1-S1", state: "absent" }],
+    }, {
+      commitIsAncestor: () => true,
+      commitPaths: () => ["src/example.ts"],
+      pathExists: () => false,
+    });
+    writeFileSync(join(root, plan), completed.body);
+    unlinkSync(join(receiptRoot, receiptFile));
+    const afterCompletion = new LocalMachineObservationSource(config, store).scan(
+      new Date("2026-08-30T00:00:03.000Z"),
+    );
+    expect(afterCompletion.plans).toHaveLength(1);
+    expect(afterCompletion.plans[0]?.completedTaskSamples).toEqual([{
+      sampleId: `D1-S1:${git(root, "rev-parse", "HEAD")}`,
+      predictedActiveMinutes: 10,
+      actualActiveMinutes: 20,
+      completedAt: "2026-08-30T00:20:00.000Z",
+    }]);
   } finally {
     store.close();
   }
+}
+
+it("tst_int_planctl_correlation_001 binds a real start-task receipt through the collector", () => {
+  assertCorrelationLifecycle();
+});
+
+/**
+ * @test-id: tst_int_planctl_correlation_lifecycle_001
+ * @scenario: scn_planctl_correlation_lifecycle_001
+ * @covers: planctl/src/cli/main.ts::startTask
+ * @covers: planctl/src/machine/app.module.ts::LocalMachineObservationSource.scan
+ * @deterministic: yes
+ * @fixtures: V1-to-V2 upgrade, normalized Git remote and completed Stage Result
+ */
+it("tst_int_planctl_correlation_lifecycle_001 retains evidence after Task receipt consumption", () => {
+  assertCorrelationLifecycle();
 });

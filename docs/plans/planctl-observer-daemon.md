@@ -2,7 +2,7 @@
 
 Status: APPROVED
 Spec lock: sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
-Implementation lock: sha256:831a994cd4946083662499070f3a5bc62f30e8229ab39219b014c00d4e6102e7 owner:fix it until approved
+Implementation lock: sha256:b19c9926ae6da74c571a7b1152b523c2f84ce5a39160354f7ae687462e50613e owner:fix it until approved
 Active Delivery: D1
 Unattended decisions: allowed
 
@@ -472,7 +472,7 @@ LLM summaries and UI work require separate owner-approved plans.
 
 Branch: `feat/planctl-observer-daemon`; Depends: none; Gate: cd planctl && bun run agent:verify:pr.
 
-Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7 -> D1-S8 -> D1-S9 -> D1-S10`.
+Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7 -> D1-S8 -> D1-S9 -> D1-S10 -> D1-S11`.
 
 <!-- plan:stage:D1-S1:start -->
 <!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["planctl/package.json","planctl/bun.lock","planctl/tsconfig.json","planctl/src/cli/main.ts","planctl/src/core/plan-gate.ts","planctl/src/core/plan-update.ts","planctl/test/package-boundary.test.ts","planctl/test/planctl.test.ts","planctl/test/plan-gate.test.ts","planctl/test/plan-update.test.ts","shared/code-production/runtime/planctl.ts","shared/code-production/runtime/plan-gate.ts","shared/code-production/runtime/plan-update.ts","shared/code-production/runtime/planctl.test.ts","shared/code-production/runtime/plan-gate.test.ts","shared/code-production/runtime/plan-update.test.ts","shared/code-production/agent-stack.ts","shared/code-production/agent-stack.test.ts","shared/code-production/README.md","shared/code-production/laws/development-process.md","shared/code-production/laws/git-workflow.md","shared/code-production/laws/plan-format.md","shared/code-production/laws/plan-protocol.md","bin/planctl"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S1"} -->
@@ -885,6 +885,38 @@ Predict: 240 active min / 95 credits.
 | PLCTL_023 | 6daace29e4af2a846dded1d22d34f578aae51bc5 | 2026-08-30T07:54:44.307Z–2026-08-30T08:50:52.000Z | 50 / 56.13 min | unavailable: runner did not expose per-Stage token or credit usage | Real task starts correlate through collectors; completed Stage evidence calibrates forecasts idempotently; owner-wait duration reaches Telegram. |
 <!-- plan:results:D1-S10:end -->
 <!-- plan:stage:D1-S10:end -->
+
+<!-- plan:stage:D1-S11:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S10"],"parallelWith":[],"writes":["planctl/src/cli/main.ts","planctl/src/machine/app.module.ts","planctl/test/distributed-correlation.test.ts","planctl/README.md"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S11"} -->
+#### Stage D1-S11 — Retain plan evidence across the complete Task lifecycle
+
+Owner: integrator; Profile: strong; Depends: D1-S10; Parallel with: none.
+Writes: `planctl/src/cli/main.ts`, `planctl/src/machine/app.module.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/README.md`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S11` (must be absent at handoff).
+Predict: 80 active min / 30 credits.
+
+##### Tasks
+
+- [ ] PLCTL_024 — preserve distributed binding and completed calibration evidence before, during and after Task completion
+      Writes: `planctl/src/cli/main.ts`, `planctl/src/machine/app.module.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/README.md`.
+      Predict: 80 active min / 30 credits.
+      How: upgrade an existing V1 receipt when explicit identity arrives, reuse normalized Git discovery for repository identity, discover approved plans independently of active receipts, and prove the final completed sample remains observable after receipt consumption
+      RED: `bun run agent:test:backend -- test/distributed-correlation.test.ts -t tst_int_planctl_correlation_lifecycle_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/distributed-correlation.test.ts` exits 0 — remote identity, V1 upgrade and post-completion evidence all traverse the real collector
+- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green
+- [ ] The registered Stage temp root is absent before publication
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S11:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S11:end -->
+<!-- plan:stage:D1-S11:end -->
 <!-- plan:delivery:D1:end -->
 <!-- plan:implementation:end -->
 
@@ -980,4 +1012,8 @@ Predict: 240 active min / 95 credits.
 - record-result D1-S10 commit:6daace29e4af2a846dded1d22d34f578aae51bc5
 
 - close D1-S10 partial commit:6daace29e4af2a846dded1d22d34f578aae51bc5
+
+- amend implementation owner:fix it until approved sha256:021285faee8dc4e07f2a0b2b2eac7b61c2322f2f071963c786d440c3f84c4759
+
+- amend implementation owner:fix it until approved sha256:b19c9926ae6da74c571a7b1152b523c2f84ce5a39160354f7ae687462e50613e
 <!-- plan:execution:end -->
