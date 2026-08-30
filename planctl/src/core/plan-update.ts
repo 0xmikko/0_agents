@@ -53,6 +53,10 @@ export interface StageInput {
   readonly tempRoot: string;
   readonly predictedActiveMinutes: number;
   readonly predictedCredits: number;
+  /** Review/verification share on top of the task sum — the Stage forecast
+   * must equal tasks + verification, so estimates stay derived. */
+  readonly verifyActiveMinutes: number;
+  readonly verifyCredits: number;
   readonly tasks: readonly TaskInput[];
   readonly criteria: readonly string[];
 }
@@ -60,6 +64,7 @@ export interface StageInput {
 export interface ParsedTaskInput extends TaskInput {
   readonly completed: boolean;
   readonly completionCommit: string | null;
+  readonly format: "modern" | "legacy";
 }
 
 export interface ParsedStageInput {
@@ -74,6 +79,8 @@ export interface ParsedStageInput {
   readonly tempRoot: string;
   readonly predictedActiveMinutes: number;
   readonly predictedCredits: number;
+  readonly verifyActiveMinutes: number;
+  readonly verifyCredits: number;
   readonly tasks: readonly ParsedTaskInput[];
   readonly criteria: readonly string[];
 }
@@ -306,6 +313,33 @@ function assertTaskContract(task: TaskInput, stageWrites: readonly string[]): vo
     assertSafeInline(path, `Task ${task.id} write`);
     if (!stageWrites.includes(path)) throw new Error(`Task ${task.id} write ${path} is outside Stage writes`);
   }
+  const format = "format" in task ? task.format : "modern";
+  if (format !== "legacy") {
+    // @invariant: compact Tasks carry their whole change in the visible story.
+    // Legacy five-line Tasks keep their original contract so active approved
+    // plans remain amendable after adopting this renderer.
+    const storyNames = (path: string): boolean => {
+      const base = path.split("/").pop() ?? path;
+      return task.story.includes(path) || task.story.includes(base);
+    };
+    const unnamedWrites = task.writes.filter((path) => !storyNames(path));
+    if (unnamedWrites.length > 0) {
+      throw new Error(
+        `Task ${task.id} story must name every write path (full path or basename): ${unnamedWrites.join(", ")}`,
+      );
+    }
+    if (task.story.trim().length > 200) {
+      throw new Error(`Task ${task.id} story must fit two lines (max 200 characters)`);
+    }
+    if (/\b(?:colleague|half-?landed|rename map|the new files|the old files|as discussed)\b/i.test(task.story)) {
+      throw new Error(
+        `Task ${task.id} story has an unresolved reference — name the exact paths and symbols instead`,
+      );
+    }
+    if (task.writes.length > 4) {
+      throw new Error(`Task ${task.id} declares too many writes — one task is one change (max 4 files)`);
+    }
+  }
   if (task.predictedActiveMinutes <= 0 || task.predictedCredits < 0) {
     throw new Error(`Task ${task.id} predictions must be non-negative and active minutes must be positive`);
   }
@@ -323,8 +357,15 @@ function assertStageContract(input: StageInput): void {
   for (const task of input.tasks) assertTaskContract(task, input.writes);
   const taskActiveMinutes = input.tasks.reduce((sum, task) => sum + task.predictedActiveMinutes, 0);
   const taskCredits = input.tasks.reduce((sum, task) => sum + task.predictedCredits, 0);
-  if (taskActiveMinutes > input.predictedActiveMinutes || taskCredits > input.predictedCredits) {
-    throw new Error(`Stage ${input.id} Task forecasts exceed Stage forecast`);
+  if (input.verifyActiveMinutes < 0 || input.verifyCredits < 0) {
+    throw new Error(`Stage ${input.id} verification share must be non-negative`);
+  }
+  if (taskActiveMinutes + input.verifyActiveMinutes !== input.predictedActiveMinutes
+    || taskCredits + input.verifyCredits !== input.predictedCredits) {
+    throw new Error(
+      `Stage ${input.id} forecast must equal task sum plus verification `
+      + `(${taskActiveMinutes}+${input.verifyActiveMinutes} min, ${taskCredits}+${input.verifyCredits} credits)`,
+    );
   }
 }
 
@@ -398,14 +439,23 @@ function renderStage(input: StageInput): string {
     parallelWith: input.parallelWith,
     writes: input.writes,
     tempRoot: input.tempRoot,
+    verifyActiveMinutes: input.verifyActiveMinutes,
+    verifyCredits: input.verifyCredits,
   });
+  // Two visible lines per Task: the story, and a hidden metadata comment.
+  // Forecast/How/RED stay machine-readable and surface through start-task.
   const tasks = input.tasks.flatMap((task) => {
+    const taskMeta = JSON.stringify({
+      writes: task.writes,
+      predictedActiveMinutes: task.predictedActiveMinutes,
+      predictedCredits: task.predictedCredits,
+      how: task.how,
+      red: task.red,
+    });
+    if (taskMeta.includes("-->")) throw new Error(`Task ${task.id} metadata must not contain "-->"`);
     return [
-      `- [ ] ${task.id} — ${task.story}`,
-      `      Writes: ${task.writes.map((path) => `\`${path}\``).join(", ")}.`,
-      `      Predict: ${task.predictedActiveMinutes} active min / ${task.predictedCredits} credits.`,
-      `      How: ${task.how}`,
-      `      RED: \`${task.red}\``,
+      `- [ ] ${task.id} — ${task.story} (${task.predictedActiveMinutes} min)`,
+      `<!-- plan:task-meta:${taskMeta} -->`,
     ];
   });
   const criteria = input.criteria.map((criterion) => `- [ ] ${criterion}`);
@@ -419,6 +469,7 @@ function renderStage(input: StageInput): string {
     `Writes: ${input.writes.map((path) => `\`${path}\``).join(", ")}.`,
     `Temp root: \`${input.tempRoot}\` (must be absent at handoff).`,
     `Predict: ${input.predictedActiveMinutes} active min / ${input.predictedCredits} credits.`,
+    `Of which verification: ${input.verifyActiveMinutes} active min / ${input.verifyCredits} credits.`,
     "",
     "##### Tasks",
     "",
@@ -477,9 +528,60 @@ export function stageInputs(body: string): readonly ParsedStageInput[] {
     const heading = block.match(/^#### Stage [^\n]+ — (.+)$/m);
     const ownerLine = block.match(/^Owner: ([^;]+); Profile: (fast|strong);/m);
     if (heading === null || ownerLine === null) throw new Error(`Stage ${match[1]} has incomplete rendered metadata`);
-    const taskMatches = [...block.matchAll(
+    // Current format: story line + hidden task-meta comment. Legacy format
+    // (visible Writes/Predict/How/RED lines) still parses so committed plans
+    // keep working; the two patterns cannot match the same task.
+    const modernTasks = [...block.matchAll(
+      /^- \[([ x])\] ([A-Z][A-Z0-9_-]*) — ([^\n]+)\n<!-- plan:task-meta:(\{[^\n]*\}) -->/gm,
+    )].map((task) => {
+      const id = capture(task, 2, "Task ID");
+      const meta = parseMetaObject(`<!-- plan:task-meta:${capture(task, 4, "Task metadata")} -->`, "<!-- plan:task-meta:");
+      if (typeof meta.how !== "string" || typeof meta.red !== "string") {
+        throw new Error(`Task ${id} metadata must carry how and red`);
+      }
+      const completed = capture(task, 1, "Task state") === "x";
+      const renderedStory = capture(task, 3, "Task story");
+      const completionCommit = completed ? renderedStory.match(/ — ([0-9a-f]{7,40})$/)?.[1] ?? null : null;
+      const rawStory = completed ? renderedStory.replace(/ — [0-9a-f]{7,40}$/, "") : renderedStory;
+      return {
+        index: task.index ?? 0,
+        completed,
+        completionCommit,
+        format: "modern" as const,
+        input: {
+          id,
+          story: rawStory.replace(/ \(\d+(?:\.\d+)? min\)$/, ""),
+          writes: stringArray(meta.writes, `Task ${id} writes`),
+          predictedActiveMinutes: Number(meta.predictedActiveMinutes),
+          predictedCredits: Number(meta.predictedCredits),
+          how: meta.how,
+          red: meta.red,
+        },
+      };
+    });
+    const legacyTasks = [...block.matchAll(
       /^- \[([ x])\] ([A-Z][A-Z0-9_-]*) — ([^\n]+)\n\s+Writes: ([^\n]+)\.\n\s+Predict: (\d+(?:\.\d+)?) active min \/ (\d+(?:\.\d+)?) credits\.\n\s+How: ([^\n]+)\n\s+RED: `([^`]+)`/gm,
-    )];
+    )].map((task) => {
+      const completed = capture(task, 1, "Task state") === "x";
+      const renderedStory = capture(task, 3, "Task story");
+      const completionCommit = completed ? renderedStory.match(/ — ([0-9a-f]{7,40})$/)?.[1] ?? null : null;
+      return {
+        index: task.index ?? 0,
+        completed,
+        completionCommit,
+        format: "legacy" as const,
+        input: {
+          id: capture(task, 2, "Task ID"),
+          story: completed ? renderedStory.replace(/ — [0-9a-f]{7,40}$/, "") : renderedStory,
+        writes: renderedPaths(capture(task, 4, "Task writes"), `Task ${capture(task, 2, "Task ID")} writes`),
+        predictedActiveMinutes: Number(capture(task, 5, "Task active minutes")),
+        predictedCredits: Number(capture(task, 6, "Task credits")),
+        how: capture(task, 7, "Task how"),
+        red: capture(task, 8, "Task RED"),
+        },
+      };
+    });
+    const taskMatches = [...modernTasks, ...legacyTasks].sort((left, right) => left.index - right.index);
     const criteriaBlock = block.match(/##### Acceptance criteria\n\n([\s\S]*?)\n\n##### Results/);
     inputs.push({
       id,
@@ -493,22 +595,22 @@ export function stageInputs(body: string): readonly ParsedStageInput[] {
       tempRoot: typeof meta.tempRoot === "string" ? meta.tempRoot : "",
       predictedActiveMinutes: Number(capture(match, 3, "Stage active minutes")),
       predictedCredits: Number(capture(match, 4, "Stage credits")),
-      tasks: taskMatches.map((task) => {
-        const completed = capture(task, 1, "Task state") === "x";
-        const renderedStory = capture(task, 3, "Task story");
-        const completionCommit = completed ? renderedStory.match(/ — ([0-9a-f]{7,40})$/)?.[1] ?? null : null;
-        return {
-          id: capture(task, 2, "Task ID"),
-          story: completed ? renderedStory.replace(/ — [0-9a-f]{7,40}$/, "") : renderedStory,
-          writes: renderedPaths(capture(task, 4, "Task writes"), `Task ${capture(task, 2, "Task ID")} writes`),
-          predictedActiveMinutes: Number(capture(task, 5, "Task active minutes")),
-          predictedCredits: Number(capture(task, 6, "Task credits")),
-          how: capture(task, 7, "Task how"),
-          red: capture(task, 8, "Task RED"),
-          completed,
-          completionCommit,
-        };
-      }),
+      // Legacy plans carry no verification share: it derives as the gap
+      // between the stage forecast and the task sum, which is its meaning.
+      verifyActiveMinutes: typeof meta.verifyActiveMinutes === "number"
+        ? meta.verifyActiveMinutes
+        : Math.max(0, Number(capture(match, 3, "Stage active minutes"))
+          - taskMatches.reduce((sum, task) => sum + task.input.predictedActiveMinutes, 0)),
+      verifyCredits: typeof meta.verifyCredits === "number"
+        ? meta.verifyCredits
+        : Math.max(0, Number(capture(match, 4, "Stage credits"))
+          - taskMatches.reduce((sum, task) => sum + task.input.predictedCredits, 0)),
+      tasks: taskMatches.map((task) => ({
+        ...task.input,
+        completed: task.completed,
+        completionCommit: task.completionCommit,
+        format: task.format,
+      })),
       criteria: criteriaBlock === null
         ? []
         : capture(criteriaBlock, 1, "Stage criteria").split("\n").filter((line) => /^- \[[ x]\] /.test(line)).map((line) =>
@@ -672,9 +774,26 @@ export function lockPlanSpec(body: string, ownerWord: string): MutationResult {
 
 export function putDelivery(body: string, input: DeliveryInput): MutationResult {
   requireState(body, "SPEC_LOCKED");
-  if (body.includes(deliveryStart(input.id))) throw new Error(`Delivery ${input.id} already exists`);
   const current = deliveryMetas(body);
-  if (input.active && current.some((delivery) => delivery.active)) throw new Error("only one active Delivery is allowed");
+  if (input.active && current.some((delivery) => delivery.id !== input.id && delivery.active)) {
+    throw new Error("only one active Delivery is allowed");
+  }
+  if (body.includes(deliveryStart(input.id))) {
+    const delivery = region(body, deliveryStart(input.id), deliveryEnd(input.id));
+    const firstStage = delivery.text.indexOf("<!-- plan:stage:");
+    const stages = firstStage === -1
+      ? ""
+      : delivery.text.slice(firstStage, delivery.text.lastIndexOf(deliveryEnd(input.id))).trim();
+    const rendered = renderDelivery(input);
+    const beforeEnd = rendered.slice(0, rendered.lastIndexOf(deliveryEnd(input.id))).trimEnd();
+    const replacement = `${beforeEnd}${stages === "" ? "" : `\n\n${stages}`}\n${deliveryEnd(input.id)}`;
+    let next = `${body.slice(0, delivery.from)}${replacement}${body.slice(delivery.to)}`;
+    next = replaceHeader(next, "Active Delivery", input.active
+      ? input.id
+      : current.find((candidate) => candidate.id !== input.id && candidate.active)?.id ?? "none");
+    next = appendExecution(next, `replace-delivery ${input.id}`);
+    return { body: next };
+  }
   const implementation = region(body, IMPLEMENTATION_START, IMPLEMENTATION_END);
   const beforeEnd = implementation.text.slice(0, implementation.text.lastIndexOf(IMPLEMENTATION_END)).trimEnd();
   const replacement = `${beforeEnd}\n\n${renderDelivery(input)}\n${IMPLEMENTATION_END}`;
@@ -686,13 +805,20 @@ export function putDelivery(body: string, input: DeliveryInput): MutationResult 
 
 export function putStage(body: string, input: StageInput): MutationResult {
   requireState(body, "SPEC_LOCKED");
-  if (body.includes(stageStart(input.id))) throw new Error(`Stage ${input.id} already exists`);
-  const delivery = region(body, deliveryStart(input.deliveryId), deliveryEnd(input.deliveryId));
   const existing = stageInputs(body);
   for (const dependency of input.depends) {
-    if (!existing.some((stage) => stage.id === dependency)) throw new Error(`${input.id} depends on unknown Stage ${dependency}`);
+    if (dependency === input.id || !existing.some((stage) => stage.id === dependency)) {
+      throw new Error(`${input.id} depends on unknown Stage ${dependency}`);
+    }
   }
-  assertParallelWrites(input, existing);
+  assertParallelWrites(input, existing.filter((stage) => stage.id !== input.id));
+  if (body.includes(stageStart(input.id))) {
+    const current = region(body, stageStart(input.id), stageEnd(input.id));
+    let next = `${body.slice(0, current.from)}${renderStage(input)}${body.slice(current.to)}`;
+    next = appendExecution(next, `replace-stage ${input.id}`);
+    return { body: next };
+  }
+  const delivery = region(body, deliveryStart(input.deliveryId), deliveryEnd(input.deliveryId));
   const beforeEnd = delivery.text.slice(0, delivery.text.lastIndexOf(deliveryEnd(input.deliveryId))).trimEnd();
   const replacement = `${beforeEnd}\n\n${renderStage(input)}\n${deliveryEnd(input.deliveryId)}`;
   let next = replaceRegion(body, deliveryStart(input.deliveryId), deliveryEnd(input.deliveryId), replacement);
@@ -708,6 +834,11 @@ export function dropImplementationRecord(body: string, id: string): MutationResu
   let next = `${body.slice(0, current.from)}${body.slice(current.to)}`.replace(/\n{3,}/g, "\n\n");
   next = appendExecution(next, `drop ${id}`);
   return { body: next };
+}
+
+export function removeDraftStage(body: string, id: string): MutationResult {
+  if (!STAGE_ID.test(id)) throw new Error(`invalid Stage ID ${id}`);
+  return dropImplementationRecord(body, id);
 }
 
 export function moveImplementationRecord(body: string, id: string, beforeId: string): MutationResult {
@@ -779,10 +910,23 @@ function defaultCommitIsAncestor(commit: string): boolean {
   return spawnSync("git", ["merge-base", "--is-ancestor", commit, "HEAD"]).status === 0;
 }
 
-function defaultCommitPaths(commit: string): readonly string[] {
-  const result = spawnSync("git", ["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", commit], { encoding: "utf8" });
+export function stageResultCommitPaths(commit: string, root = process.cwd()): readonly string[] {
+  const firstParent = spawnSync("git", ["rev-parse", "--verify", `${commit}^1`], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  const result = firstParent.status === 0
+    ? spawnSync("git", ["diff", "--name-only", firstParent.stdout.trim(), commit], { cwd: root, encoding: "utf8" })
+    : spawnSync("git", ["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", commit], {
+        cwd: root,
+        encoding: "utf8",
+      });
   if (result.status !== 0) throw new Error(`cannot inspect Stage result commit ${commit}`);
   return result.stdout.split("\n").filter((path) => path !== "");
+}
+
+function defaultCommitPaths(commit: string): readonly string[] {
+  return stageResultCommitPaths(commit);
 }
 
 export function recordStageResult(
@@ -1122,6 +1266,7 @@ function stageFrom(value: unknown): StageInput {
     parallelWith: stringArray(record.parallelWith, "parallelWith"), writes: stringArray(record.writes, "writes"),
     tempRoot: requiredString(record, "tempRoot"),
     predictedActiveMinutes: requiredNumber(record, "predictedActiveMinutes"), predictedCredits: requiredNumber(record, "predictedCredits"),
+    verifyActiveMinutes: requiredNumber(record, "verifyActiveMinutes"), verifyCredits: requiredNumber(record, "verifyCredits"),
     tasks: tasksFrom(record.tasks), criteria: stringArray(record.criteria, "criteria"),
   };
 }
@@ -1219,7 +1364,7 @@ function requiredFlag(args: readonly string[], name: string): string {
 }
 
 function usage(): never {
-  console.error("usage: bun planctl/src/core/plan-update.ts <plan> <lock-spec|put-delivery|put-stage|drop|move|approve|record-result|close|deviate|amend|unattended-amend|verify-staged|clear-spent> [options]");
+  console.error("usage: bun planctl/src/core/plan-update.ts <plan> <lock-spec|put-delivery|put-stage|remove-stage|drop|move|approve|record-result|close|deviate|amend|unattended-amend|verify-staged|clear-spent> [options]");
   process.exit(64);
 }
 
@@ -1238,6 +1383,9 @@ if (import.meta.main && ["plan-update.ts", "plan-update.js"].includes(basename(i
         break;
       case "put-stage":
         mutatePlanFile(plan, command, (body) => putStage(body, stageFrom(readJson(requiredFlag(args, "--from")))));
+        break;
+      case "remove-stage":
+        mutatePlanFile(plan, command, (body) => removeDraftStage(body, requiredFlag(args, "--stage")));
         break;
       case "drop":
         mutatePlanFile(plan, command, (body) => dropImplementationRecord(body, requiredFlag(args, "--id")));

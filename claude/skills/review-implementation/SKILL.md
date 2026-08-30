@@ -1,6 +1,6 @@
 ---
 name: review-implementation
-description: Post-implementation review gate. Runs tests, launches 3 parallel cop reviews (coherence, coverage, simplicity), runs Codex code review, triages findings (real / context-mismatched / style), and reports a structured verdict. Does NOT fix; pure review. Use after an agent has made code changes.
+description: Post-implementation review gate. Reuses the exact-head Delivery receipt, launches 3 parallel cop reviews, runs Codex code review, triages findings, and reports a verdict. Does NOT fix.
 user-invocable: true
 disable-model-invocation: true
 effort: high
@@ -10,9 +10,9 @@ effort: high
 
 # Review Implementation
 
-Post-implementation review gate. Run after an agent has made code changes.
-Verifies tests, enforces project rules via 3 cops, runs Codex code review,
-triages all findings, reports a structured verdict.
+Post-implementation review gate. Run after the Integration Stage made the
+exact head green. Reuse that verification, enforce project rules via 3 cops,
+run Codex code review, triage findings and report a structured verdict.
 
 This skill does NOT fix. The caller (e.g. /start-work, /execute) handles
 the fix-and-re-review loop.
@@ -48,16 +48,20 @@ plan in the conversation — use it to understand intent.
 
 Read CLAUDE.md and AGENTS.md first for project rules.
 
-## Phase 1: TEST GATE
+## Phase 1: EXACT-HEAD RECEIPT
 
-Run tests for the changed areas.
+Do not run product suites here. Require the managed Delivery receipt to name
+the exact SHA under review:
 
-If `.claude/temp/env.sh` exists, source it and use `$TYPECHECK_CMD`,
-`$LINT_CMD`, `$TEST_CMD`. Otherwise detect from project manifests
-(package.json → bun, Cargo.toml → cargo, pyproject.toml → pytest, etc.).
+```bash
+test "$(sed -n '1p' "$(git rev-parse --path-format=absolute --git-path code-production/verify-pr.sha)")" = "$(git rev-parse HEAD)"
+```
 
-- **All tests pass** → proceed to Phase 2.
-- **Tests fail** → STOP. Report failures. Do NOT attempt fixes.
+- Receipt matches HEAD → proceed to Phase 2.
+- Receipt missing or stale → STOP and ask the caller to run the Delivery gate.
+
+Any review fix changes HEAD and invalidates the receipt. Review must not hide a
+missing publication gate by purchasing a second copy of its suites.
 
 ## Phase 2: COP REVIEW
 
@@ -107,7 +111,7 @@ Present a consolidated structured verdict:
 ```
 REVIEW VERDICT: [APPROVED | NEEDS_WORK | NEEDS_HUMAN_DECISION]
 
-Tests: PASS
+Delivery receipt: PASS @ <head-sha>
 
 Cops:
   coherence-cop:  [PASS|REJECT] (N findings)

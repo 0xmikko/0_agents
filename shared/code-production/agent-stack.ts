@@ -7,6 +7,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  lstatSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -25,7 +26,12 @@ const REQUIRED_SCRIPTS = [
 
 interface PackageContract {
   readonly scripts: Readonly<Record<string, string>>;
+  readonly ci: CiContract;
 }
+
+type CiContract =
+  | { readonly kind: "managed" }
+  | { readonly kind: "external"; readonly workflow: string };
 
 interface ManagedFile {
   readonly source: string;
@@ -74,7 +80,35 @@ function readPackage(root: string): PackageContract {
   if (commitGate.includes("agent:verify:pr")) {
     throw new Error("agent:verify:commit may not buy the complete PR gate");
   }
-  return { scripts };
+  const stackValue = packageJson.agentStack;
+  if (stackValue === undefined) return { scripts, ci: { kind: "managed" } };
+  const stack = asRecord(stackValue, "package.json agentStack");
+  const ci = stack.ci;
+  if (ci === undefined || ci === "managed") {
+    if (stack.ciWorkflow !== undefined) {
+      throw new Error("package.json agentStack.ciWorkflow requires agentStack.ci = external");
+    }
+    return { scripts, ci: { kind: "managed" } };
+  }
+  if (ci !== "external") throw new Error("package.json agentStack.ci must be managed or external");
+  const workflow = stack.ciWorkflow;
+  if (typeof workflow !== "string"
+    || !/^\.github\/workflows\/[A-Za-z0-9._-]+\.ya?ml$/.test(workflow)
+    || workflow === ".github/workflows/code-production.yml") {
+    throw new Error("package.json agentStack.ciWorkflow must name an existing project-owned GitHub workflow");
+  }
+  const externalWorkflow = join(root, workflow);
+  if (!existsSync(externalWorkflow)) {
+    throw new Error(`external CI workflow does not exist: ${workflow}`);
+  }
+  if (!lstatSync(externalWorkflow).isFile()) {
+    throw new Error(`external CI workflow must be a regular file: ${workflow}`);
+  }
+  const managedWorkflow = join(root, ".github/workflows/code-production.yml");
+  if (existsSync(managedWorkflow)) {
+    throw new Error("external CI selected while the managed code-production workflow still exists; remove it explicitly to avoid duplicate gates");
+  }
+  return { scripts, ci: { kind: "external", workflow } };
 }
 
 function git(root: string, args: readonly string[]): string {
@@ -86,9 +120,9 @@ function assertRepository(root: string): void {
   if (resolve(top) !== root) throw new Error(`${root} is not the Git repository root`);
 }
 
-function managedFiles(sourceRoot: string): readonly ManagedFile[] {
+function managedFiles(sourceRoot: string, ci: CiContract): readonly ManagedFile[] {
   const planctlSource = resolve(sourceRoot, "../../planctl/src");
-  return [
+  const files: readonly ManagedFile[] = [
     {
       source: join(planctlSource, "cli/main.ts"),
       target: ".agents/code-production/runtime/planctl.ts",
@@ -132,6 +166,9 @@ function managedFiles(sourceRoot: string): readonly ManagedFile[] {
       guarded: true,
     },
   ];
+  return ci.kind === "external"
+    ? files.filter((file) => file.target !== ".github/workflows/code-production.yml")
+    : files;
 }
 
 function assertSafeTarget(root: string, file: ManagedFile): void {
@@ -157,13 +194,19 @@ function sourceCommit(sourceRoot: string): string {
   return git(resolve(sourceRoot, "../.."), ["rev-parse", "HEAD"]);
 }
 
-function writeManifest(root: string, sourceRoot: string, files: readonly ManagedFile[]): void {
+function writeManifest(
+  root: string,
+  sourceRoot: string,
+  files: readonly ManagedFile[],
+  ci: CiContract,
+): void {
   const target = join(root, ".agents/code-production/manifest.json");
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, `${JSON.stringify({
     version: 1,
     source: "dltxperts/0_agents",
     commit: sourceCommit(sourceRoot),
+    ci: ci.kind === "managed" ? { kind: "managed" } : { kind: "external", workflow: ci.workflow },
     files: files.map((file) => file.target),
   }, null, 2)}\n`);
 }
@@ -186,9 +229,9 @@ export function installStack(rootArg: string, sourceRoot = import.meta.dir): Sta
   const root = resolve(rootArg);
   assertRepository(root);
   const contract = readPackage(root);
-  const files = managedFiles(sourceRoot);
+  const files = managedFiles(sourceRoot, contract.ci);
   for (const file of files) installFile(root, file);
-  writeManifest(root, sourceRoot, files);
+  writeManifest(root, sourceRoot, files, contract.ci);
   mkdirSync(join(root, "docs/plans"), { recursive: true });
   ensureWorktreeIgnore(root);
   git(root, ["config", "extensions.worktreeConfig", "true"]);
@@ -200,7 +243,7 @@ export function checkStack(rootArg: string, sourceRoot = import.meta.dir): Stack
   const root = resolve(rootArg);
   assertRepository(root);
   const contract = readPackage(root);
-  const files = managedFiles(sourceRoot);
+  const files = managedFiles(sourceRoot, contract.ci);
   const mismatches: string[] = [];
   for (const file of files) {
     const target = join(root, file.target);
@@ -225,6 +268,10 @@ Commands:
 
 The repository defaults to the current directory. Read:
   shared/code-production/package-contract.md
+
+Repositories with an existing complete CI workflow declare
+  package.json agentStack.ci = external
+before install; the named workflow remains the only published-SHA gate.
 `;
 
 function main(args: readonly string[]): void {

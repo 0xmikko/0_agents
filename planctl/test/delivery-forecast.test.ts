@@ -14,7 +14,7 @@ import type { StageInput, TaskInput } from "../src/core/plan-update";
 function task(id: string, minutes: number): TaskInput {
   return {
     id,
-    story: `produce observable delivery state for ${id}`,
+    story: `produce observable delivery state for ${id} in src/${id.toLowerCase()}.ts`,
     writes: [`src/${id.toLowerCase()}.ts`],
     predictedActiveMinutes: minutes,
     predictedCredits: 1,
@@ -41,6 +41,8 @@ function stage(
     tempRoot: `.tmp/code-production/forecast/${id}`,
     predictedActiveMinutes: taskInput.predictedActiveMinutes,
     predictedCredits: taskInput.predictedCredits,
+    verifyActiveMinutes: 0,
+    verifyCredits: 0,
     tasks: [taskInput],
     criteria: ["`true` exits 0 — forecast is deterministic", "Commit"],
   };

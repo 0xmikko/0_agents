@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -13,7 +13,11 @@ function git(root: string, ...args: readonly string[]): string {
   return execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
 }
 
-function packageJson(omit?: string, overrides: Readonly<Record<string, string>> = {}): string {
+function packageJson(
+  omit?: string,
+  overrides: Readonly<Record<string, string>> = {},
+  agentStack?: Readonly<Record<string, string>>,
+): string {
   const scripts: Record<string, string> = {
     "agent:install": "bun -e \"process.exit(0)\"",
     "agent:test:backend": "bun -e \"process.exit(0)\"",
@@ -25,7 +29,12 @@ function packageJson(omit?: string, overrides: Readonly<Record<string, string>> 
     ...overrides,
   };
   if (omit !== undefined) delete scripts[omit];
-  return `${JSON.stringify({ name: "consumer", private: true, scripts }, null, 2)}\n`;
+  return `${JSON.stringify({
+    name: "consumer",
+    private: true,
+    scripts,
+    ...(agentStack === undefined ? {} : { agentStack }),
+  }, null, 2)}\n`;
 }
 
 function fixture(): string {
@@ -149,5 +158,158 @@ describe("agent-stack", () => {
     expect(second.stdout).toContain("reusing complete gate receipt");
     expect(readFileSync(join(root, "docs-gate-count.txt"), "utf8")).toBe("d");
     expect(readFileSync(join(root, "pr-gate-count.txt"), "utf8")).toBe("p");
+  });
+
+  /**
+   * @test-id: tst_agent_stack_007
+   * @scenario: scn_existing_ci_adoption_001
+   * @covers: shared/code-production/agent-stack.ts::managedFiles
+   * @deterministic: yes
+   * @fixtures: temporary consumer repository with an existing CI workflow
+   *
+   * Test environment: isolated Git repository
+   * Clients: direct installer/checker API
+   * Mocks: none
+   * Data: explicit external-CI package contract and one project workflow
+   */
+  test("tst_agent_stack_007 adopts existing CI without installing a duplicate product workflow", () => {
+    const root = fixture();
+    const workflow = join(root, ".github/workflows/ci.yml");
+    mkdirSync(join(root, ".github/workflows"), { recursive: true });
+    writeFileSync(workflow, "name: Existing CI\n");
+    writeFileSync(join(root, "package.json"), packageJson(undefined, {}, {
+      ci: "external",
+      ciWorkflow: ".github/workflows/ci.yml",
+    }));
+
+    const installed = installStack(root);
+
+    expect(installed.files).toHaveLength(6);
+    expect(installed.files).not.toContain(".github/workflows/code-production.yml");
+    expect(readFileSync(workflow, "utf8")).toBe("name: Existing CI\n");
+    const manifest = readFileSync(join(root, ".agents/code-production/manifest.json"), "utf8");
+    expect(manifest).toContain('"kind": "external"');
+    expect(manifest).toContain('"workflow": ".github/workflows/ci.yml"');
+    expect(checkStack(root).files).toEqual(installed.files);
+  });
+
+  /**
+   * @test-id: tst_agent_stack_008
+   * @scenario: scn_existing_ci_adoption_002
+   * @covers: shared/code-production/agent-stack.ts::readPackage
+   * @deterministic: yes
+   * @fixtures: temporary consumer repository without the declared workflow
+   *
+   * Test environment: isolated Git repository
+   * Clients: direct installer API
+   * Mocks: none
+   * Data: external-CI package contract pointing to a missing workflow
+   */
+  test("tst_agent_stack_008 refuses an external CI contract without its named workflow", () => {
+    const root = fixture();
+    writeFileSync(join(root, "package.json"), packageJson(undefined, {}, {
+      ci: "external",
+      ciWorkflow: ".github/workflows/ci.yml",
+    }));
+
+    expect(() => installStack(root)).toThrow("external CI workflow does not exist");
+  });
+
+  test("tst_agent_stack_009 refuses a directory in place of an external CI workflow", () => {
+    const root = fixture();
+    mkdirSync(join(root, ".github/workflows/ci.yml"), { recursive: true });
+    writeFileSync(join(root, "package.json"), packageJson(undefined, {}, {
+      ci: "external",
+      ciWorkflow: ".github/workflows/ci.yml",
+    }));
+
+    expect(() => installStack(root)).toThrow("external CI workflow must be a regular file");
+  });
+
+  test("tst_agent_stack_010 refuses inconsistent external CI declarations", () => {
+    const candidates: ReadonlyArray<readonly [Readonly<Record<string, string>>, string]> = [
+      [{ ciWorkflow: ".github/workflows/ci.yml" }, "requires agentStack.ci = external"],
+      [{ ci: "managed", ciWorkflow: ".github/workflows/ci.yml" }, "requires agentStack.ci = external"],
+      [{ ci: "unknown" }, "must be managed or external"],
+      [{ ci: "external", ciWorkflow: "ci.yml" }, "must name an existing project-owned GitHub workflow"],
+      [{ ci: "external", ciWorkflow: ".github/workflows/code-production.yml" }, "must name an existing project-owned GitHub workflow"],
+    ];
+
+    for (const [agentStack, message] of candidates) {
+      const root = fixture();
+      writeFileSync(join(root, "package.json"), packageJson(undefined, {}, agentStack));
+      expect(() => installStack(root)).toThrow(message);
+    }
+  });
+
+  test("tst_agent_stack_011 refuses external ownership while the managed workflow remains", () => {
+    const root = fixture();
+    const workflows = join(root, ".github/workflows");
+    mkdirSync(workflows, { recursive: true });
+    const externalWorkflow = join(workflows, "ci.yml");
+    const managedWorkflow = join(workflows, "code-production.yml");
+    writeFileSync(externalWorkflow, "name: Existing CI\n");
+    writeFileSync(managedWorkflow, "# Managed by 0_agents code-production\n");
+    writeFileSync(join(root, "package.json"), packageJson(undefined, {}, {
+      ci: "external",
+      ciWorkflow: ".github/workflows/ci.yml",
+    }));
+
+    expect(() => installStack(root)).toThrow("remove it explicitly to avoid duplicate gates");
+    expect(readFileSync(externalWorkflow, "utf8")).toBe("name: Existing CI\n");
+    expect(readFileSync(managedWorkflow, "utf8")).toContain("Managed by 0_agents");
+  });
+
+  test("tst_agent_stack_012 refuses a symlink in place of an external CI workflow", () => {
+    const root = fixture();
+    const workflows = join(root, ".github/workflows");
+    mkdirSync(workflows, { recursive: true });
+    writeFileSync(join(workflows, "workflow-target.yml"), "name: Target\n");
+    symlinkSync("workflow-target.yml", join(workflows, "ci.yml"));
+    writeFileSync(join(root, "package.json"), packageJson(undefined, {}, {
+      ci: "external",
+      ciWorkflow: ".github/workflows/ci.yml",
+    }));
+
+    expect(() => installStack(root)).toThrow("external CI workflow must be a regular file");
+  });
+
+  test("tst_agent_stack_013 keeps markerless approved plans operable through the legacy freeze", () => {
+    const root = fixture();
+    const plan = "docs/plans/legacy.md";
+    const planPath = join(root, plan);
+    mkdirSync(join(root, "docs/plans"), { recursive: true });
+    writeFileSync(planPath, [
+      "---",
+      "doc_type: plan",
+      "status: historical",
+      "---",
+      "# Legacy plan",
+      "",
+      "Status: APPROVED",
+      "",
+      "## Goal",
+      "",
+      "Original contract.",
+      "",
+      "## Amendments",
+      "",
+      "- None.",
+      "",
+    ].join("\n"));
+    git(root, "add", plan);
+    git(root, "commit", "-m", "plan: add legacy fixture");
+    installStack(root);
+
+    writeFileSync(planPath, readFileSync(planPath, "utf8")
+      .replace("Original contract.", "Owner-amended contract.")
+      .replace("- None.", "- None.\n- 2026-08-29 (owner word): migrate this approved plan."));
+    git(root, "add", plan);
+
+    const committed = spawnSync("git", ["-C", root, "commit", "-m", "plan: amend legacy fixture"], {
+      encoding: "utf8",
+    });
+    expect(`${committed.stdout}${committed.stderr}`).not.toMatch(/no journal|missing canonical protocol/i);
+    expect(committed.status).toBe(0);
   });
 });

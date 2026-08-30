@@ -77,3 +77,8 @@ The installer vendors the lightweight CLI/core files from the dedicated
 paths, installs managed hooks and a GitHub workflow, and selects `.githooks`
 for the current worktree only. NestJS and service dependencies are not copied.
 It refuses to overwrite an unmanaged hook or workflow.
+
+If the repository already has a complete PR workflow, declare it through
+`agentStack.ci = external` and `agentStack.ciWorkflow` in `package.json` before
+installation. The stack then keeps that workflow as the only CI owner instead
+of adding a duplicate product gate; see [the package contract](package-contract.md#existing-ci).

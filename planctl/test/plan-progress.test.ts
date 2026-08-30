@@ -14,7 +14,7 @@ import type { StageInput, TaskInput } from "../src/core/plan-update";
 function task(id: string, minutes: number, credits: number): TaskInput {
   return {
     id,
-    story: `produce observable progress for ${id}`,
+    story: `produce observable progress for ${id} in src/${id.toLowerCase()}.ts`,
     writes: [`src/${id.toLowerCase()}.ts`],
     predictedActiveMinutes: minutes,
     predictedCredits: credits,
@@ -41,6 +41,8 @@ function stage(
     tempRoot: `.tmp/code-production/progress/${id}`,
     predictedActiveMinutes: tasks.reduce((sum, entry) => sum + entry.predictedActiveMinutes, 0),
     predictedCredits: tasks.reduce((sum, entry) => sum + entry.predictedCredits, 0),
+    verifyActiveMinutes: 0,
+    verifyCredits: 0,
     tasks,
     criteria: ["`true` exits 0 — progress is deterministic", "Commit"],
   };

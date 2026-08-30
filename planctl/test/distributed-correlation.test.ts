@@ -57,9 +57,11 @@ function approvedPlan(): string {
     tempRoot: ".tmp/code-production/correlation/D1-S1",
     predictedActiveMinutes: 10,
     predictedCredits: 2,
+    verifyActiveMinutes: 0,
+    verifyCredits: 0,
     tasks: [{
       id: "CORR_001",
-      story: "bind the real CLI receipt to the observed Codex session",
+      story: "bind the real CLI receipt from src/example.ts to the observed Codex session",
       writes: ["src/example.ts"],
       predictedActiveMinutes: 10,
       predictedCredits: 2,

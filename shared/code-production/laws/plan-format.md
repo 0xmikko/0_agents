@@ -37,46 +37,69 @@ lives in [development-process.md](development-process.md).
    written RED before the stage that makes it true.
 5. **Implementation** — sequential PR Deliveries, each containing Stages:
 
+   `planctl` renders this owner-view shape; the hidden comment is abbreviated
+   below and agents never hand-author it:
+
    ```markdown
    ### PR Delivery D1 — <one coherent PR result>
 
-   #### Stage D1-S1 — <one commit-sized result>
+   #### Stage D1-S1 — Reject overlapping scheduler work
 
-   Temp root: `.tmp/code-production/<plan-slug>/<Stage-ID>` — the Stage owns
-   this child and its receipt must prove it absent.
+   Owner: agent-1; Profile: fast; Depends: none; Parallel with: none.
+   Writes: `src/scheduler/parse-lanes.ts`, `test/scheduler/parse-lanes.test.ts`.
+   Temp root: `.tmp/code-production/scheduler-overlap/D1-S1` (must be absent at handoff).
+   Predict: 12 active min / 3 credits.
+   Of which verification: 2 active min / 1 credits.
 
-   A stage that legitimately splits into parallel same-shaped units (one
-   agent per controller, one commit per capability) declares it in the
-   heading — `#### Stage D1-S1 (fan-out: 9) — <name>` — and the scorecard's
-   commit arithmetic divides by the declared units.
+   ##### Tasks
 
-   <Context, at most two paragraphs: what this stage solves and why now,
-   with the stage's own target number in the text. Meaning over volume.>
+   - [ ] D1-S1-T1 — Reject overlapping Stage writes in `src/scheduler/parse-lanes.ts` and cover the refusal in `test/scheduler/parse-lanes.test.ts`. (10 min)
+   <!-- plan:task-meta:<hidden writes, credits, How and RED> -->
 
-   #### Tasks
+   ##### Acceptance criteria
 
-   - [ ] TASK_001 — <observable result, never "refactor/fix/improve X">
-         Writes: `<exact Task paths>`.
-         Predict: <active minutes> / <credits>.
-         How: <concrete procedure using an existing owner>.
-         RED: `<deterministic behavior-test command>`
-
-   #### Acceptance criteria
-
-   - [ ] `command` exits 0        ← machinable: the backticked span IS the command
-   - [ ] <the outcome, not just mechanics: speed reached, code shrunk>
+   - [ ] `<scoped command>` exits 0 — overlap is rejected
    - [ ] Commit
 
-   #### Results
+   ##### Results
+   | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+   |---|---|---|---:|---|---|
+   ```
 
-   - <what was measured>: **<the number>**, against <the target>. <How it
-     was taken, in one sentence.>
+   The Task is exactly two source lines: one rendered story with its active-time
+   forecast, then one hidden `plan:task-meta` comment containing exact writes,
+   credits, How and RED. `planctl start-task` prints that hidden contract to the
+   executor. Legacy five-line Tasks remain readable but are never generated.
+
+   A Task story is one concrete change, no more than 200 characters, and owns
+   at most four write paths. Every write appears in the story as its full path
+   or unambiguous basename. Split independent actions instead of hiding them in
+   a rename map or branch history.
+
+   ```markdown
+   Bad:  D1-S2-T1 — Finish the colleague's half-landed Verify rewire in the named files.
+   Good: D1-S2-T1 — Restore `creditOperationMarket` in `src/onchain/market/credit/index.ts`. (8 min)
+   ```
+
+   The Stage metadata is visible once; it is not copied into every Task. The
+   Stage title names the commit result, not branch history. A Task must make
+   sense without its hidden How, another Task, chat or a colleague's branch.
+   “New files”, “rename map” and “as discussed” are unresolved references and
+   are rejected.
+
+   Stage forecast is derived, never guessed independently:
+   `Stage = sum(Tasks) + verification`, for both active minutes and credits.
+   The Task minutes stay beside each story; the verification share and total
+   stay in the Stage block.
 
    A criterion carries its asserted RESULT in its own line: the number
    reached, the behavior proven, the thing now absent. A bare "test file
    exits 0" is not a criterion — name what the test proves.
    (Judge-validated in the Stage 11 tournament.)
-   ```
+
+   Each Stage registers `.tmp/code-production/<plan-slug>/<Stage-ID>` as its
+   temp child; its receipt proves the child absent. A legitimate fan-out names
+   its unit count and produces one commit per unit.
 
    **A measured result is written to `#### Results`, never into the text
    of a task or a criterion** (owner ruling, 2026-08-24). The task says
@@ -94,9 +117,9 @@ lives in [development-process.md](development-process.md).
    branch were exactly this class, found after the code instead of in
    ten minutes of planning.
 
-   Read in order, the stages tell the plan's whole story without the
-   details. A stage is a coherent unit (typically 10-20 related changes),
-   not a micro-edit.
+   Read in order, Stage titles and Task stories tell the plan's whole story
+   without exposing execution metadata. A Stage is a coherent commit, not a
+   bucket for unrelated cleanup.
 6. **Amendments** — owner-approved plan changes, one dated line each,
    written before the edit they license.
 7. **Deviations** — agent-recorded shortfalls: stage, target vs reached,
@@ -129,6 +152,12 @@ Each Task predicts active minutes and credits. A Delivery reports aggregate
 active work, longest dependency path and external waits separately. Actuals
 append later and never rewrite the forecast.
 
+Before approval, the planner traces each acceptance story across service and
+module boundaries. Every public contract that must change appears in the
+owning file's Task writes. An implementation that necessarily needs an
+unlisted owning file proves the decomposition incomplete; it does not license
+the executor to edit first and ask later.
+
 Before RED, the executor runs `planctl start-task`. It re-reads the committed
 Markdown Task or a journal-verified staged Result from the prior Stage,
 refuses blocked/closed work and starts a Git-local timer without copying or
@@ -145,8 +174,9 @@ timer. The Markdown file remains the only contract source of truth.
   Prose quoting the form is not executed. Beware `rg -c`: it prints nothing
   and exits 1 on zero matches — write `` `rg -q …` exits 1 ``.
 - A machinable criterion must hold in EVERY environment that re-runs it —
-  stage close, the pre-push lane, `/review-implementation`, the `/end-work`
-  closure. (The CI plan-gate job checks receipts only, `--no-exec`: a thin
+  Stage close, the Integration pre-push lane and the `/end-work` closure.
+  Final review reuses their exact-head receipt. (The CI plan-gate job checks
+  receipts only, `--no-exec`: a thin
   runner cannot host the stack, and a false red teaches people to ignore
   the gate.) An environment-specific measurement (this machine's branch
   fleet, local hardware timings) is recorded as prose with its number and

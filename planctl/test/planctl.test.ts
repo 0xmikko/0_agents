@@ -28,9 +28,11 @@ const STAGE: StageInput = {
   tempRoot: ".tmp/code-production/fixture/D1-S1",
   predictedActiveMinutes: 13,
   predictedCredits: 3,
+  verifyActiveMinutes: 3,
+  verifyCredits: 1,
   tasks: [{
     id: "PLANCTL_001",
-    story: "extend the canonical writer through the planctl facade",
+    story: "extend the canonical writer facade exposed by scripts/example.ts",
     writes: ["scripts/example.ts"],
     predictedActiveMinutes: 10,
     predictedCredits: 2,
@@ -91,6 +93,7 @@ describe("planctl", () => {
     expect(general.stdout).toContain("one canonical writer: plan-update");
     expect(general.stdout).toContain("start-task");
     expect(general.stdout).toContain("config check");
+    expect(general.stdout).toContain("remove-stage");
     expect(task.status).toBe(0);
     expect(task.stdout).toContain("planctl complete-task <plan.md> --from <stage-result.json>");
     expect(task.stdout).toContain('"taskIds": ["PLANCTL_001"]');
@@ -99,9 +102,12 @@ describe("planctl", () => {
     const stage = run(import.meta.dir, "put-stage", "--help");
     expect(stage.status).toBe(0);
     expect(stage.stdout).toContain('"predictedActiveMinutes": 10');
-    expect(stage.stdout).toContain('"writes": ["src/scheduler.ts", "test/scheduler.test.ts"]');
+    expect(stage.stdout).toContain(
+      '"writes": ["src/scheduler/parse-lanes.ts", "test/scheduler/parse-lanes.test.ts"]',
+    );
     expect(stage.stdout).toContain("Bad Task (rejected)");
     expect(stage.stdout).toContain("Good Task");
+    expect(stage.stdout).toContain("Add or replace");
   });
 
   /*
@@ -217,7 +223,7 @@ describe("planctl", () => {
       }
 
       const completed = readFileSync(fixture.plan, "utf8");
-      expect(completed).toContain("- [x] PLANCTL_001 — extend the canonical writer through the planctl facade");
+      expect(completed).toContain("- [x] PLANCTL_001 — extend the canonical writer facade exposed by scripts/example.ts");
       expect(completed).toContain("Canonical writer updated the addressed Task.");
       expect(completed).toContain("deviation D1-S1: No product suite needed.");
     } finally {
@@ -274,13 +280,15 @@ describe("planctl", () => {
       const expandedStage: StageInput = {
         ...STAGE,
         writes: ["scripts/example.ts", "scripts/second.ts"],
-        predictedActiveMinutes: 20,
+        predictedActiveMinutes: 21,
         predictedCredits: 4,
+        verifyActiveMinutes: 3,
+        verifyCredits: 1,
         tasks: [
           ...STAGE.tasks,
           {
             id: "PLANCTL_002",
-            story: "produce a second observable result from the approved Task contract",
+            story: "produce a second observable result in scripts/second.ts under the approved contract",
             writes: ["scripts/second.ts"],
             predictedActiveMinutes: 8,
             predictedCredits: 1,
@@ -356,6 +364,9 @@ describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_006
    * @scenario: scn_plan_control_006
+  /*
+   * @test-id: tst_scripts_planctl_006
+   * @scenario: scn_plan_control_006
    * @covers: planctl/src/cli/main.ts::focus,progress,needs-owner,resume-task
    * @deterministic: yes
    * @fixtures: temporary approved plan and Git-owned structured receipts
@@ -423,6 +434,102 @@ describe("planctl", () => {
       expect(progress.status, `${progress.stdout}\n${progress.stderr}`).toBe(0);
       expect(progress.stdout).toContain("Source: local plan docs/plans/fixture.md");
       expect(progress.stdout).toContain("Progress: 0.0% (0/1 Tasks)");
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  /*
+   * @test-id: tst_scripts_planctl_007
+   * @scenario: scn_plan_control_007
+   * @covers: planctl/src/cli/main.ts::put-stage,remove-stage
+   * @deterministic: yes
+   * @fixtures: temporary SPEC_LOCKED plan and replacement Stage JSON
+   * Test environment: isolated local Git repository
+   * Clients: CLI
+   * Mocks: none
+   * Data: one Stage replaced in place, removed, restored and approved
+   */
+  it("tst_scripts_planctl_007 freely replaces and removes a draft Stage but preserves the approved lock", () => {
+    const fixture = fixtureRepository();
+    try {
+      expect(run(fixture.root, "init", fixture.plan, "--title", "Fixture plan").status).toBe(0);
+      expect(run(fixture.root, "set-spec", fixture.plan, "--from", fixture.spec).status).toBe(0);
+      git(fixture.root, "commit", "-qam", "docs: draft plan");
+      expect(run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes").status).toBe(0);
+      expect(run(fixture.root, "put-delivery", fixture.plan, "--from", fixture.delivery).status).toBe(0);
+      expect(run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage).status).toBe(0);
+      const stageTask = STAGE.tasks[0];
+      if (stageTask === undefined) throw new Error("fixture Stage must have one Task");
+
+      const replacement: StageInput = {
+        ...STAGE,
+        title: "Replacement ownership",
+        tasks: [{ ...stageTask, story: "replace the draft Stage with one observable outcome in scripts/example.ts" }],
+      };
+      writeFileSync(fixture.stage, `${JSON.stringify(replacement)}\n`);
+      const replaced = run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage);
+      expect(replaced.status, `${replaced.stdout}\n${replaced.stderr}`).toBe(0);
+      const replacedBody = readFileSync(fixture.plan, "utf8");
+      expect(replacedBody).toContain("#### Stage D1-S1 — Replacement ownership");
+      expect(replacedBody).not.toContain("#### Stage D1-S1 — Canonical ownership");
+      expect(replacedBody.match(/<!-- plan:stage:D1-S1:start -->/g)).toHaveLength(1);
+
+      const replacementDelivery: DeliveryInput = { ...DELIVERY, title: "Replacement foundation" };
+      writeFileSync(fixture.delivery, `${JSON.stringify(replacementDelivery)}\n`);
+      const deliveryReplaced = run(fixture.root, "put-delivery", fixture.plan, "--from", fixture.delivery);
+      expect(deliveryReplaced.status, `${deliveryReplaced.stdout}\n${deliveryReplaced.stderr}`).toBe(0);
+      const deliveryBody = readFileSync(fixture.plan, "utf8");
+      expect(deliveryBody).toContain("### PR Delivery D1 — Replacement foundation");
+      expect(deliveryBody).toContain("#### Stage D1-S1 — Replacement ownership");
+
+      const removed = run(fixture.root, "remove-stage", fixture.plan, "--stage", "D1-S1");
+      expect(removed.status, `${removed.stdout}\n${removed.stderr}`).toBe(0);
+      expect(readFileSync(fixture.plan, "utf8")).not.toContain("<!-- plan:stage:D1-S1:start -->");
+
+      expect(run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage).status).toBe(0);
+      expect(run(fixture.root, "approve-plan", fixture.plan, "--owner-word", "yes").status).toBe(0);
+      const approvedReplace = run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage);
+      const approvedRemove = run(fixture.root, "remove-stage", fixture.plan, "--stage", "D1-S1");
+      expect(approvedReplace.status).toBe(1);
+      expect(approvedReplace.stderr).toContain("requires SPEC_LOCKED");
+      expect(approvedRemove.status).toBe(1);
+      expect(approvedRemove.stderr).toContain("requires SPEC_LOCKED");
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  /*
+   * @test-id: tst_scripts_planctl_008
+   * @scenario: scn_plan_control_008
+   * @covers: planctl/src/cli/main.ts::put-stage-help
+   * @deterministic: yes
+   * @fixtures: temporary SPEC_LOCKED plan and the help command's JSON example
+   * Test environment: isolated local Git repository
+   * Clients: CLI
+   * Mocks: none
+   * Data: copyable Stage JSON printed by planctl itself
+   */
+  it("tst_scripts_planctl_008 accepts the copyable Stage printed by put-stage help", () => {
+    const fixture = fixtureRepository();
+    try {
+      expect(run(fixture.root, "init", fixture.plan, "--title", "Fixture plan").status).toBe(0);
+      expect(run(fixture.root, "set-spec", fixture.plan, "--from", fixture.spec).status).toBe(0);
+      git(fixture.root, "commit", "-qam", "docs: draft plan");
+      expect(run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes").status).toBe(0);
+      expect(run(fixture.root, "put-delivery", fixture.plan, "--from", fixture.delivery).status).toBe(0);
+
+      const help = run(fixture.root, "put-stage", "--help");
+      expect(help.status, `${help.stdout}\n${help.stderr}`).toBe(0);
+      const match = help.stdout.match(/Good Task in a complete stage\.json \(copy this shape\):\n(\{[\s\S]*?\n\})\n\nBad Task/);
+      expect(match).not.toBeNull();
+      const json = match?.[1];
+      if (json === undefined) throw new Error("put-stage help did not contain copyable Stage JSON");
+      writeFileSync(fixture.stage, `${json}\n`);
+
+      const stage = run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage);
+      expect(stage.status, `${stage.stdout}\n${stage.stderr}`).toBe(0);
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }

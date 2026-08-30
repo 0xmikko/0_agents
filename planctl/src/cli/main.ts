@@ -39,8 +39,9 @@ Authoring:
   init               Create and stage a SPEC_DRAFT plan
   set-spec           Replace and stage SPEC while it is still draft
   approve-spec       Lock SPEC after explicit owner approval
-  put-delivery       Add one PR Delivery from JSON
-  put-stage          Add one commit-sized Stage from JSON
+  put-delivery       Add or replace one draft PR Delivery from JSON
+  put-stage          Add or replace one draft commit-sized Stage from JSON
+  remove-stage       Remove one draft Stage
   approve-plan       Lock Delivery, Stage and Task meaning
 
 Configuration:
@@ -82,11 +83,13 @@ Locks the exact SPEC bytes. Run only after explicit owner approval.
   "put-delivery": `Usage: planctl put-delivery <plan.md> --from <delivery.json>
 
 Delivery JSON uses the canonical plan-update DeliveryInput contract. IDs are
-D1, D2, ...; a Delivery is one PR.
+D1, D2, ...; a Delivery is one PR. Reusing an ID replaces its draft metadata
+and preserves its existing Stage blocks.
 `,
   "put-stage": `Usage: planctl put-stage <plan.md> --from <stage.json>
 
-Stage JSON is structured input; planctl renders the Markdown.
+Add or replace a Stage while the plan is SPEC_LOCKED. Stage JSON is structured
+input; planctl renders the Markdown. APPROVED plans remain immutable.
 
 Good Task in a complete stage.json (copy this shape):
 {
@@ -97,24 +100,31 @@ Good Task in a complete stage.json (copy this shape):
   "profile": "fast",
   "depends": [],
   "parallelWith": [],
-  "writes": ["src/scheduler.ts", "test/scheduler.test.ts"],
+  "writes": ["src/scheduler/parse-lanes.ts", "test/scheduler/parse-lanes.test.ts"],
   "tempRoot": ".tmp/code-production/scheduler-overlap/D1-S1",
   "predictedActiveMinutes": 12,
+  "verifyActiveMinutes": 2,
+  "verifyCredits": 1,
   "predictedCredits": 3,
   "tasks": [{
     "id": "PLANCTL_001",
-    "story": "reject two overlapping jobs for the same account",
-    "writes": ["src/scheduler.ts", "test/scheduler.test.ts"],
+    "story": "Reject overlapping Stage writes in src/scheduler/parse-lanes.ts and cover the refusal in test/scheduler/parse-lanes.test.ts.",
+    "writes": ["src/scheduler/parse-lanes.ts", "test/scheduler/parse-lanes.test.ts"],
     "predictedActiveMinutes": 10,
     "predictedCredits": 2,
-    "how": "extend the existing scheduler admission guard and keep its error contract",
-    "red": "bun run agent:test:backend -- test/scheduler.test.ts -t tst_scheduler_005"
+    "how": "change src/scheduler/parse-lanes.ts to compare exact Stage writes before assignment; add the overlap refusal case to test/scheduler/parse-lanes.test.ts",
+    "red": "bun run agent:test:backend -- test/scheduler/parse-lanes.test.ts -t tst_scheduler_005"
   }],
-  "criteria": ["\`bun run agent:test:backend -- test/scheduler.test.ts\` exits 0 — overlap is rejected", "Commit"]
+  "criteria": ["\`bun run agent:test:backend -- test/scheduler/parse-lanes.test.ts\` exits 0 — overlap is rejected", "Commit"]
 }
 
 Bad Task (rejected):
 {"id":"BAD_001","story":"Refactor scheduler","writes":[],"predictedActiveMinutes":0,"predictedCredits":0,"how":"","red":"echo done"}
+`,
+  "remove-stage": `Usage: planctl remove-stage <plan.md> --stage <D1-S1>
+
+Removes one Stage while the plan is SPEC_LOCKED. APPROVED plans remain
+immutable. Re-add or replace remaining Stage JSON before approve-plan.
 `,
   "approve-plan": `Usage: planctl approve-plan <plan.md> --owner-word <receipt>
 
@@ -220,6 +230,7 @@ const ENGINE_COMMANDS: Readonly<Record<string, string>> = {
   "approve-spec": "lock-spec",
   "put-delivery": "put-delivery",
   "put-stage": "put-stage",
+  "remove-stage": "remove-stage",
   "approve-plan": "approve",
   "complete-task": "record-result",
   "add-deviation": "deviate",

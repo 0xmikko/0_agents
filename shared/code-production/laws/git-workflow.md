@@ -1,8 +1,11 @@
 # Git and GitHub workflow
 
 These rules are shared across repositories. `agent-stack install` supplies the
-portable hooks and PR workflow; the consumer's `package.json` supplies only
-the commands they call.
+portable hooks and, by default, the PR workflow; the consumer's `package.json`
+supplies the commands they call. A repository with an equivalent existing CI
+workflow declares external ownership in `package.json`; the installer then
+keeps that named workflow as the only published-SHA gate instead of adding a
+second one.
 
 ## Branches and worktrees
 
@@ -64,9 +67,10 @@ by CI. It is not run after each edit, Task or Stage.
 - `pre-push` rejects tracked uncommitted changes, verifies plan locks and runs
   the complete project gate. A successful Git-local HEAD receipt makes the
   actual push reuse that result; any new commit invalidates it.
-- `.github/workflows/code-production.yml` rejects PR bases other than
-  `staging`, runs cheap control-plane checks on drafts, and runs the product
-  gate on ready PRs.
+- Managed CI: `.github/workflows/code-production.yml` rejects PR bases other
+  than `staging`, runs cheap control-plane checks on drafts, and runs the
+  product gate on ready PRs. Declared external CI must provide the equivalent
+  published-SHA coverage and remains the only workflow owner.
 - `agent-stack check` rejects missing package scripts, a stale vendored runtime,
   modified managed files or a worktree whose hooks path is not `.githooks`.
 - The source stack executes and verifies its canonical CLI/core from the

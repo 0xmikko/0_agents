@@ -55,7 +55,9 @@ Plan
 **Task**
 
 - Bad: “Refactor the scheduler.”
-- Good: “CPP-014 — assign two ready Stages with disjoint writes to two lanes from one base; extend the existing parser; touch only named files; predict 18 min / 8 credits; refuse overlap.”
+- Bad: “Finish the colleague's branch and apply the rename map in the named files.”
+- Good: D1-S2-T1 — Restore `creditOperationMarket` in `src/onchain/market/credit/index.ts`. (8 min)
+- Good: D1-S2-T2 — Replace generic `Error` in `src/prepare/result.ts` with `SDKError`; cover it in `test/prepare/result.test.ts`. (12 min)
 
 - Bad: “Done; tests green.”
 - Good: “CPP-014 → `abc1234`; expected RED observed; named test passed; 18 predicted / 21 actual min; usage unavailable because runner omitted tokens; no deviation; temp root absent.”
@@ -63,27 +65,39 @@ Plan
 ## Stage format
 
 ```markdown
-#### Stage D1-S1 — <one observable result>
-Owner: <integrator|child>; Profile: <fast|strong>; Depends: <IDs|none>.
-Parallel with: <IDs|none>; Writes: `<exact paths>`; Predict: <min>/<credits>.
-Temp root: `.tmp/code-production/<plan-slug>/<Stage-ID>`; absent at handoff.
+#### Stage D1-S1 — Reject overlapping scheduler work
+
+Owner: agent-1; Profile: fast; Depends: none; Parallel with: none.
+Writes: `src/scheduler/parse-lanes.ts`, `test/scheduler/parse-lanes.test.ts`.
+Temp root: `.tmp/code-production/scheduler-overlap/D1-S1` (must be absent at handoff).
+Predict: 12 active min / 3 credits.
+Of which verification: 2 active min / 1 credits.
 
 ##### Tasks
-- [ ] CPP-001 — <observable story>
-      Writes: `<exact Task paths>`.
-      Predict: <active min> / <credits>.
-      How: <procedure and exit>.
-      RED: `<deterministic test command>`
+
+- [ ] D1-S1-T1 — Reject overlapping Stage writes in `src/scheduler/parse-lanes.ts` and cover the refusal in `test/scheduler/parse-lanes.test.ts`. (10 min)
+<!-- plan:task-meta:<hidden writes, credits, How and RED> -->
 
 ##### Acceptance criteria
-- [ ] `<command>` exits 0 — <behavior proved>
-- [ ] <reviewable outcome>
+
+- [ ] `<scoped command>` exits 0 — overlap is rejected
 - [ ] Commit
 
 ##### Results
-| Task | Commit | UTC start-end | Active/elapsed | Usage | Result/proof |
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
 ```
+
+The Stage block carries routing, writes, temp root and the derived forecast
+once. A generated Task is two source lines: a story of at most 200 characters
+with `(N min)`, then hidden metadata. It owns at most four writes, and the story
+names every one by full path or basename. `start-task` reveals writes, credits,
+How and RED. Stage total must equal Task totals plus the explicit verification
+share.
+
+Before approval, trace each acceptance story through public calls. If a story
+needs a method added to another service, that owning file must already be in a
+Task's writes. Do not discover the missing scope by editing it.
 
 Forecast aggregate work, longest dependency path and external waits separately. Never divide work by agent count and call it wall time. Missing usage is `unavailable`, never zero.
 
@@ -115,6 +129,7 @@ planctl set-spec <plan> --from <spec.md>
 planctl approve-spec <plan> --owner-word <word>
 planctl put-delivery <plan> --from <delivery.json>
 planctl put-stage <plan> --from <stage.json>
+planctl remove-stage <plan> --stage <D1-S1>
 planctl approve-plan <plan> --owner-word <word>
 planctl start-task <plan> --task <Task-ID>
 planctl focus <plan> [--task <Task-ID>]
@@ -134,7 +149,11 @@ the HEAD/blob-bound journal to `plan-update`. Direct `Edit`, `Write`,
 `apply_patch`, search/replace or manual checkbox changes have no journal and are
 refused.
 
-`put-stage --help` prints the copyable JSON contract plus good/bad Tasks.
+While the plan is `SPEC_LOCKED`, rerunning `put-delivery` or `put-stage` with
+the same ID replaces that draft record in place; `remove-stage` deletes it.
+After `APPROVED` all three are refused. `put-stage --help` prints the copyable
+JSON contract plus short good/bad Tasks. The JSON carries technical metadata;
+the rendered Task stays compact and never repeats the Stage write list.
 `start-task` re-reads the committed plan or its journal-verified staged Result,
 refuses a blocked or closed Task, prints its exact scope and starts a Git-local
 timer without changing the plan. `complete-task` consumes that timer and compares the
