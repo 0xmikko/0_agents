@@ -104,6 +104,11 @@ The canonical `docs/plans/<slug>.md` is the only plan copy. JSON files are
 temporary command inputs or typed execution receipts. Git-local journals store
 hashes and timers, never a second plan.
 
+The reusable implementation lives in the dedicated `planctl/` Bun package;
+its commands run from that package working directory. `agent-stack` vendors
+only the lightweight CLI/core bytes to stable consumer runtime paths, so NestJS
+service dependencies never become part of a consumer repository contract.
+
 While status is `SPEC_DRAFT`, the agent may freely edit SPEC prose. After SPEC
 approval, and especially after `APPROVED`, all mutations go through `planctl`.
 The pre-commit hook refuses direct checkbox changes, rewritten Tasks, criteria,
@@ -128,6 +133,13 @@ For each Task:
 7. Import a typed receipt with `planctl complete-task`; the runtime compares
    its paths with frozen Task writes and the actual commit diff.
 8. Continue automatically to the next ready Stage.
+
+An owner-response wait is runtime state, not prose. Immediately before asking a
+question that blocks an active Task, record one safe-line reason with
+`planctl needs-owner <plan> --task <ID> --reason <text>`. After the response,
+clear it atomically with `planctl resume-task <plan> --task <ID>` before work
+continues; `start-task` also clears an existing marker. Transcripts, question
+marks and terminal turns never create an owner obligation.
 
 At the PR Delivery boundary, the integration Stage joins the Stage commits,
 refreshes dependencies with `agent:install`, then invokes `.githooks/pre-push`.

@@ -121,21 +121,22 @@ function assertRepository(root: string): void {
 }
 
 function managedFiles(sourceRoot: string, ci: CiContract): readonly ManagedFile[] {
+  const planctlSource = resolve(sourceRoot, "../../planctl/src");
   const files: readonly ManagedFile[] = [
     {
-      source: join(sourceRoot, "runtime/planctl.ts"),
+      source: join(planctlSource, "cli/main.ts"),
       target: ".agents/code-production/runtime/planctl.ts",
       executable: true,
       guarded: false,
     },
     {
-      source: join(sourceRoot, "runtime/plan-update.ts"),
+      source: join(planctlSource, "core/plan-update.ts"),
       target: ".agents/code-production/runtime/plan-update.ts",
       executable: true,
       guarded: false,
     },
     {
-      source: join(sourceRoot, "runtime/plan-gate.ts"),
+      source: join(planctlSource, "core/plan-gate.ts"),
       target: ".agents/code-production/runtime/plan-gate.ts",
       executable: true,
       guarded: false,

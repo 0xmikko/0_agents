@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
-import type { DeliveryInput, StageInput, StageResultReceipt } from "./plan-update";
+import type { DeliveryInput, StageInput, StageResultReceipt } from "../src/core/plan-update";
 
 const DELIVERY: DeliveryInput = {
   id: "D1",
@@ -69,14 +69,14 @@ function fixtureRepository(): {
 }
 
 function run(root: string, ...args: readonly string[]) {
-  return spawnSync("bun", [join(import.meta.dir, "planctl.ts"), ...args], { cwd: root, encoding: "utf8" });
+  return spawnSync("bun", [join(import.meta.dir, "../src/cli/main.ts"), ...args], { cwd: root, encoding: "utf8" });
 }
 
 describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_001
    * @scenario: scn_plan_control_001
-   * @covers: scripts/planctl.ts::help
+   * @covers: planctl/src/cli/main.ts::help
    * @deterministic: yes
    * @fixtures: none
    * Test environment: Bun child process
@@ -92,6 +92,7 @@ describe("planctl", () => {
     expect(general.stdout).toContain("planctl <command>");
     expect(general.stdout).toContain("one canonical writer: plan-update");
     expect(general.stdout).toContain("start-task");
+    expect(general.stdout).toContain("config check");
     expect(general.stdout).toContain("remove-stage");
     expect(task.status).toBe(0);
     expect(task.stdout).toContain("planctl complete-task <plan.md> --from <stage-result.json>");
@@ -112,7 +113,7 @@ describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_002
    * @scenario: scn_plan_control_002
-   * @covers: scripts/planctl.ts::init,set-spec,approve-spec,put-delivery,put-stage,approve-plan,verify
+   * @covers: planctl/src/cli/main.ts::init,set-spec,approve-spec,put-delivery,put-stage,approve-plan,verify
    * @deterministic: yes
    * @fixtures: temporary Git repository and JSON inputs
    * Test environment: isolated local Git repository
@@ -156,7 +157,7 @@ describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_003
    * @scenario: scn_plan_control_003
-   * @covers: scripts/planctl.ts::complete-task,add-deviation,close-stage
+   * @covers: planctl/src/cli/main.ts::complete-task,add-deviation,close-stage
    * @deterministic: yes
    * @fixtures: temporary approved plan and Stage receipt
    * Test environment: isolated local Git repository
@@ -233,7 +234,7 @@ describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_004
    * @scenario: scn_plan_control_004
-   * @covers: scripts/planctl.ts::verify
+   * @covers: planctl/src/cli/main.ts::verify
    * @deterministic: yes
    * @fixtures: temporary approved plan
    * Test environment: isolated local Git repository
@@ -265,7 +266,7 @@ describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_005
    * @scenario: scn_plan_control_005
-   * @covers: scripts/planctl.ts::start-task,complete-task
+   * @covers: planctl/src/cli/main.ts::start-task,complete-task
    * @deterministic: yes
    * @fixtures: temporary approved plan and Git-owned Task start receipt
    * Test environment: isolated local Git repository
@@ -312,6 +313,7 @@ describe("planctl", () => {
       expect(started.status, `${started.stdout}\n${started.stderr}`).toBe(0);
       expect(started.stdout).toContain("Task PLANCTL_001 STARTED");
       expect(started.stdout).toContain("Source: docs/plans/fixture.md");
+      expect(started.stdout).toContain("Distributed correlation: unavailable (TaskRunV1)");
       expect(started.stdout).toContain("Writes: scripts/example.ts");
       expect(started.stdout).toContain("RED: bun run agent:test:backend -- test/planctl.test.ts");
       const startedAt = started.stdout.match(/^Started: (.+)$/m)?.[1];
@@ -362,15 +364,18 @@ describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_006
    * @scenario: scn_plan_control_006
-   * @covers: scripts/planctl.ts::put-stage,remove-stage
+  /*
+   * @test-id: tst_scripts_planctl_006
+   * @scenario: scn_plan_control_006
+   * @covers: planctl/src/cli/main.ts::focus,progress,needs-owner,resume-task
    * @deterministic: yes
-   * @fixtures: temporary SPEC_LOCKED plan and replacement Stage JSON
+   * @fixtures: temporary approved plan and Git-owned structured receipts
    * Test environment: isolated local Git repository
-   * Clients: CLI
+   * Clients: planctl CLI
    * Mocks: none
-   * Data: one Stage replaced in place, removed, restored and approved
+   * Data: one active Task with an owner-wait transition
    */
-  it("tst_scripts_planctl_006 freely replaces and removes a draft Stage but preserves the approved lock", () => {
+  it("tst_scripts_planctl_006 keeps one Task focused through a structured owner wait", () => {
     const fixture = fixtureRepository();
     try {
       expect(run(fixture.root, "init", fixture.plan, "--title", "Fixture plan").status).toBe(0);
@@ -379,11 +384,88 @@ describe("planctl", () => {
       expect(run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes").status).toBe(0);
       expect(run(fixture.root, "put-delivery", fixture.plan, "--from", fixture.delivery).status).toBe(0);
       expect(run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage).status).toBe(0);
+      expect(run(fixture.root, "approve-plan", fixture.plan, "--owner-word", "yes").status).toBe(0);
+      git(fixture.root, "commit", "-qm", "docs: approve plan");
+      const approvedCommit = git(fixture.root, "rev-parse", "HEAD");
+      expect(run(fixture.root, "clear-transaction", fixture.plan, "--commit", approvedCommit).status).toBe(0);
+
+      const unassigned = run(fixture.root, "focus", fixture.plan);
+      expect(unassigned.status, `${unassigned.stdout}\n${unassigned.stderr}`).toBe(0);
+      expect(unassigned.stdout).toContain("Status: unassigned");
+      expect(unassigned.stdout).toContain("Goal: Ship one observable result.");
+      expect(unassigned.stdout).toContain("Next ready: PLANCTL_001");
+
+      expect(run(fixture.root, "start-task", fixture.plan, "--task", "PLANCTL_001").status).toBe(0);
+      const focused = run(fixture.root, "focus", fixture.plan, "--task", "PLANCTL_001");
+      expect(focused.status, `${focused.stdout}\n${focused.stderr}`).toBe(0);
+      expect(focused.stdout).toContain("Status: focused");
+      expect(focused.stdout).toContain("Current Task: PLANCTL_001");
+
+      const waiting = run(
+        fixture.root,
+        "needs-owner",
+        fixture.plan,
+        "--task",
+        "PLANCTL_001",
+        "--reason",
+        "Choose the public hostname",
+      );
+      expect(waiting.status, `${waiting.stdout}\n${waiting.stderr}`).toBe(0);
+      const blocked = run(fixture.root, "focus", fixture.plan, "--task", "PLANCTL_001");
+      expect(blocked.stdout).toContain("Status: awaiting_owner");
+      expect(blocked.stdout).toContain("Owner response needed: Choose the public hostname");
+
+      expect(run(fixture.root, "start-task", fixture.plan, "--task", "PLANCTL_001").status).toBe(0);
+      expect(run(fixture.root, "focus", fixture.plan, "--task", "PLANCTL_001").stdout).toContain("Status: focused");
+      expect(run(
+        fixture.root,
+        "needs-owner",
+        fixture.plan,
+        "--task",
+        "PLANCTL_001",
+        "--reason",
+        "Choose the public hostname",
+      ).status).toBe(0);
+      const resumed = run(fixture.root, "resume-task", fixture.plan, "--task", "PLANCTL_001");
+      expect(resumed.status, `${resumed.stdout}\n${resumed.stderr}`).toBe(0);
+      expect(run(fixture.root, "focus", fixture.plan, "--task", "PLANCTL_001").stdout).toContain("Status: focused");
+
+      const progress = run(fixture.root, "progress", fixture.plan);
+      expect(progress.status, `${progress.stdout}\n${progress.stderr}`).toBe(0);
+      expect(progress.stdout).toContain("Source: local plan docs/plans/fixture.md");
+      expect(progress.stdout).toContain("Progress: 0.0% (0/1 Tasks)");
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  /*
+   * @test-id: tst_scripts_planctl_007
+   * @scenario: scn_plan_control_007
+   * @covers: planctl/src/cli/main.ts::put-stage,remove-stage
+   * @deterministic: yes
+   * @fixtures: temporary SPEC_LOCKED plan and replacement Stage JSON
+   * Test environment: isolated local Git repository
+   * Clients: CLI
+   * Mocks: none
+   * Data: one Stage replaced in place, removed, restored and approved
+   */
+  it("tst_scripts_planctl_007 freely replaces and removes a draft Stage but preserves the approved lock", () => {
+    const fixture = fixtureRepository();
+    try {
+      expect(run(fixture.root, "init", fixture.plan, "--title", "Fixture plan").status).toBe(0);
+      expect(run(fixture.root, "set-spec", fixture.plan, "--from", fixture.spec).status).toBe(0);
+      git(fixture.root, "commit", "-qam", "docs: draft plan");
+      expect(run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes").status).toBe(0);
+      expect(run(fixture.root, "put-delivery", fixture.plan, "--from", fixture.delivery).status).toBe(0);
+      expect(run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage).status).toBe(0);
+      const stageTask = STAGE.tasks[0];
+      if (stageTask === undefined) throw new Error("fixture Stage must have one Task");
 
       const replacement: StageInput = {
         ...STAGE,
         title: "Replacement ownership",
-        tasks: [{ ...STAGE.tasks[0], story: "replace the draft Stage with one observable outcome in scripts/example.ts" }],
+        tasks: [{ ...stageTask, story: "replace the draft Stage with one observable outcome in scripts/example.ts" }],
       };
       writeFileSync(fixture.stage, `${JSON.stringify(replacement)}\n`);
       const replaced = run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage);
@@ -419,9 +501,9 @@ describe("planctl", () => {
   });
 
   /*
-   * @test-id: tst_scripts_planctl_007
-   * @scenario: scn_plan_control_007
-   * @covers: scripts/planctl.ts::put-stage-help
+   * @test-id: tst_scripts_planctl_008
+   * @scenario: scn_plan_control_008
+   * @covers: planctl/src/cli/main.ts::put-stage-help
    * @deterministic: yes
    * @fixtures: temporary SPEC_LOCKED plan and the help command's JSON example
    * Test environment: isolated local Git repository
@@ -429,7 +511,7 @@ describe("planctl", () => {
    * Mocks: none
    * Data: copyable Stage JSON printed by planctl itself
    */
-  it("tst_scripts_planctl_007 accepts the copyable Stage printed by put-stage help", () => {
+  it("tst_scripts_planctl_008 accepts the copyable Stage printed by put-stage help", () => {
     const fixture = fixtureRepository();
     try {
       expect(run(fixture.root, "init", fixture.plan, "--title", "Fixture plan").status).toBe(0);

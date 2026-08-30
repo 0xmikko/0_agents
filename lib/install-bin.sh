@@ -5,7 +5,24 @@ set -euo pipefail
 
 REPO_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 BIN_SRC="$REPO_DIR/bin"
-BIN_DST="$HOME/.local/bin"
+BIN_DST="${HOME}/.local/bin"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dest)
+      [[ $# -ge 2 ]] || { echo "ERROR: --dest requires an absolute path" >&2; exit 2; }
+      BIN_DST="$2"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: install-bin.sh [--dest <absolute-directory>]"
+      exit 0
+      ;;
+    *) echo "ERROR: unknown flag: $1" >&2; exit 2 ;;
+  esac
+done
+
+[[ "$BIN_DST" = /* ]] || { echo "ERROR: --dest must be absolute" >&2; exit 2; }
 
 [ -d "$BIN_SRC" ] || { echo "ERROR: $BIN_SRC not found"; exit 1; }
 
@@ -40,6 +57,8 @@ install_bin_item() {
 install_bin_item agent-session-name
 install_bin_item frogmouth-tuned
 install_bin_item planctl
+install_bin_item planctld
+install_bin_item planctl-server
 install_bin_item agent-stack
 
 # markdown-view is retired: mdurl is the single markdown-viewing command

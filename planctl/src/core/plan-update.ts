@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
 import { MACHINABLE, protocolImplementationHash, protocolSpecHash } from "./plan-gate";
@@ -61,6 +61,35 @@ export interface StageInput {
   readonly criteria: readonly string[];
 }
 
+export interface ParsedTaskInput extends TaskInput {
+  readonly completed: boolean;
+  readonly completionCommit: string | null;
+  readonly format: "modern" | "legacy";
+}
+
+export interface ParsedStageInput {
+  readonly id: string;
+  readonly deliveryId: string;
+  readonly title: string;
+  readonly owner: string;
+  readonly profile: "fast" | "strong";
+  readonly depends: readonly string[];
+  readonly parallelWith: readonly string[];
+  readonly writes: readonly string[];
+  readonly tempRoot: string;
+  readonly predictedActiveMinutes: number;
+  readonly predictedCredits: number;
+  readonly verifyActiveMinutes: number;
+  readonly verifyCredits: number;
+  readonly tasks: readonly ParsedTaskInput[];
+  readonly criteria: readonly string[];
+}
+
+export interface DeliveryMeta {
+  readonly id: string;
+  readonly active: boolean;
+}
+
 export interface StageResultReceipt {
   readonly version: 1;
   readonly plan: string;
@@ -78,6 +107,13 @@ export interface StageResultReceipt {
   readonly result: string;
   readonly deviations: readonly string[];
   readonly tempRoots: readonly { readonly path: string; readonly state: "absent" }[];
+}
+
+export interface CompletedWorkSample {
+  readonly sampleId: string;
+  readonly predictedActiveMinutes: number;
+  readonly actualActiveMinutes: number;
+  readonly completedAt: string;
 }
 
 export interface UnattendedDecisionReceipt {
@@ -277,29 +313,32 @@ function assertTaskContract(task: TaskInput, stageWrites: readonly string[]): vo
     assertSafeInline(path, `Task ${task.id} write`);
     if (!stageWrites.includes(path)) throw new Error(`Task ${task.id} write ${path} is outside Stage writes`);
   }
-  // @invariant: the visible sentence carries the change — every write path
-  // (full path or its basename) is named in the story itself, the story fits
-  // two lines, and it never leans on context a reader cannot resolve.
-  const storyNames = (path: string): boolean => {
-    const base = path.split("/").pop() ?? path;
-    return task.story.includes(path) || task.story.includes(base);
-  };
-  const unnamedWrites = task.writes.filter((path) => !storyNames(path));
-  if (unnamedWrites.length > 0) {
-    throw new Error(
-      `Task ${task.id} story must name every write path (full path or basename): ${unnamedWrites.join(", ")}`,
-    );
-  }
-  if (task.story.trim().length > 200) {
-    throw new Error(`Task ${task.id} story must fit two lines (max 200 characters)`);
-  }
-  if (/\b(?:colleague|half-?landed|rename map|the new files|the old files|as discussed)\b/i.test(task.story)) {
-    throw new Error(
-      `Task ${task.id} story has an unresolved reference — name the exact paths and symbols instead`,
-    );
-  }
-  if (task.writes.length > 4) {
-    throw new Error(`Task ${task.id} declares too many writes — one task is one change (max 4 files)`);
+  const format = "format" in task ? task.format : "modern";
+  if (format !== "legacy") {
+    // @invariant: compact Tasks carry their whole change in the visible story.
+    // Legacy five-line Tasks keep their original contract so active approved
+    // plans remain amendable after adopting this renderer.
+    const storyNames = (path: string): boolean => {
+      const base = path.split("/").pop() ?? path;
+      return task.story.includes(path) || task.story.includes(base);
+    };
+    const unnamedWrites = task.writes.filter((path) => !storyNames(path));
+    if (unnamedWrites.length > 0) {
+      throw new Error(
+        `Task ${task.id} story must name every write path (full path or basename): ${unnamedWrites.join(", ")}`,
+      );
+    }
+    if (task.story.trim().length > 200) {
+      throw new Error(`Task ${task.id} story must fit two lines (max 200 characters)`);
+    }
+    if (/\b(?:colleague|half-?landed|rename map|the new files|the old files|as discussed)\b/i.test(task.story)) {
+      throw new Error(
+        `Task ${task.id} story has an unresolved reference — name the exact paths and symbols instead`,
+      );
+    }
+    if (task.writes.length > 4) {
+      throw new Error(`Task ${task.id} declares too many writes — one task is one change (max 4 files)`);
+    }
   }
   if (task.predictedActiveMinutes <= 0 || task.predictedCredits < 0) {
     throw new Error(`Task ${task.id} predictions must be non-negative and active minutes must be positive`);
@@ -479,8 +518,8 @@ function capture(match: RegExpMatchArray, index: number, name: string): string {
   return value;
 }
 
-function stageInputs(body: string): readonly StageInput[] {
-  const inputs: StageInput[] = [];
+export function stageInputs(body: string): readonly ParsedStageInput[] {
+  const inputs: ParsedStageInput[] = [];
   const expression = /<!-- plan:stage:(D[1-9]\d*-S[1-9]\d*):start -->\n<!-- plan:stage-meta:(\{[^\n]*\}) -->[\s\S]*?Predict: (\d+(?:\.\d+)?) active min \/ (\d+(?:\.\d+)?) credits\.[\s\S]*?<!-- plan:stage:\1:end -->/g;
   for (const match of body.matchAll(expression)) {
     const block = capture(match, 0, "Stage block");
@@ -500,11 +539,15 @@ function stageInputs(body: string): readonly StageInput[] {
       if (typeof meta.how !== "string" || typeof meta.red !== "string") {
         throw new Error(`Task ${id} metadata must carry how and red`);
       }
-      const rawStory = capture(task, 1, "Task state") === "x"
-        ? capture(task, 3, "Task story").replace(/ — [0-9a-f]{7,40}$/, "")
-        : capture(task, 3, "Task story");
+      const completed = capture(task, 1, "Task state") === "x";
+      const renderedStory = capture(task, 3, "Task story");
+      const completionCommit = completed ? renderedStory.match(/ — ([0-9a-f]{7,40})$/)?.[1] ?? null : null;
+      const rawStory = completed ? renderedStory.replace(/ — [0-9a-f]{7,40}$/, "") : renderedStory;
       return {
         index: task.index ?? 0,
+        completed,
+        completionCommit,
+        format: "modern" as const,
         input: {
           id,
           story: rawStory.replace(/ \(\d+(?:\.\d+)? min\)$/, ""),
@@ -518,20 +561,26 @@ function stageInputs(body: string): readonly StageInput[] {
     });
     const legacyTasks = [...block.matchAll(
       /^- \[([ x])\] ([A-Z][A-Z0-9_-]*) — ([^\n]+)\n\s+Writes: ([^\n]+)\.\n\s+Predict: (\d+(?:\.\d+)?) active min \/ (\d+(?:\.\d+)?) credits\.\n\s+How: ([^\n]+)\n\s+RED: `([^`]+)`/gm,
-    )].map((task) => ({
-      index: task.index ?? 0,
-      input: {
-        id: capture(task, 2, "Task ID"),
-        story: capture(task, 1, "Task state") === "x"
-          ? capture(task, 3, "Task story").replace(/ — [0-9a-f]{7,40}$/, "")
-          : capture(task, 3, "Task story"),
+    )].map((task) => {
+      const completed = capture(task, 1, "Task state") === "x";
+      const renderedStory = capture(task, 3, "Task story");
+      const completionCommit = completed ? renderedStory.match(/ — ([0-9a-f]{7,40})$/)?.[1] ?? null : null;
+      return {
+        index: task.index ?? 0,
+        completed,
+        completionCommit,
+        format: "legacy" as const,
+        input: {
+          id: capture(task, 2, "Task ID"),
+          story: completed ? renderedStory.replace(/ — [0-9a-f]{7,40}$/, "") : renderedStory,
         writes: renderedPaths(capture(task, 4, "Task writes"), `Task ${capture(task, 2, "Task ID")} writes`),
         predictedActiveMinutes: Number(capture(task, 5, "Task active minutes")),
         predictedCredits: Number(capture(task, 6, "Task credits")),
         how: capture(task, 7, "Task how"),
         red: capture(task, 8, "Task RED"),
-      },
-    }));
+        },
+      };
+    });
     const taskMatches = [...modernTasks, ...legacyTasks].sort((left, right) => left.index - right.index);
     const criteriaBlock = block.match(/##### Acceptance criteria\n\n([\s\S]*?)\n\n##### Results/);
     inputs.push({
@@ -556,7 +605,12 @@ function stageInputs(body: string): readonly StageInput[] {
         ? meta.verifyCredits
         : Math.max(0, Number(capture(match, 4, "Stage credits"))
           - taskMatches.reduce((sum, task) => sum + task.input.predictedCredits, 0)),
-      tasks: taskMatches.map((task) => task.input),
+      tasks: taskMatches.map((task) => ({
+        ...task.input,
+        completed: task.completed,
+        completionCommit: task.completionCommit,
+        format: task.format,
+      })),
       criteria: criteriaBlock === null
         ? []
         : capture(criteriaBlock, 1, "Stage criteria").split("\n").filter((line) => /^- \[[ x]\] /.test(line)).map((line) =>
@@ -567,8 +621,57 @@ function stageInputs(body: string): readonly StageInput[] {
   return inputs;
 }
 
-function deliveryMetas(body: string): readonly { readonly id: string; readonly active: boolean }[] {
-  const values: Array<{ readonly id: string; readonly active: boolean }> = [];
+/**
+ * @tested-by: tst_int_planctl_calibration_001
+ * @invariant: completed forecast evidence is derived from canonical Stage Results, not a second execution registry.
+ */
+export function completedStageSamples(body: string): readonly CompletedWorkSample[] {
+  const samples: CompletedWorkSample[] = [];
+  for (const stage of stageInputs(body)) {
+    const block = region(body, stageStart(stage.id), stageEnd(stage.id)).text;
+    const groups = new Map<string, {
+      readonly commit: string;
+      readonly completedAt: string;
+      readonly actualActiveMinutes: number;
+      readonly taskIds: Set<string>;
+    }>();
+    const rows = block.matchAll(
+      /^\| ([A-Z][A-Z0-9_-]*) \| ([0-9a-f]{40}) \| ([^|\s]+)–([^|\s]+) \| (\d+(?:\.\d+)?) \/ \d+(?:\.\d+)? min \|/gm,
+    );
+    for (const match of rows) {
+      const taskId = capture(match, 1, "Stage Result Task ID");
+      const commit = capture(match, 2, "Stage Result commit");
+      const completedAt = capture(match, 4, "Stage Result end");
+      const actualActiveMinutes = Number(capture(match, 5, "Stage Result active minutes"));
+      if (!Number.isFinite(Date.parse(completedAt)) || !Number.isFinite(actualActiveMinutes)) {
+        throw new Error(`Stage ${stage.id} has invalid completed timing evidence`);
+      }
+      const key = `${commit}:${completedAt}:${actualActiveMinutes}`;
+      const grouped = groups.get(key) ?? { commit, completedAt, actualActiveMinutes, taskIds: new Set<string>() };
+      grouped.taskIds.add(taskId);
+      groups.set(key, grouped);
+    }
+    for (const grouped of groups.values()) {
+      const predictedActiveMinutes = [...grouped.taskIds].reduce((total, taskId) => {
+        const task = stage.tasks.find((candidate) => candidate.id === taskId);
+        if (task === undefined) throw new Error(`Stage ${stage.id} Result names unknown Task ${taskId}`);
+        return total + task.predictedActiveMinutes;
+      }, 0);
+      samples.push({
+        sampleId: `${stage.id}:${grouped.commit}`,
+        predictedActiveMinutes,
+        actualActiveMinutes: grouped.actualActiveMinutes,
+        completedAt: grouped.completedAt,
+      });
+    }
+  }
+  return samples.sort((left, right) => left.completedAt.localeCompare(right.completedAt)
+    || left.sampleId.localeCompare(right.sampleId));
+}
+
+export function deliveryMetas(body: string): readonly DeliveryMeta[] {
+
+  const values: DeliveryMeta[] = [];
   const expression = /<!-- plan:delivery:(D[1-9]\d*):start -->\n<!-- plan:delivery-meta:(\{[^\n]*\}) -->/g;
   for (const match of body.matchAll(expression)) {
     const id = capture(match, 1, "Delivery ID");
@@ -807,10 +910,23 @@ function defaultCommitIsAncestor(commit: string): boolean {
   return spawnSync("git", ["merge-base", "--is-ancestor", commit, "HEAD"]).status === 0;
 }
 
-function defaultCommitPaths(commit: string): readonly string[] {
-  const result = spawnSync("git", ["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", commit], { encoding: "utf8" });
+export function stageResultCommitPaths(commit: string, root = process.cwd()): readonly string[] {
+  const firstParent = spawnSync("git", ["rev-parse", "--verify", `${commit}^1`], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  const result = firstParent.status === 0
+    ? spawnSync("git", ["diff", "--name-only", firstParent.stdout.trim(), commit], { cwd: root, encoding: "utf8" })
+    : spawnSync("git", ["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", commit], {
+        cwd: root,
+        encoding: "utf8",
+      });
   if (result.status !== 0) throw new Error(`cannot inspect Stage result commit ${commit}`);
   return result.stdout.split("\n").filter((path) => path !== "");
+}
+
+function defaultCommitPaths(commit: string): readonly string[] {
+  return stageResultCommitPaths(commit);
 }
 
 export function recordStageResult(
@@ -1214,7 +1330,19 @@ function stageResultFrom(value: unknown): StageResultReceipt {
 }
 
 function decisionFrom(value: unknown): UnattendedDecisionReceipt {
-  return object(value, "unattended decision") as unknown as UnattendedDecisionReceipt;
+  const decision = object(value, "unattended decision");
+  if (decision.version !== 1) throw new Error("unsupported unattended decision version");
+  return {
+    version: 1,
+    decidedAt: requiredString(decision, "decidedAt"),
+    goalPreserved: requiredString(decision, "goalPreserved"),
+    decision: requiredString(decision, "decision"),
+    alternatives: stringArray(decision.alternatives, "alternatives"),
+    whyContinueNow: requiredString(decision, "whyContinueNow"),
+    affectedScope: stringArray(decision.affectedScope, "affectedScope"),
+    rollbackBase: requiredString(decision, "rollbackBase"),
+    verification: stringArray(decision.verification, "verification"),
+  };
 }
 
 function patchFrom(value: unknown): ExactReplacement {
@@ -1236,11 +1364,11 @@ function requiredFlag(args: readonly string[], name: string): string {
 }
 
 function usage(): never {
-  console.error("usage: bun scripts/plan-update.ts <plan> <lock-spec|put-delivery|put-stage|remove-stage|drop|move|approve|record-result|close|deviate|amend|unattended-amend|verify-staged|clear-spent> [options]");
+  console.error("usage: bun planctl/src/core/plan-update.ts <plan> <lock-spec|put-delivery|put-stage|remove-stage|drop|move|approve|record-result|close|deviate|amend|unattended-amend|verify-staged|clear-spent> [options]");
   process.exit(64);
 }
 
-if (import.meta.main) {
+if (import.meta.main && ["plan-update.ts", "plan-update.js"].includes(basename(import.meta.path))) {
   const args = process.argv.slice(2);
   const plan = args[0];
   const command = args[1];

@@ -3,7 +3,7 @@
 This directory is the private, reusable development system for every project:
 
 - `laws/` defines the Git, plan, TDD, PR, timing and review contract;
-- `runtime/` contains the canonical plan writer and gates;
+- `../../planctl/src/` contains the canonical CLI, plan writer and gates;
 - `templates/` contains the managed Git hooks and GitHub workflow;
 - `agent-stack.ts` installs and verifies the managed project snapshot;
 - global skills teach agents when to call the deterministic runtime.
@@ -11,6 +11,19 @@ This directory is the private, reusable development system for every project:
 There is one project seam: `package.json`. Every repository implements the
 same command names, while the central hooks and CI decide *when* they run.
 Framework paths and tool choices never leak into the central process.
+
+## Optional distributed observer
+
+The plan lifecycle remains local and authoritative. The adjacent
+`planctld`/`planctl-server` services add an optional multi-machine read model:
+collectors publish privacy-safe session/activity and canonical plan snapshots,
+while the server derives progress, dependency-path ETA, stale/offline/drift and
+owner-wait attention. A missing server never changes local Task execution or
+the canonical plan writer.
+
+Role-specific TOML, enrollment, systemd-user setup, Telegram behavior and the
+100-machine/1,000-agent baseline are documented in
+[`../../planctl/README.md`](../../planctl/README.md).
 
 ## Consumer contract
 
@@ -59,8 +72,10 @@ agent-stack install /path/to/repository
 agent-stack check /path/to/repository
 ```
 
-The installer vendors the small deterministic runtime, installs managed hooks
-and a GitHub workflow, and selects `.githooks` for the current worktree only.
+The installer vendors the lightweight CLI/core files from the dedicated
+`planctl/` package to the stable `.agents/code-production/runtime/` consumer
+paths, installs managed hooks and a GitHub workflow, and selects `.githooks`
+for the current worktree only. NestJS and service dependencies are not copied.
 It refuses to overwrite an unmanaged hook or workflow.
 
 If the repository already has a complete PR workflow, declare it through

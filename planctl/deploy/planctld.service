@@ -1,0 +1,14 @@
+[Unit]
+Description=Planctl local coding-agent collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO_DIR@
+ExecStart=@PLANCTL_BIN@ --config @CONFIG_PATH@
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

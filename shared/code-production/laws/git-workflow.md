@@ -73,6 +73,9 @@ by CI. It is not run after each edit, Task or Stage.
   published-SHA coverage and remains the only workflow owner.
 - `agent-stack check` rejects missing package scripts, a stale vendored runtime,
   modified managed files or a worktree whose hooks path is not `.githooks`.
+- The source stack executes and verifies its canonical CLI/core from the
+  dedicated `planctl/` package; consumer repositories retain the seven root
+  package scripts and stable `.agents/code-production/runtime/` targets.
 
 An installer refuses to overwrite an unmanaged hook/workflow. Integrate the
 existing behavior deliberately, then mark the combined file as managed; never

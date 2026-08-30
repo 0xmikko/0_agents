@@ -44,17 +44,22 @@
 #   install-server-linux.sh --no-runtimes   # skip claude/codex install (faster reruns)
 #   install-server-linux.sh --no-lazyvim    # skip LazyVim install
 #   install-server-linux.sh --no-logins     # skip interactive subscription logins
+#   install-server-linux.sh --planctl-role=machine --planctl-config=/absolute/machine.toml
 
 set -euo pipefail
 
 DO_RUNTIMES=1
 DO_LAZYVIM=1
 DO_LOGINS=1
+PLANCTL_ROLE=""
+PLANCTL_CONFIG=""
 for arg in "$@"; do
   case "$arg" in
     --no-runtimes) DO_RUNTIMES=0 ;;
     --no-lazyvim)  DO_LAZYVIM=0 ;;
     --no-logins)   DO_LOGINS=0 ;;
+    --planctl-role=*) PLANCTL_ROLE="${arg#*=}" ;;
+    --planctl-config=*) PLANCTL_CONFIG="${arg#*=}" ;;
     -h|--help)
       sed -n '2,/^set -euo/p' "$0" | grep '^#' | sed 's/^# \?//'
       exit 0
@@ -62,6 +67,16 @@ for arg in "$@"; do
     *) echo "unknown flag: $arg" >&2; exit 2 ;;
   esac
 done
+
+if [[ -n "$PLANCTL_ROLE" && -z "$PLANCTL_CONFIG" ]] || [[ -z "$PLANCTL_ROLE" && -n "$PLANCTL_CONFIG" ]]; then
+  echo "--planctl-role and --planctl-config must be supplied together" >&2
+  exit 2
+fi
+if [[ -n "$PLANCTL_ROLE" ]]; then
+  [[ "$PLANCTL_ROLE" = "machine" || "$PLANCTL_ROLE" = "server" ]] \
+    || { echo "--planctl-role must be machine or server" >&2; exit 2; }
+  [[ "$PLANCTL_CONFIG" = /* ]] || { echo "--planctl-config must be an absolute path" >&2; exit 2; }
+fi
 
 REPO_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 NODE_VERSION="${NODE_VERSION:-20}"
@@ -179,6 +194,11 @@ fi
 if [[ -x "$REPO_DIR/lib/install-bin.sh" ]]; then
   say "Installing ~/.local/bin helpers"
   bash "$REPO_DIR/lib/install-bin.sh"
+fi
+
+if [[ -n "$PLANCTL_ROLE" ]]; then
+  say "Installing planctl $PLANCTL_ROLE role"
+  bash "$REPO_DIR/lib/setup-planctl.sh" --role "$PLANCTL_ROLE" --config "$PLANCTL_CONFIG"
 fi
 
 # ─── 7. Codex config.toml render ────────────────────────────────────────────

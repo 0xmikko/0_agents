@@ -23,6 +23,7 @@
 #   update.sh --no-pull           # skip git pull (run installers on current HEAD)
 #   update.sh --no-runtimes       # skip claude/codex npm upgrade
 #   update.sh --with-lazyvim      # also run install-lazyvim.sh
+#   update.sh --planctl-role <machine|server> --planctl-config <absolute.toml>
 #   update.sh --skip <name>       # skip a specific step (repeatable):
 #                                   git, install, bin, codex-config, runtimes,
 #                                   mdurl-skill, linear-mcp, lazyvim, completions,
@@ -34,6 +35,8 @@ SERVER_MODE=0
 DO_PULL=1
 DO_RUNTIMES=1
 DO_LAZYVIM=0
+PLANCTL_ROLE=""
+PLANCTL_CONFIG=""
 SKIPS=()
 
 while [[ $# -gt 0 ]]; do
@@ -42,6 +45,14 @@ while [[ $# -gt 0 ]]; do
     --no-pull)       DO_PULL=0; shift ;;
     --no-runtimes)   DO_RUNTIMES=0; shift ;;
     --with-lazyvim)  DO_LAZYVIM=1; shift ;;
+    --planctl-role)
+      [[ $# -ge 2 ]] || { echo "--planctl-role requires a value" >&2; exit 2; }
+      PLANCTL_ROLE="$2"; shift 2
+      ;;
+    --planctl-config)
+      [[ $# -ge 2 ]] || { echo "--planctl-config requires a value" >&2; exit 2; }
+      PLANCTL_CONFIG="$2"; shift 2
+      ;;
     --skip)          SKIPS+=("$2"); shift 2 ;;
     -h|--help)
       sed -n '2,/^set -euo/p' "$0" | grep '^#' | sed 's/^# \?//'
@@ -64,6 +75,15 @@ should_skip() {
   done
   return 1
 }
+
+if [[ -n "$PLANCTL_ROLE" && -z "$PLANCTL_CONFIG" ]] || [[ -z "$PLANCTL_ROLE" && -n "$PLANCTL_CONFIG" ]]; then
+  fail "--planctl-role and --planctl-config must be supplied together"
+fi
+if [[ -n "$PLANCTL_ROLE" ]]; then
+  [[ "$PLANCTL_ROLE" = "machine" || "$PLANCTL_ROLE" = "server" ]] \
+    || fail "--planctl-role must be machine or server"
+  [[ "$PLANCTL_CONFIG" = /* ]] || fail "--planctl-config must be an absolute path"
+fi
 
 # ─── 1. git pull ─────────────────────────────────────────────────────────
 if should_skip git || [ "$DO_PULL" -eq 0 ]; then
@@ -104,6 +124,11 @@ if should_skip bin; then
 else
   say "install-bin.sh"
   bash "$REPO_DIR/lib/install-bin.sh"
+fi
+
+if [[ -n "$PLANCTL_ROLE" ]]; then
+  say "setup-planctl.sh ($PLANCTL_ROLE)"
+  bash "$REPO_DIR/lib/setup-planctl.sh" --role "$PLANCTL_ROLE" --config "$PLANCTL_CONFIG"
 fi
 
 # ─── 4. install-codex-config.sh ─────────────────────────────────────────────────

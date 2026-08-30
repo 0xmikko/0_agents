@@ -12,4 +12,4 @@ while [[ -L "$SOURCE_PATH" ]]; do
 done
 
 REPO_DIR="$(cd -P "$(dirname "$SOURCE_PATH")/.." && pwd)"
-exec bun "$REPO_DIR/shared/code-production/runtime/planctl.ts" "$@"
+exec bun "$REPO_DIR/planctl/src/cli/main.ts" "$@"
