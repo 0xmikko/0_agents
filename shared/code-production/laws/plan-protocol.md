@@ -56,8 +56,8 @@ Plan
 
 - Bad: “Refactor the scheduler.”
 - Bad: “Finish the colleague's branch and apply the rename map in the named files.”
-- Good: D1-S2-T1 — Restore the missing `creditOperationMarket` export in `src/onchain/market/credit/index.ts`.
-- Good: D1-S2-T2 — Replace generic `Error` in `prepareResult` in `src/prepare/result.ts` with canonical `SDKError`.
+- Good: D1-S2-T1 — Restore `creditOperationMarket` in `src/onchain/market/credit/index.ts`. (8 min)
+- Good: D1-S2-T2 — Replace generic `Error` in `src/prepare/result.ts` with `SDKError`; cover it in `test/prepare/result.test.ts`. (12 min)
 
 - Bad: “Done; tests green.”
 - Good: “CPP-014 → `abc1234`; expected RED observed; named test passed; 18 predicted / 21 actual min; usage unavailable because runner omitted tokens; no deviation; temp root absent.”
@@ -65,30 +65,35 @@ Plan
 ## Stage format
 
 ```markdown
-#### Stage D1-S2 — Restore the preview build after the Verify rename
-Result: Preview imports only canonical Verify modules.
-Route: depends D1-S1; parallel D1-S3; forecast 35 min / 6 credits.
+#### Stage D1-S1 — Reject overlapping scheduler work
+
+Owner: agent-1; Profile: fast; Depends: none; Parallel with: none.
+Writes: `src/scheduler/parse-lanes.ts`, `test/scheduler/parse-lanes.test.ts`.
+Temp root: `.tmp/code-production/scheduler-overlap/D1-S1` (must be absent at handoff).
+Predict: 12 active min / 3 credits.
+Of which verification: 2 active min / 1 credits.
 
 ##### Tasks
-- [ ] D1-S2-T1 — Restore the missing `creditOperationMarket` export in `src/onchain/market/credit/index.ts`.
-- [ ] D1-S2-T2 — Remove obsolete `underlyingToken` assignment from `src/onchain/market/credit/CreditSuite.ts`.
+
+- [ ] D1-S1-T1 — Reject overlapping Stage writes in `src/scheduler/parse-lanes.ts` and cover the refusal in `test/scheduler/parse-lanes.test.ts`. (10 min)
+<!-- plan:task-meta:<hidden writes, credits, How and RED> -->
 
 ##### Acceptance criteria
-- [ ] `bun run build` exits 0 — package exports and preview imports compile
-- [ ] Preview uses only canonical Verify modules
+
+- [ ] `<scoped command>` exits 0 — overlap is rejected
 - [ ] Commit
 
 ##### Results
-- Build: <measured result appended during execution>
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
 ```
 
-The Stage owner view stops after its title, Result and Route: no narrative
-paragraph and no file dump. Its title is one observable result, never branch
-history. Each visible Task is one change, at most 180 characters/two rendered
-lines, and names its exact primary file. More than three writes or more than
-one independent action means more Tasks. `planctl` keeps writes, RED, profile
-and temp root once in machine-owned metadata in the same Markdown;
-`start-task` prints them when the executor needs them.
+The Stage block carries routing, writes, temp root and the derived forecast
+once. A generated Task is two source lines: a story of at most 200 characters
+with `(N min)`, then hidden metadata. It owns at most four writes, and the story
+names every one by full path or basename. `start-task` reveals writes, credits,
+How and RED. Stage total must equal Task totals plus the explicit verification
+share.
 
 Before approval, trace each acceptance story through public calls. If a story
 needs a method added to another service, that owning file must already be in a
@@ -144,8 +149,7 @@ While the plan is `SPEC_LOCKED`, rerunning `put-delivery` or `put-stage` with
 the same ID replaces that draft record in place; `remove-stage` deletes it.
 After `APPROVED` all three are refused. `put-stage --help` prints the copyable
 JSON contract plus short good/bad Tasks. The JSON carries technical metadata;
-its rendered owner view stays compact and never repeats the Stage write list
-inside every Task.
+the rendered Task stays compact and never repeats the Stage write list.
 `start-task` re-reads the committed plan or its journal-verified staged Result,
 refuses a blocked or closed Task, prints its exact scope and starts a Git-local
 timer without changing the plan. `complete-task` consumes that timer and compares the

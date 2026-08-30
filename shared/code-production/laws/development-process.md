@@ -61,20 +61,22 @@ serializes.
 
 The owner view is a review interface, not an execution log.
 
-- A Stage owner view is its title, one Result sentence and one Route line; it
-  has no free-form execution story or file dump. The title never says “finish
-  the colleague's branch”, “half-landed”, “remaining work” or anything else
-  that depends on history.
-- A Task names one concrete change and its exact primary file. Its visible
-  sentence is at most 180 characters and at most two rendered lines.
-- A Task owns at most three write paths. Split it when it crosses that limit or
-  when its sentence needs “and then” to join independent changes.
+- A Stage is its result-oriented title followed by the single compact metadata
+  block rendered by `planctl`: owner/profile, routing, Stage writes, temp root,
+  total forecast and verification share. It has no free-form execution story.
+  The title never says “finish the colleague's branch”, “half-landed” or
+  “remaining work”.
+- A Task story names one concrete change and every declared write, using the
+  full path or its basename. The story is at most 200 characters;
+  its rendered line ends with the predicted active minutes.
+- A Task owns at most four write paths. Split it when it crosses that limit or
+  when its story joins independent changes.
 - A Task stands alone. “Existing”, “new”, “named files”, “the map above” and
   similar pointers are invalid unless the same sentence resolves them to an
   exact symbol or path.
-- Writes, RED command and forecast are frozen execution metadata in the same
-  canonical Markdown. `planctl` records them once and `start-task` reveals
-  them; Stage prose and Task prose do not repeat them.
+- Exact writes, credits, How and RED are frozen in the hidden metadata line
+  immediately after the Task. `planctl start-task` reveals them; the plan does
+  not repeat them as visible Task prose.
 
 Bad Stage: “Finish the colleague's branch: build fixes and Verify rewire.”
 
@@ -82,8 +84,8 @@ Good Stage: “Restore the preview build after the Verify rename.”
 
 Bad Task: “Apply the rename map in the named files.”
 
-Good Task: Replace generic `Error` in `prepareResult` in
-`src/prepare/result.ts` with canonical `SDKError`.
+Good Task: “Replace generic `Error` in `src/prepare/result.ts` with canonical
+`SDKError` and cover it in `test/prepare/result.test.ts`. (12 min)”
 
 Before approval, follow every acceptance story through its public calls. Every
 file that must gain or change a public contract is a Task write, even when the
@@ -91,8 +93,10 @@ call originates in another Stage file. A missing owning file makes the plan
 incomplete. After approval, amend before editing while the owner is available;
 unattended work uses the reversible decision protocol below.
 
-A Stage forecast is at least the sum of its Tasks. A Delivery reports aggregate
-active work, the longest dependency path and external waits separately.
+A Stage forecast equals the sum of its Task forecasts plus an explicit
+verification share, for both active minutes and credits. A Delivery reports
+aggregate active work, the longest dependency path and external waits
+separately.
 
 ## One source of truth and two locks
 
