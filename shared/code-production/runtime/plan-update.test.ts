@@ -86,7 +86,7 @@ function stage(id: string, writes: readonly string[], parallelWith: readonly str
       writes,
       predictedActiveMinutes: 8,
       predictedCredits: 1,
-      how: `change ${writes[0]} through the existing implementation owner`,
+      how: `change ${writes.join(" and ")} so the declared observable behavior is implemented`,
       red: "bun run agent:test:backend -- test/plan-update.test.ts",
     }],
     criteria: ["`bun test` exits 0 — behavior is proven", "Commit"],
@@ -300,5 +300,23 @@ describe("plan-update", () => {
     for (const [candidate, refusal] of invalid) {
       expect(() => putStage(locked, candidate)).toThrow(refusal);
     }
+  });
+
+  // @test-id: tst_scripts_planupdate_007
+  // @scenario: scn_plan_control_004
+  // @covers: scripts/plan-update.ts::putStage Task execution scope validation
+  // @deterministic: yes
+  // @invariant: a Task procedure names every exact file instead of referring to unnamed code.
+  it("tst_scripts_planupdate_007 refuses a Task procedure that points to unnamed files", () => {
+    const locked = putDelivery(lockPlanSpec(draft(), "spec").body, delivery()).body;
+    const candidate = stage("D1-S1", ["scripts/base.ts", "test/base.test.ts"]);
+
+    expect(() => putStage(locked, {
+      ...candidate,
+      tasks: [{
+        ...candidate.tasks[0],
+        how: "extend the existing parser in the two named files and refuse overlap",
+      }],
+    })).toThrow(/must name every declared write path/i);
   });
 });

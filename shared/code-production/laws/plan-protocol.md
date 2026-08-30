@@ -55,7 +55,8 @@ Plan
 **Task**
 
 - Bad: “Refactor the scheduler.”
-- Good: “CPP-014 — assign two ready Stages with disjoint writes to two lanes from one base; extend the existing parser; touch only named files; predict 18 min / 8 credits; refuse overlap.”
+- Bad: “CPP-014 — extend the existing parser in the named files; refuse overlap.”
+- Good: “CPP-014 — `src/scheduler/parse-lanes.ts` currently assigns two ready Stages that both write `src/shared.ts`; change `src/scheduler/parse-lanes.ts` to refuse the second assignment and add the RED case to `test/scheduler/parse-lanes.test.ts`; predict 18 min / 8 credits.”
 
 - Bad: “Done; tests green.”
 - Good: “CPP-014 → `abc1234`; expected RED observed; named test passed; 18 predicted / 21 actual min; usage unavailable because runner omitted tokens; no deviation; temp root absent.”
@@ -115,6 +116,7 @@ planctl set-spec <plan> --from <spec.md>
 planctl approve-spec <plan> --owner-word <word>
 planctl put-delivery <plan> --from <delivery.json>
 planctl put-stage <plan> --from <stage.json>
+planctl remove-stage <plan> --stage <D1-S1>
 planctl approve-plan <plan> --owner-word <word>
 planctl start-task <plan> --task <Task-ID>
 planctl complete-task <plan> --from <stage-result.json>
@@ -130,7 +132,10 @@ the HEAD/blob-bound journal to `plan-update`. Direct `Edit`, `Write`,
 `apply_patch`, search/replace or manual checkbox changes have no journal and are
 refused.
 
-`put-stage --help` prints the copyable JSON contract plus good/bad Tasks.
+While the plan is `SPEC_LOCKED`, rerunning `put-delivery` or `put-stage` with
+the same ID replaces that draft record in place; `remove-stage` deletes it.
+After `APPROVED` all three are refused. `put-stage --help` prints the copyable
+JSON contract plus good/bad Tasks.
 `start-task` re-reads the committed plan or its journal-verified staged Result,
 refuses a blocked or closed Task, prints its exact scope and starts a Git-local
 timer without changing the plan. `complete-task` consumes that timer and compares the

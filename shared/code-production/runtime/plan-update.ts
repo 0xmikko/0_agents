@@ -273,6 +273,12 @@ function assertTaskContract(task: TaskInput, stageWrites: readonly string[]): vo
     assertSafeInline(path, `Task ${task.id} write`);
     if (!stageWrites.includes(path)) throw new Error(`Task ${task.id} write ${path} is outside Stage writes`);
   }
+  const unnamedWrites = task.writes.filter((path) => !task.how.includes(path));
+  if (unnamedWrites.length > 0) {
+    throw new Error(
+      `Task ${task.id} how must name every declared write path: ${unnamedWrites.join(", ")}`,
+    );
+  }
   if (task.predictedActiveMinutes <= 0 || task.predictedCredits < 0) {
     throw new Error(`Task ${task.id} predictions must be non-negative and active minutes must be positive`);
   }
@@ -585,9 +591,26 @@ export function lockPlanSpec(body: string, ownerWord: string): MutationResult {
 
 export function putDelivery(body: string, input: DeliveryInput): MutationResult {
   requireState(body, "SPEC_LOCKED");
-  if (body.includes(deliveryStart(input.id))) throw new Error(`Delivery ${input.id} already exists`);
   const current = deliveryMetas(body);
-  if (input.active && current.some((delivery) => delivery.active)) throw new Error("only one active Delivery is allowed");
+  if (input.active && current.some((delivery) => delivery.id !== input.id && delivery.active)) {
+    throw new Error("only one active Delivery is allowed");
+  }
+  if (body.includes(deliveryStart(input.id))) {
+    const delivery = region(body, deliveryStart(input.id), deliveryEnd(input.id));
+    const firstStage = delivery.text.indexOf("<!-- plan:stage:");
+    const stages = firstStage === -1
+      ? ""
+      : delivery.text.slice(firstStage, delivery.text.lastIndexOf(deliveryEnd(input.id))).trim();
+    const rendered = renderDelivery(input);
+    const beforeEnd = rendered.slice(0, rendered.lastIndexOf(deliveryEnd(input.id))).trimEnd();
+    const replacement = `${beforeEnd}${stages === "" ? "" : `\n\n${stages}`}\n${deliveryEnd(input.id)}`;
+    let next = `${body.slice(0, delivery.from)}${replacement}${body.slice(delivery.to)}`;
+    next = replaceHeader(next, "Active Delivery", input.active
+      ? input.id
+      : current.find((candidate) => candidate.id !== input.id && candidate.active)?.id ?? "none");
+    next = appendExecution(next, `replace-delivery ${input.id}`);
+    return { body: next };
+  }
   const implementation = region(body, IMPLEMENTATION_START, IMPLEMENTATION_END);
   const beforeEnd = implementation.text.slice(0, implementation.text.lastIndexOf(IMPLEMENTATION_END)).trimEnd();
   const replacement = `${beforeEnd}\n\n${renderDelivery(input)}\n${IMPLEMENTATION_END}`;
@@ -599,13 +622,20 @@ export function putDelivery(body: string, input: DeliveryInput): MutationResult 
 
 export function putStage(body: string, input: StageInput): MutationResult {
   requireState(body, "SPEC_LOCKED");
-  if (body.includes(stageStart(input.id))) throw new Error(`Stage ${input.id} already exists`);
-  const delivery = region(body, deliveryStart(input.deliveryId), deliveryEnd(input.deliveryId));
   const existing = stageInputs(body);
   for (const dependency of input.depends) {
-    if (!existing.some((stage) => stage.id === dependency)) throw new Error(`${input.id} depends on unknown Stage ${dependency}`);
+    if (dependency === input.id || !existing.some((stage) => stage.id === dependency)) {
+      throw new Error(`${input.id} depends on unknown Stage ${dependency}`);
+    }
   }
-  assertParallelWrites(input, existing);
+  assertParallelWrites(input, existing.filter((stage) => stage.id !== input.id));
+  if (body.includes(stageStart(input.id))) {
+    const current = region(body, stageStart(input.id), stageEnd(input.id));
+    let next = `${body.slice(0, current.from)}${renderStage(input)}${body.slice(current.to)}`;
+    next = appendExecution(next, `replace-stage ${input.id}`);
+    return { body: next };
+  }
+  const delivery = region(body, deliveryStart(input.deliveryId), deliveryEnd(input.deliveryId));
   const beforeEnd = delivery.text.slice(0, delivery.text.lastIndexOf(deliveryEnd(input.deliveryId))).trimEnd();
   const replacement = `${beforeEnd}\n\n${renderStage(input)}\n${deliveryEnd(input.deliveryId)}`;
   let next = replaceRegion(body, deliveryStart(input.deliveryId), deliveryEnd(input.deliveryId), replacement);
@@ -621,6 +651,11 @@ export function dropImplementationRecord(body: string, id: string): MutationResu
   let next = `${body.slice(0, current.from)}${body.slice(current.to)}`.replace(/\n{3,}/g, "\n\n");
   next = appendExecution(next, `drop ${id}`);
   return { body: next };
+}
+
+export function removeDraftStage(body: string, id: string): MutationResult {
+  if (!STAGE_ID.test(id)) throw new Error(`invalid Stage ID ${id}`);
+  return dropImplementationRecord(body, id);
 }
 
 export function moveImplementationRecord(body: string, id: string, beforeId: string): MutationResult {
@@ -1120,7 +1155,7 @@ function requiredFlag(args: readonly string[], name: string): string {
 }
 
 function usage(): never {
-  console.error("usage: bun scripts/plan-update.ts <plan> <lock-spec|put-delivery|put-stage|drop|move|approve|record-result|close|deviate|amend|unattended-amend|verify-staged|clear-spent> [options]");
+  console.error("usage: bun scripts/plan-update.ts <plan> <lock-spec|put-delivery|put-stage|remove-stage|drop|move|approve|record-result|close|deviate|amend|unattended-amend|verify-staged|clear-spent> [options]");
   process.exit(64);
 }
 
@@ -1139,6 +1174,9 @@ if (import.meta.main) {
         break;
       case "put-stage":
         mutatePlanFile(plan, command, (body) => putStage(body, stageFrom(readJson(requiredFlag(args, "--from")))));
+        break;
+      case "remove-stage":
+        mutatePlanFile(plan, command, (body) => removeDraftStage(body, requiredFlag(args, "--stage")));
         break;
       case "drop":
         mutatePlanFile(plan, command, (body) => dropImplementationRecord(body, requiredFlag(args, "--id")));
