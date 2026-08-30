@@ -30,7 +30,7 @@ const STAGE: StageInput = {
   predictedCredits: 3,
   tasks: [{
     id: "PLANCTL_001",
-    story: "extend the canonical writer through the planctl facade",
+    story: "extend the canonical writer facade exposed by scripts/example.ts",
     writes: ["scripts/example.ts"],
     predictedActiveMinutes: 10,
     predictedCredits: 2,
@@ -220,7 +220,7 @@ describe("planctl", () => {
       }
 
       const completed = readFileSync(fixture.plan, "utf8");
-      expect(completed).toContain("- [x] PLANCTL_001 — extend the canonical writer through the planctl facade");
+      expect(completed).toContain("- [x] PLANCTL_001 — extend the canonical writer facade exposed by scripts/example.ts");
       expect(completed).toContain("Canonical writer updated the addressed Task.");
       expect(completed).toContain("deviation D1-S1: No product suite needed.");
     } finally {
@@ -283,7 +283,7 @@ describe("planctl", () => {
           ...STAGE.tasks,
           {
             id: "PLANCTL_002",
-            story: "produce a second observable result from the approved Task contract",
+            story: "produce a second observable result in scripts/second.ts under the approved contract",
             writes: ["scripts/second.ts"],
             predictedActiveMinutes: 8,
             predictedCredits: 1,
@@ -379,7 +379,7 @@ describe("planctl", () => {
       const replacement: StageInput = {
         ...STAGE,
         title: "Replacement ownership",
-        tasks: [{ ...STAGE.tasks[0], story: "replace the draft Stage with one observable canonical writer outcome" }],
+        tasks: [{ ...STAGE.tasks[0], story: "replace the draft Stage with one observable outcome in scripts/example.ts" }],
       };
       writeFileSync(fixture.stage, `${JSON.stringify(replacement)}\n`);
       const replaced = run(fixture.root, "put-stage", fixture.plan, "--from", fixture.stage);

@@ -273,11 +273,29 @@ function assertTaskContract(task: TaskInput, stageWrites: readonly string[]): vo
     assertSafeInline(path, `Task ${task.id} write`);
     if (!stageWrites.includes(path)) throw new Error(`Task ${task.id} write ${path} is outside Stage writes`);
   }
-  const unnamedWrites = task.writes.filter((path) => !task.how.includes(path));
+  // @invariant: the visible sentence carries the change — every write path
+  // (full path or its basename) is named in the story itself, the story fits
+  // two lines, and it never leans on context a reader cannot resolve.
+  const storyNames = (path: string): boolean => {
+    const base = path.split("/").pop() ?? path;
+    return task.story.includes(path) || task.story.includes(base);
+  };
+  const unnamedWrites = task.writes.filter((path) => !storyNames(path));
   if (unnamedWrites.length > 0) {
     throw new Error(
-      `Task ${task.id} how must name every declared write path: ${unnamedWrites.join(", ")}`,
+      `Task ${task.id} story must name every write path (full path or basename): ${unnamedWrites.join(", ")}`,
     );
+  }
+  if (task.story.trim().length > 200) {
+    throw new Error(`Task ${task.id} story must fit two lines (max 200 characters)`);
+  }
+  if (/\b(?:colleague|half-?landed|rename map|the new files|the old files|as discussed)\b/i.test(task.story)) {
+    throw new Error(
+      `Task ${task.id} story has an unresolved reference — name the exact paths and symbols instead`,
+    );
+  }
+  if (task.writes.length > 4) {
+    throw new Error(`Task ${task.id} declares too many writes — one task is one change (max 4 files)`);
   }
   if (task.predictedActiveMinutes <= 0 || task.predictedCredits < 0) {
     throw new Error(`Task ${task.id} predictions must be non-negative and active minutes must be positive`);
@@ -372,13 +390,20 @@ function renderStage(input: StageInput): string {
     writes: input.writes,
     tempRoot: input.tempRoot,
   });
+  // Two visible lines per Task: the story, and a hidden metadata comment.
+  // Forecast/How/RED stay machine-readable and surface through start-task.
   const tasks = input.tasks.flatMap((task) => {
+    const taskMeta = JSON.stringify({
+      writes: task.writes,
+      predictedActiveMinutes: task.predictedActiveMinutes,
+      predictedCredits: task.predictedCredits,
+      how: task.how,
+      red: task.red,
+    });
+    if (taskMeta.includes("-->")) throw new Error(`Task ${task.id} metadata must not contain "-->"`);
     return [
       `- [ ] ${task.id} — ${task.story}`,
-      `      Writes: ${task.writes.map((path) => `\`${path}\``).join(", ")}.`,
-      `      Predict: ${task.predictedActiveMinutes} active min / ${task.predictedCredits} credits.`,
-      `      How: ${task.how}`,
-      `      RED: \`${task.red}\``,
+      `<!-- plan:task-meta:${taskMeta} -->`,
     ];
   });
   const criteria = input.criteria.map((criterion) => `- [ ] ${criterion}`);
@@ -450,9 +475,49 @@ function stageInputs(body: string): readonly StageInput[] {
     const heading = block.match(/^#### Stage [^\n]+ — (.+)$/m);
     const ownerLine = block.match(/^Owner: ([^;]+); Profile: (fast|strong);/m);
     if (heading === null || ownerLine === null) throw new Error(`Stage ${match[1]} has incomplete rendered metadata`);
-    const taskMatches = [...block.matchAll(
+    // Current format: story line + hidden task-meta comment. Legacy format
+    // (visible Writes/Predict/How/RED lines) still parses so committed plans
+    // keep working; the two patterns cannot match the same task.
+    const modernTasks = [...block.matchAll(
+      /^- \[([ x])\] ([A-Z][A-Z0-9_-]*) — ([^\n]+)\n<!-- plan:task-meta:(\{[^\n]*\}) -->/gm,
+    )].map((task) => {
+      const id = capture(task, 2, "Task ID");
+      const meta = parseMetaObject(`<!-- plan:task-meta:${capture(task, 4, "Task metadata")} -->`, "<!-- plan:task-meta:");
+      if (typeof meta.how !== "string" || typeof meta.red !== "string") {
+        throw new Error(`Task ${id} metadata must carry how and red`);
+      }
+      return {
+        index: task.index ?? 0,
+        input: {
+          id,
+          story: capture(task, 1, "Task state") === "x"
+            ? capture(task, 3, "Task story").replace(/ — [0-9a-f]{7,40}$/, "")
+            : capture(task, 3, "Task story"),
+          writes: stringArray(meta.writes, `Task ${id} writes`),
+          predictedActiveMinutes: Number(meta.predictedActiveMinutes),
+          predictedCredits: Number(meta.predictedCredits),
+          how: meta.how,
+          red: meta.red,
+        },
+      };
+    });
+    const legacyTasks = [...block.matchAll(
       /^- \[([ x])\] ([A-Z][A-Z0-9_-]*) — ([^\n]+)\n\s+Writes: ([^\n]+)\.\n\s+Predict: (\d+(?:\.\d+)?) active min \/ (\d+(?:\.\d+)?) credits\.\n\s+How: ([^\n]+)\n\s+RED: `([^`]+)`/gm,
-    )];
+    )].map((task) => ({
+      index: task.index ?? 0,
+      input: {
+        id: capture(task, 2, "Task ID"),
+        story: capture(task, 1, "Task state") === "x"
+          ? capture(task, 3, "Task story").replace(/ — [0-9a-f]{7,40}$/, "")
+          : capture(task, 3, "Task story"),
+        writes: renderedPaths(capture(task, 4, "Task writes"), `Task ${capture(task, 2, "Task ID")} writes`),
+        predictedActiveMinutes: Number(capture(task, 5, "Task active minutes")),
+        predictedCredits: Number(capture(task, 6, "Task credits")),
+        how: capture(task, 7, "Task how"),
+        red: capture(task, 8, "Task RED"),
+      },
+    }));
+    const taskMatches = [...modernTasks, ...legacyTasks].sort((left, right) => left.index - right.index);
     const criteriaBlock = block.match(/##### Acceptance criteria\n\n([\s\S]*?)\n\n##### Results/);
     inputs.push({
       id,
@@ -466,17 +531,7 @@ function stageInputs(body: string): readonly StageInput[] {
       tempRoot: typeof meta.tempRoot === "string" ? meta.tempRoot : "",
       predictedActiveMinutes: Number(capture(match, 3, "Stage active minutes")),
       predictedCredits: Number(capture(match, 4, "Stage credits")),
-      tasks: taskMatches.map((task) => ({
-        id: capture(task, 2, "Task ID"),
-        story: capture(task, 1, "Task state") === "x"
-          ? capture(task, 3, "Task story").replace(/ — [0-9a-f]{7,40}$/, "")
-          : capture(task, 3, "Task story"),
-        writes: renderedPaths(capture(task, 4, "Task writes"), `Task ${capture(task, 2, "Task ID")} writes`),
-        predictedActiveMinutes: Number(capture(task, 5, "Task active minutes")),
-        predictedCredits: Number(capture(task, 6, "Task credits")),
-        how: capture(task, 7, "Task how"),
-        red: capture(task, 8, "Task RED"),
-      })),
+      tasks: taskMatches.map((task) => task.input),
       criteria: criteriaBlock === null
         ? []
         : capture(criteriaBlock, 1, "Stage criteria").split("\n").filter((line) => /^- \[[ x]\] /.test(line)).map((line) =>
