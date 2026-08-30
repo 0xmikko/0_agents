@@ -99,7 +99,9 @@ describe("planctl", () => {
     const stage = run(import.meta.dir, "put-stage", "--help");
     expect(stage.status).toBe(0);
     expect(stage.stdout).toContain('"predictedActiveMinutes": 10');
-    expect(stage.stdout).toContain('"writes": ["src/scheduler.ts", "test/scheduler.test.ts"]');
+    expect(stage.stdout).toContain(
+      '"writes": ["src/scheduler/parse-lanes.ts", "test/scheduler/parse-lanes.test.ts"]',
+    );
     expect(stage.stdout).toContain("Bad Task (rejected)");
     expect(stage.stdout).toContain("Good Task");
     expect(stage.stdout).toContain("Add or replace");

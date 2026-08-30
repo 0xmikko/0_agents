@@ -273,6 +273,12 @@ function assertTaskContract(task: TaskInput, stageWrites: readonly string[]): vo
     assertSafeInline(path, `Task ${task.id} write`);
     if (!stageWrites.includes(path)) throw new Error(`Task ${task.id} write ${path} is outside Stage writes`);
   }
+  const unnamedWrites = task.writes.filter((path) => !task.how.includes(path));
+  if (unnamedWrites.length > 0) {
+    throw new Error(
+      `Task ${task.id} how must name every declared write path: ${unnamedWrites.join(", ")}`,
+    );
+  }
   if (task.predictedActiveMinutes <= 0 || task.predictedCredits < 0) {
     throw new Error(`Task ${task.id} predictions must be non-negative and active minutes must be positive`);
   }

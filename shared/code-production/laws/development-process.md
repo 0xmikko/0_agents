@@ -58,14 +58,20 @@ serializes.
 
 ## Planning quality
 
-A Task must say what changes, where, why and how success is observed. It names
-exact writes, a concrete procedure, a deterministic RED command, predicted
-active minutes and predicted credits.
+A Task must say what is wrong, what changes, where, and how success is
+observed. It names exact writes, and its `How` repeats every exact path with
+the behavior changed there; “the existing parser” and “the named files” are
+not locations. It also names a deterministic RED command, predicted active
+minutes and predicted credits.
 
 - Bad: “Refactor the scheduler.”
-- Good: “TASK_014 — assign two ready Stages with disjoint writes from one base;
-  extend the existing scheduler parser; touch only the two named files; refuse
-  an overlapping write set; predict 18 active min / 8 credits.”
+- Bad: “TASK_014 — extend the existing parser in the named files; refuse
+  overlap.”
+- Good: “TASK_014 — `src/scheduler/parse-lanes.ts` currently assigns two ready
+  Stages that both write `src/shared.ts`; change
+  `src/scheduler/parse-lanes.ts` to refuse the second assignment and add the
+  RED case to `test/scheduler/parse-lanes.test.ts`; predict 18 active min / 8
+  credits.”
 
 A Stage forecast is at least the sum of its Tasks. A Delivery reports aggregate
 active work, the longest dependency path and external waits separately.

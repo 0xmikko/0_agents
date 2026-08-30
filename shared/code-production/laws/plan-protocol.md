@@ -55,7 +55,8 @@ Plan
 **Task**
 
 - Bad: “Refactor the scheduler.”
-- Good: “CPP-014 — assign two ready Stages with disjoint writes to two lanes from one base; extend the existing parser; touch only named files; predict 18 min / 8 credits; refuse overlap.”
+- Bad: “CPP-014 — extend the existing parser in the named files; refuse overlap.”
+- Good: “CPP-014 — `src/scheduler/parse-lanes.ts` currently assigns two ready Stages that both write `src/shared.ts`; change `src/scheduler/parse-lanes.ts` to refuse the second assignment and add the RED case to `test/scheduler/parse-lanes.test.ts`; predict 18 min / 8 credits.”
 
 - Bad: “Done; tests green.”
 - Good: “CPP-014 → `abc1234`; expected RED observed; named test passed; 18 predicted / 21 actual min; usage unavailable because runner omitted tokens; no deviation; temp root absent.”

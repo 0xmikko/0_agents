@@ -36,8 +36,9 @@ once on the published CI SHA.”
 
 1. One Delivery is one PR. Each Stage is one delegable result and one work
    commit. Do not parallelize multiple Deliveries by default.
-2. A Task is an observable story with exact writes, a concrete method, one
-   exact RED command and predicted active minutes/credits. RED uses:
+2. A Task names the observable problem, exact writes, and a concrete method
+   that repeats every exact path with the behavior changed there. It also
+   names one exact RED command and predicted active minutes/credits. RED uses:
 
        bun run agent:test:<backend|frontend|e2e> -- <exact-target>
 
@@ -51,12 +52,13 @@ once on the published CI SHA.”
    plan. This is the second hard stop.
 7. After an explicit yes, run planctl approve-plan with the owner's words.
 
-Bad Task: “Refactor scheduler.”
+Bad Task: “Extend the existing parser in the named files.”
 
-Good Task: “D1-S2-T1 — reject a second active job for the same account by
-extending the existing admission guard in the two named files; RED is
-bun run agent:test:backend -- test/scheduler.test.ts -t tst_scheduler_014;
-estimate 12 active min / 3 credits.”
+Good Task: “D1-S2-T1 — src/scheduler/admission.ts currently admits a second
+active job for the same account; change src/scheduler/admission.ts to return
+the conflict and add the RED case to test/scheduler/admission.test.ts; RED is
+bun run agent:test:backend -- test/scheduler/admission.test.ts -t
+tst_scheduler_014; estimate 12 active min / 3 credits.”
 
 After approval, never edit the plan or checkboxes directly. Use planctl amend,
 start-task, complete-task, add-deviation and close-stage.

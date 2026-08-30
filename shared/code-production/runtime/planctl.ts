@@ -73,20 +73,20 @@ Good Task in a complete stage.json (copy this shape):
   "profile": "fast",
   "depends": [],
   "parallelWith": [],
-  "writes": ["src/scheduler.ts", "test/scheduler.test.ts"],
+  "writes": ["src/scheduler/parse-lanes.ts", "test/scheduler/parse-lanes.test.ts"],
   "tempRoot": ".tmp/code-production/scheduler-overlap/D1-S1",
   "predictedActiveMinutes": 12,
   "predictedCredits": 3,
   "tasks": [{
     "id": "PLANCTL_001",
-    "story": "reject two overlapping jobs for the same account",
-    "writes": ["src/scheduler.ts", "test/scheduler.test.ts"],
+    "story": "when two ready Stages declare the same write, reject the second lane assignment",
+    "writes": ["src/scheduler/parse-lanes.ts", "test/scheduler/parse-lanes.test.ts"],
     "predictedActiveMinutes": 10,
     "predictedCredits": 2,
-    "how": "extend the existing scheduler admission guard and keep its error contract",
-    "red": "bun run agent:test:backend -- test/scheduler.test.ts -t tst_scheduler_005"
+    "how": "change src/scheduler/parse-lanes.ts to compare exact Stage writes before assignment; add the overlap refusal case to test/scheduler/parse-lanes.test.ts",
+    "red": "bun run agent:test:backend -- test/scheduler/parse-lanes.test.ts -t tst_scheduler_005"
   }],
-  "criteria": ["\`bun run agent:test:backend -- test/scheduler.test.ts\` exits 0 — overlap is rejected", "Commit"]
+  "criteria": ["\`bun run agent:test:backend -- test/scheduler/parse-lanes.test.ts\` exits 0 — overlap is rejected", "Commit"]
 }
 
 Bad Task (rejected):
