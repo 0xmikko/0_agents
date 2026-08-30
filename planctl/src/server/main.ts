@@ -2,8 +2,6 @@
 
 import "reflect-metadata";
 
-import { readFileSync } from "node:fs";
-
 import { NestFactory } from "@nestjs/core";
 
 import { defaultPlanctlConfigPath, loadPlanctlConfig } from "../config/config";
@@ -58,10 +56,8 @@ function moduleFor(
   config: ServerConfig,
   runtime: ServerRuntime,
 ): ReturnType<typeof ServerAppModule.registerWithTelegram> {
-  const token = readFileSync(config.telegram.botTokenFile, "utf8").trim();
-  if (token === "") throw new Error("Telegram bot token file is empty");
   return ServerAppModule.registerWithTelegram(storeOptions(config, runtime.now), {
-    token,
+    envFile: config.telegram.envFile,
     allowedUserIds: config.telegram.allowedUserIds,
     defaultChatId: config.telegram.defaultChatId,
     longPollSeconds: config.telegram.longPollSeconds,

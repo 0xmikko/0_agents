@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 
+import { planctlSecretsModule, TELEGRAM_BOT_TOKEN_KEY } from "../config/config";
 import { ProgressModule } from "../server/progress/progress.module";
 import { ProgressService } from "../server/progress/progress.service";
 import { BotService, TELEGRAM_BOT_CLIENT } from "./bot.service";
@@ -15,7 +17,7 @@ import type { DynamicModule } from "@nestjs/common";
 import type { TelegramFetch } from "./telegram-client";
 
 export interface TelegramModuleOptions {
-  readonly token: string;
+  readonly envFile: string;
   readonly allowedUserIds: readonly number[];
   readonly defaultChatId: number;
   readonly longPollSeconds: number;
@@ -30,14 +32,15 @@ export class TelegramModule {
   static register(options: TelegramModuleOptions): DynamicModule {
     return {
       module: TelegramModule,
-      imports: [ProgressModule],
+      imports: [ProgressModule, planctlSecretsModule(options.envFile, TELEGRAM_BOT_TOKEN_KEY)],
       providers: [
         { provide: PROGRESS_READER, useExisting: ProgressService },
         { provide: TELEGRAM_COMMAND_OPTIONS, useValue: { allowedUserIds: options.allowedUserIds } },
         {
           provide: TELEGRAM_BOT_CLIENT,
-          useFactory: (): TelegramClient => new TelegramClient({
-            token: options.token,
+          inject: [ConfigService],
+          useFactory: (secrets: ConfigService): TelegramClient => new TelegramClient({
+            token: secrets.getOrThrow<string>(TELEGRAM_BOT_TOKEN_KEY),
             longPollSeconds: options.longPollSeconds,
             fetch: options.fetch,
           }),

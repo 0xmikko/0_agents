@@ -137,4 +137,22 @@ describe("Telegram progress commands", () => {
     expect(reply).toContain("Reason: Choose the public hostname");
     expect(reply).toContain("Wait duration: 15m");
   });
+
+  /**
+   * @test-id: tst_svc_planctl_private_chat_001
+   * @scenario: scn_planctl_private_chat_001
+   * @covers: planctl/src/telegram/commands.service.ts::CommandsService.handle
+   * @deterministic: yes
+   * @fixtures: one authorized owner command sent from a group chat
+   *
+   * Test environment: in-memory command authorization
+   * Clients: direct CommandsService call
+   * Mocks: in-memory progress reader only
+   * Data: allowed owner user ID with a distinct negative group chat ID
+   */
+  it("tst_svc_planctl_private_chat_001 ignores an authorized owner command outside their private chat", () => {
+    const commands = new CommandsService(new FixtureProgress(), { allowedUserIds: [101] });
+    const reply = commands.handle({ updateId: 100, userId: 101, chatId: -100123456789, text: "/progress" });
+    expect(reply).toBeNull();
+  });
 });

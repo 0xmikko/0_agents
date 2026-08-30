@@ -74,6 +74,31 @@ it("tst_cert_planctl_build_001 bundles every production entrypoint without optio
 });
 
 /**
+ * @test-id: tst_int_planctl_source_launchers_001
+ * @scenario: scn_planctl_source_launchers_001
+ * @covers: bin/planctld
+ * @covers: bin/planctl-server
+ * @deterministic: yes
+ * @fixtures: repository source launchers invoked from the systemd working directory
+ *
+ * Test environment: production Bash launchers and Bun TypeScript loader
+ * Clients: systemd user services
+ * Mocks: none
+ * Data: help-only startup that still loads every decorated Nest controller
+ */
+it("tst_int_planctl_source_launchers_001 load Nest decorators from the repository working directory", () => {
+  for (const launcher of ["planctld", "planctl-server"] as const) {
+    const launched = spawnSync(join(REPOSITORY_ROOT, "bin", launcher), ["--help"], {
+      cwd: REPOSITORY_ROOT,
+      encoding: "utf8",
+    });
+
+    expect(launched.status, `${launcher}: ${launched.stderr}`).toBe(0);
+    expect(launched.stdout).toContain("Usage:");
+  }
+});
+
+/**
  * @test-id: tst_cert_planctl_built_focus_001
  * @scenario: scn_planctl_built_focus_001
  * @covers: planctl/src/cli/main.ts::focus
@@ -132,9 +157,9 @@ it("tst_cert_planctl_built_focus_001 runs remote focus from the built CLI with G
     },
   });
   try {
-    const token = join(output, "machine.token");
-    writeFileSync(token, "fixture-machine-token\n", { mode: 0o600 });
-    chmodSync(token, 0o600);
+    const envFile = join(output, ".env");
+    writeFileSync(envFile, "PLANCTL_MACHINE_TOKEN=fixture-machine-token\n", { mode: 0o600 });
+    chmodSync(envFile, 0o600);
     const config = join(output, "machine.toml");
     writeFileSync(config, [
       "version = 1",
@@ -143,7 +168,7 @@ it("tst_cert_planctl_built_focus_001 runs remote focus from the built CLI with G
       "",
       "[server]",
       `url = "http://127.0.0.1:${server.port}"`,
-      `token_file = "${token}"`,
+      `env_file = "${envFile}"`,
       "connect_timeout_ms = 1000",
       "request_timeout_ms = 5000",
       "",

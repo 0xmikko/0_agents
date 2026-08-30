@@ -47,21 +47,23 @@ describe("planctl role setup", () => {
    */
   it("tst_int_planctl_install_001 validates before idempotent link, unit install and service start", () => {
     const root = temporaryRoot();
-    const machineSecret = join(root, "machine.token");
-    const telegramSecret = join(root, "telegram.token");
+    const envFile = join(root, ".env");
     const machineConfig = join(root, "machine.toml");
     const serverConfig = join(root, "server.toml");
     const watchRoot = join(root, "coding");
     mkdirSync(watchRoot, { recursive: true });
-    writeFileSync(machineSecret, "machine-secret\n", { mode: 0o644 });
-    writeFileSync(telegramSecret, "telegram-secret\n", { mode: 0o600 });
+    writeFileSync(envFile, [
+      "PLANCTL_MACHINE_TOKEN=machine-secret",
+      "PLANCTL_TELEGRAM_BOT_TOKEN=telegram-secret",
+      "",
+    ].join("\n"), { mode: 0o644 });
     writeFileSync(machineConfig, [
       "version = 1",
       'machine_id = "machine-a"',
       `repository_ids = { "${watchRoot}" = "fixture/repository" }`,
       "[server]",
       'url = "http://127.0.0.1:4789"',
-      `token_file = "${machineSecret}"`,
+      `env_file = "${envFile}"`,
       "connect_timeout_ms = 100",
       "request_timeout_ms = 250",
       "[collector]",
@@ -83,7 +85,7 @@ describe("planctl role setup", () => {
       "machine_offline_after_seconds = 60",
       "history_retention_days = 90",
       "[telegram]",
-      `bot_token_file = "${telegramSecret}"`,
+      `env_file = "${envFile}"`,
       "allowed_user_ids = [101]",
       "default_chat_id = 101",
       "long_poll_seconds = 30",
@@ -106,7 +108,7 @@ describe("planctl role setup", () => {
     expect(existsSync(join(root, "systemctl.log"))).toBeFalse();
     expect(existsSync(join(root, "units"))).toBeFalse();
 
-    chmodSync(machineSecret, 0o600);
+    chmodSync(envFile, 0o600);
     for (const result of [
       runSetup(root, "machine", machineConfig),
       runSetup(root, "machine", machineConfig),
