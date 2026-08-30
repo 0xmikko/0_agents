@@ -80,9 +80,11 @@ function stage(id: string, writes: readonly string[], parallelWith: readonly str
     tempRoot: `.tmp/code-production/fixture/${id}`,
     predictedActiveMinutes: 10,
     predictedCredits: 2,
+    verifyActiveMinutes: 2,
+    verifyCredits: 1,
     tasks: [{
       id: `${id}-T1`,
-      story: `produce one observable ${id} behavior from the declared contract`,
+      story: `produce one observable ${id} behavior in ${writes[0]}`,
       writes,
       predictedActiveMinutes: 8,
       predictedCredits: 1,
@@ -223,7 +225,7 @@ describe("plan-update", () => {
       pathExists: () => false,
     }).body;
     expect(accepted).toContain(`| D1-S1-T1 | ${receipt.commit}`);
-    expect(accepted).toContain("- [x] D1-S1-T1 — produce one observable D1-S1 behavior from the declared contract");
+    expect(accepted).toContain("- [x] D1-S1-T1 — produce one observable D1-S1 behavior in scripts/base.ts");
     expect(protocolLockViolations(accepted)).toEqual([]);
 
     expect(() => recordStageResult(approvedWithStages(), receipt, {
@@ -293,7 +295,7 @@ describe("plan-update", () => {
       [{ ...valid, tasks: [{ ...valid.tasks[0], red: "bun test test/plan-update.test.ts" }] }, /RED.*agent:test/i],
       [{ ...valid, tempRoot: "/tmp" }, /tempRoot/i],
       [{ ...valid, tasks: [{ ...valid.tasks[0], writes: ["scripts/foreign.ts"] }] }, /outside Stage writes/i],
-      [{ ...valid, tasks: [{ ...valid.tasks[0], predictedActiveMinutes: 11 }] }, /Task forecasts exceed Stage forecast/i],
+      [{ ...valid, tasks: [{ ...valid.tasks[0], predictedActiveMinutes: 11 }] }, /must equal task sum plus verification/i],
       [{ ...valid, criteria: [] }, /acceptance criteria/i],
     ];
 
@@ -306,8 +308,8 @@ describe("plan-update", () => {
   // @scenario: scn_plan_control_004
   // @covers: scripts/plan-update.ts::putStage Task execution scope validation
   // @deterministic: yes
-  // @invariant: a Task procedure names every exact file instead of referring to unnamed code.
-  it("tst_scripts_planupdate_007 refuses a Task procedure that points to unnamed files", () => {
+  // @invariant: a Task story names every exact file instead of referring to unnamed code.
+  it("tst_scripts_planupdate_007 refuses a Task story that points to unnamed files", () => {
     const locked = putDelivery(lockPlanSpec(draft(), "spec").body, delivery()).body;
     const candidate = stage("D1-S1", ["scripts/base.ts", "test/base.test.ts"]);
 
@@ -315,8 +317,170 @@ describe("plan-update", () => {
       ...candidate,
       tasks: [{
         ...candidate.tasks[0],
-        how: "extend the existing parser in the two named files and refuse overlap",
+        story: "extend the parser and refuse overlap across both touched modules",
       }],
-    })).toThrow(/must name every declared write path/i);
+    })).toThrow(/story must name every write path/i);
+  });
+});
+
+describe("two-line task contract", () => {
+  // @test-id: tst_scripts_planupdate_008
+  // @scenario: scn_codeprod_001
+  // @covers: scripts/plan-update.ts::putStage
+  // @deterministic: yes
+  // @invariant: a rendered Task is two lines — the story and a hidden
+  // task-meta comment; Writes/Predict/How/RED never render visibly.
+  it("tst_scripts_planupdate_008 renders a task as story plus hidden metadata", () => {
+    let body = lockPlanSpec(draft(), "spec").body;
+    body = putDelivery(body, delivery()).body;
+    body = putStage(body, {
+      ...stage("D1-S1", ["scripts/base.ts"]),
+      tasks: [{
+        id: "D1-S1-T1",
+        story: "Expose the base contract from scripts/base.ts as one callable entrypoint.",
+        writes: ["scripts/base.ts"],
+        predictedActiveMinutes: 8,
+        predictedCredits: 1,
+        how: "one export statement",
+        red: "bun run agent:test:backend -- test/plan-update.test.ts",
+      }],
+    }).body;
+    expect(body).toContain("<!-- plan:task-meta:");
+    // the per-task time stays visible as a compact suffix on the story line
+    expect(body).toContain("as one callable entrypoint. (8 min)");
+    const tasksBlock = body.slice(body.indexOf("##### Tasks"), body.indexOf("##### Acceptance criteria"));
+    expect(tasksBlock).not.toMatch(/^\s+Writes:/m);
+    expect(tasksBlock).not.toMatch(/^\s+How:/m);
+    expect(tasksBlock).not.toMatch(/^\s+RED:/m);
+    expect(tasksBlock).not.toMatch(/^\s+Predict:/m);
+    // and the metadata survives a parse round trip: replacing the stage works
+    const replaced = putStage(body, {
+      ...stage("D1-S1", ["scripts/base.ts"]),
+      tasks: [{
+        id: "D1-S1-T1",
+        story: "Expose the base contract from scripts/base.ts as one callable entrypoint.",
+        writes: ["scripts/base.ts"],
+        predictedActiveMinutes: 8,
+        predictedCredits: 1,
+        how: "one export statement",
+        red: "bun run agent:test:backend -- test/plan-update.test.ts",
+      }],
+    });
+    expect(replaced.body).toContain("Expose the base contract");
+  });
+
+  // @test-id: tst_scripts_planupdate_009
+  // @scenario: scn_codeprod_001
+  // @covers: scripts/plan-update.ts::putStage
+  // @deterministic: yes
+  // @invariant: the story itself names every write path (full path or its
+  // basename); the old how-must-name-paths rule is gone.
+  it("tst_scripts_planupdate_009 requires paths in the story, not in how", () => {
+    let body = lockPlanSpec(draft(), "spec").body;
+    body = putDelivery(body, delivery()).body;
+    expect(() => putStage(body, {
+      ...stage("D1-S1", ["scripts/base.ts"]),
+      tasks: [{
+        id: "D1-S1-T1",
+        story: "Expose the base contract as one callable entrypoint somewhere sensible.",
+        writes: ["scripts/base.ts"],
+        predictedActiveMinutes: 8,
+        predictedCredits: 1,
+        how: "touch scripts/base.ts",
+        red: "bun run agent:test:backend -- test/plan-update.test.ts",
+      }],
+    })).toThrow(/story must name/i);
+  });
+
+  // @test-id: tst_scripts_planupdate_010
+  // @scenario: scn_codeprod_001
+  // @covers: scripts/plan-update.ts::putStage
+  // @deterministic: yes
+  // @invariant: a story leaning on unresolved references (a colleague, a
+  // rename map, "the new files") is rejected until the reference is unfolded.
+  it("tst_scripts_planupdate_010 rejects unresolved references in a story", () => {
+    let body = lockPlanSpec(draft(), "spec").body;
+    body = putDelivery(body, delivery()).body;
+    for (const story of [
+      "Finish the colleague's rewire of scripts/base.ts to the intended state.",
+      "Apply the rename map to scripts/base.ts as discussed in the audit.",
+    ]) {
+      expect(() => putStage(body, {
+        ...stage("D1-S1", ["scripts/base.ts"]),
+        tasks: [{
+          id: "D1-S1-T1",
+          story,
+          writes: ["scripts/base.ts"],
+          predictedActiveMinutes: 8,
+          predictedCredits: 1,
+          how: "mechanical",
+          red: "bun run agent:test:backend -- test/plan-update.test.ts",
+        }],
+      })).toThrow(/unresolved reference/i);
+    }
+  });
+
+  // @test-id: tst_scripts_planupdate_011
+  // @scenario: scn_codeprod_001
+  // @covers: scripts/plan-update.ts::putStage
+  // @deterministic: yes
+  // @invariant: plans rendered before this contract (visible Writes/How/RED
+  // lines) still parse, so committed plans keep working.
+  it("tst_scripts_planupdate_011 still parses the legacy five-line task format", () => {
+    let body = lockPlanSpec(draft(), "spec").body;
+    body = putDelivery(body, delivery()).body;
+    body = putStage(body, stage("D1-S1", ["scripts/base.ts"])).body;
+    // hand-convert the rendered stage into the legacy five-line format
+    const legacyTask = [
+      "- [ ] D1-S1-T1 — produce one observable D1-S1 behavior from scripts/base.ts",
+      "      Writes: `scripts/base.ts`.",
+      "      Predict: 8 active min / 1 credits.",
+      "      How: change scripts/base.ts so the declared observable behavior is implemented",
+      "      RED: `bun run agent:test:backend -- test/plan-update.test.ts`",
+    ].join("\n");
+    const modernTask = new RegExp("- \\[ \\] D1-S1-T1 — [^\\n]+\\n<!-- plan:task-meta:[^\\n]+ -->");
+    expect(modernTask.test(body)).toBe(true);
+    const legacyBody = body.replace(modernTask, legacyTask);
+    // parsing happens on the next mutation: adding a second stage must work
+    const next = putStage(legacyBody, stage("D1-S2", ["scripts/a.ts"], []));
+    expect(next.body).toContain("D1-S2");
+  });
+});
+
+describe("stage estimate = tasks + verification", () => {
+  // @test-id: tst_scripts_planupdate_012
+  // @scenario: scn_codeprod_001
+  // @covers: scripts/plan-update.ts::putStage
+  // @deterministic: yes
+  // @invariant: a Stage forecast is derived, not invented — it must equal the
+  // task sum plus an explicit verification share, and the share renders.
+  it("tst_scripts_planupdate_012 derives the stage forecast from tasks plus verification", () => {
+    let body = lockPlanSpec(draft(), "spec").body;
+    body = putDelivery(body, delivery()).body;
+    const base = stage("D1-S1", ["scripts/base.ts"]);
+    // mismatched: tasks sum to 8 + verification 2 = 10, but stage claims 12
+    expect(() => putStage(body, {
+      ...base,
+      predictedActiveMinutes: 12,
+      verifyActiveMinutes: 2,
+      verifyCredits: 1,
+    })).toThrow(/must equal task sum plus verification/i);
+    // matched: renders the verification share and round-trips
+    const put = putStage(body, {
+      ...base,
+      predictedActiveMinutes: 10,
+      predictedCredits: 2,
+      verifyActiveMinutes: 2,
+      verifyCredits: 1,
+    });
+    expect(put.body).toContain("Of which verification: 2 active min / 1 credits.");
+    const again = putStage(put.body, {
+      ...stage("D1-S2", ["scripts/a.ts"], []),
+      predictedActiveMinutes: 10,
+      predictedCredits: 2,
+      verifyActiveMinutes: 2,
+      verifyCredits: 1,
+    });
+    expect(again.body).toContain("D1-S2");
   });
 });
