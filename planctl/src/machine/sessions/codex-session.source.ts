@@ -20,7 +20,7 @@ function later(current: string | null, candidate: unknown): string | null {
 
 /**
  * @tested-by: tst_svc_planctld_sessions_001
- * @invariant: Codex payload content is never retained; only session_meta identity and top-level timestamps enter observations.
+ * @invariant: Codex payload content is never retained; only session_meta identity, terminal status and top-level timestamps enter observations.
  */
 export function scanCodexSessionFile(path: string, from: SessionFileCursor | number): SessionFileScan {
   const previous = sessionCursor(from);
@@ -28,12 +28,22 @@ export function scanCodexSessionFile(path: string, from: SessionFileCursor | num
   let sessionId = previous.sessionId;
   let cwd = previous.cwd;
   let lastActivityAt = previous.lastActivityAt;
+  let completed = false;
   for (const entry of tail.records) {
     const value = record(entry.value);
     if (value === null) continue;
-    lastActivityAt = later(lastActivityAt, value.timestamp);
-    if (value.type !== "session_meta") continue;
+    const observedAt = later(lastActivityAt, value.timestamp);
+    if (observedAt !== null) {
+      lastActivityAt = observedAt;
+      completed = false;
+    }
     const payload = record(value.payload);
+    if (value.type === "event_msg" && payload?.type === "task_complete") {
+      lastActivityAt = null;
+      completed = true;
+      continue;
+    }
+    if (value.type !== "session_meta") continue;
     if (payload === null) continue;
     sessionId = optionalText(payload.id) ?? sessionId;
     cwd = optionalText(payload.cwd) ?? cwd;
@@ -43,7 +53,7 @@ export function scanCodexSessionFile(path: string, from: SessionFileCursor | num
   if (tail.pendingBytes > 0 && tail.issues.length === 0) {
     issues.push({ sourcePath: path, code: "truncated_tail", offset: tail.nextOffset, message: "Codex JSONL tail is incomplete" });
   }
-  if (tail.records.length > 0 && (sessionId === null || cwd === null || lastActivityAt === null)) {
+  if (tail.records.length > 0 && (sessionId === null || cwd === null || (lastActivityAt === null && !completed))) {
     issues.push({ sourcePath: path, code: "missing_metadata", offset: tail.nextOffset, message: "Codex session metadata is incomplete" });
   }
   const activity: SessionActivity | null = sessionId === null || cwd === null || lastActivityAt === null

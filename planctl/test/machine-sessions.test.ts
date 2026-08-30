@@ -34,6 +34,48 @@ function temporaryRoot(): string {
 
 describe("planctld session discovery", () => {
   /**
+   * @test-id: tst_svc_planctld_completed_session_001
+   * @scenario: scn_planctld_completed_session_001
+   * @covers: planctl/src/machine/sessions/codex-session.source.ts::scanCodexSessionFile
+   * @invariant: a Codex task_complete terminal record cannot become a stale agent alert
+   * @deterministic: yes
+   * @fixtures: test-owned Codex JSONL ending in task_complete, then one resumed activity record
+   *
+   * Test environment: direct incremental JSONL scan
+   * Clients: planctld collector
+   * Mocks: none
+   * Data: session metadata and terminal/activity timestamps only
+   */
+  it("tst_svc_planctld_completed_session_001 excludes completed Codex sessions until they resume", () => {
+    const root = temporaryRoot();
+    const sessionPath = join(root, "completed-codex.jsonl");
+    writeFileSync(sessionPath, [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: "2026-08-30T19:45:00.000Z",
+        payload: { id: "completed-session", cwd: "/work/repo" },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: "2026-08-30T19:46:56.441Z",
+        payload: { type: "task_complete" },
+      }),
+      "",
+    ].join("\n"));
+
+    const completed = scanCodexSessionFile(sessionPath, 0);
+    expect(completed.activity).toBeNull();
+
+    appendFileSync(sessionPath, `${JSON.stringify({
+      type: "event_msg",
+      timestamp: "2026-08-30T20:10:00.000Z",
+      payload: { type: "task_started" },
+    })}\n`);
+    const resumed = scanCodexSessionFile(sessionPath, completed.cursor);
+    expect(resumed.activity?.lastActivityAt).toBe("2026-08-30T20:10:00.000Z");
+  });
+
+  /**
    * @test-id: tst_svc_planctld_active_pause_001
    * @scenario: scn_planctld_active_pause_001
    * @covers: planctl/src/core/task-run.ts::accountOwnerWait
