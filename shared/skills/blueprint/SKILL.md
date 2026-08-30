@@ -36,29 +36,46 @@ once on the published CI SHA.”
 
 1. One Delivery is one PR. Each Stage is one delegable result and one work
    commit. Do not parallelize multiple Deliveries by default.
-2. A Task names the observable problem, exact writes, and a concrete method
-   that repeats every exact path with the behavior changed there. It also
-   names one exact RED command and predicted active minutes/credits. RED uses:
+2. Write the owner view for reading, not as an execution dump:
+   - a Stage is only its title, one Result sentence and one Route line; no
+     narrative paragraph or file dump;
+   - a Task names one concrete change and its exact primary file;
+   - a Task is at most 180 characters/two rendered lines and owns no more than
+     three write paths;
+   - split independent actions; never point to “the named files”, “the map
+     above”, chat history or a colleague's branch.
+3. Supply exact writes, one RED command, predicted active minutes/credits,
+   owner/profile and temp root in the `put-stage` JSON. `planctl` stores this
+   execution metadata once; do not repeat it in Stage prose or Task prose. RED
+   uses:
 
        bun run agent:test:<backend|frontend|e2e> -- <exact-target>
 
-3. Independent Stages may run in parallel only when their writes do not
+4. Trace each acceptance story through public calls before approval. If one
+   service must call a new method on another service, include the method's
+   owning file in a Task's writes. Missing required scope invalidates the
+   decomposition.
+5. Independent Stages may run in parallel only when their writes do not
    overlap. Declare dependencies and integration order.
-4. Add Stages through planctl put-stage using its --help JSON format. Do not
+6. Add Stages through planctl put-stage using its --help JSON format. Do not
    hand-author implementation Markdown.
-5. Check that every Goal, flow and invariant is covered; each Task is
+7. Check that every Goal, flow and invariant is covered; each Task is
    independently executable; estimates and the critical path are explicit.
-6. Publish the updated mdurl and ask whether the owner approves the complete
+8. Publish the updated mdurl and ask whether the owner approves the complete
    plan. This is the second hard stop.
-7. After an explicit yes, run planctl approve-plan with the owner's words.
+9. After an explicit yes, run planctl approve-plan with the owner's words.
 
-Bad Task: “Extend the existing parser in the named files.”
+Bad Stage: “Finish the colleague's branch: build fixes and Verify rewire.”
 
-Good Task: “D1-S2-T1 — src/scheduler/admission.ts currently admits a second
-active job for the same account; change src/scheduler/admission.ts to return
-the conflict and add the RED case to test/scheduler/admission.test.ts; RED is
-bun run agent:test:backend -- test/scheduler/admission.test.ts -t
-tst_scheduler_014; estimate 12 active min / 3 credits.”
+Good Stage: “Restore the preview build after the Verify rename.”
+
+Bad Task: “Apply the rename map in the named files.”
+
+Good Task: D1-S2-T1 — Restore the missing `creditOperationMarket` export in
+`src/onchain/market/credit/index.ts`.
+
+Good Task: D1-S2-T2 — Replace generic `Error` in `prepareResult` in
+`src/prepare/result.ts` with canonical `SDKError`.
 
 After approval, never edit the plan or checkboxes directly. Use planctl amend,
 start-task, complete-task, add-deviation and close-stage.

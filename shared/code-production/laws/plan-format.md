@@ -37,46 +37,58 @@ lives in [development-process.md](development-process.md).
    written RED before the stage that makes it true.
 5. **Implementation** — sequential PR Deliveries, each containing Stages:
 
+   The owner-facing part is deliberately small:
+
    ```markdown
    ### PR Delivery D1 — <one coherent PR result>
 
-   #### Stage D1-S1 — <one commit-sized result>
+   #### Stage D1-S1 — <one observable commit result>
+   Result: <what becomes true, one sentence>.
+   Route: depends <IDs|none>; parallel <IDs|none>; forecast <min>/<credits>.
 
-   Temp root: `.tmp/code-production/<plan-slug>/<Stage-ID>` — the Stage owns
-   this child and its receipt must prove it absent.
+   ##### Tasks
+   - [ ] D1-S1-T1 — <one concrete change in one exact primary file>.
+   - [ ] D1-S1-T2 — <one concrete change in one exact primary file>.
 
-   A stage that legitimately splits into parallel same-shaped units (one
-   agent per controller, one commit per capability) declares it in the
-   heading — `#### Stage D1-S1 (fan-out: 9) — <name>` — and the scorecard's
-   commit arithmetic divides by the declared units.
-
-   <Context, at most two paragraphs: what this stage solves and why now,
-   with the stage's own target number in the text. Meaning over volume.>
-
-   #### Tasks
-
-   - [ ] TASK_001 — <observable result, never "refactor/fix/improve X">
-         Writes: `<exact Task paths>`.
-         Predict: <active minutes> / <credits>.
-         How: <concrete procedure using an existing owner>.
-         RED: `<deterministic behavior-test command>`
-
-   #### Acceptance criteria
-
-   - [ ] `command` exits 0        ← machinable: the backticked span IS the command
-   - [ ] <the outcome, not just mechanics: speed reached, code shrunk>
+   ##### Acceptance criteria
+   - [ ] `<command>` exits 0 — <behavior proved>
+   - [ ] <reviewable outcome>
    - [ ] Commit
 
-   #### Results
+   ##### Results
+   - <measured result, appended during execution>
+   ```
 
-   - <what was measured>: **<the number>**, against <the target>. <How it
-     was taken, in one sentence.>
+   `planctl` also stores the exact writes, RED command, forecast, owner/profile
+   and temp root as machine-owned execution metadata in this same Markdown.
+   The normal owner view does not expand or repeat that metadata; before work,
+   `planctl start-task` prints it to the executor.
+
+   A visible Task is one sentence, no more than 180 characters or two rendered
+   lines, and owns at most three exact write paths. At least its primary path
+   appears in the sentence. Split independent actions instead of joining them
+   with semicolons, rename maps or “and then”.
+
+   ```markdown
+   Bad:  D1-S2-T1 — Finish the colleague's half-landed Verify rewire in the named files.
+   Good: D1-S2-T1 — Restore the missing `creditOperationMarket` export in `src/onchain/market/credit/index.ts`.
+   Good: D1-S2-T2 — Remove obsolete `underlyingToken` assignment from `src/onchain/market/credit/CreditSuite.ts`.
+   ```
+
+   A Stage title and Result explain the outcome, not branch history or a list
+   of mechanics. A task must make sense by itself without its `How`, another
+   Task, chat context or a colleague's branch. Terms such as “existing”, “new”,
+   “named files” or “map above” must be resolved to an exact symbol or path in
+   the same sentence.
 
    A criterion carries its asserted RESULT in its own line: the number
    reached, the behavior proven, the thing now absent. A bare "test file
    exits 0" is not a criterion — name what the test proves.
    (Judge-validated in the Stage 11 tournament.)
-   ```
+
+   Each Stage registers `.tmp/code-production/<plan-slug>/<Stage-ID>` as its
+   temp child; its receipt proves the child absent. A legitimate fan-out names
+   its unit count and produces one commit per unit.
 
    **A measured result is written to `#### Results`, never into the text
    of a task or a criterion** (owner ruling, 2026-08-24). The task says
@@ -94,9 +106,9 @@ lives in [development-process.md](development-process.md).
    branch were exactly this class, found after the code instead of in
    ten minutes of planning.
 
-   Read in order, the stages tell the plan's whole story without the
-   details. A stage is a coherent unit (typically 10-20 related changes),
-   not a micro-edit.
+   Read in order, Stage titles and Task sentences tell the plan's whole story
+   without opening execution metadata. A Stage is a coherent commit, not a
+   bucket for unrelated cleanup.
 6. **Amendments** — owner-approved plan changes, one dated line each,
    written before the edit they license.
 7. **Deviations** — agent-recorded shortfalls: stage, target vs reached,
@@ -128,6 +140,12 @@ execution events append.
 Each Task predicts active minutes and credits. A Delivery reports aggregate
 active work, longest dependency path and external waits separately. Actuals
 append later and never rewrite the forecast.
+
+Before approval, the planner traces each acceptance story across service and
+module boundaries. Every public contract that must change appears in the
+owning file's Task writes. An implementation that necessarily needs an
+unlisted owning file proves the decomposition incomplete; it does not license
+the executor to edit first and ask later.
 
 Before RED, the executor runs `planctl start-task`. It re-reads the committed
 Markdown Task or a journal-verified staged Result from the prior Stage,
