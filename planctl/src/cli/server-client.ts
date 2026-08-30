@@ -1,3 +1,5 @@
+import { fetchWithTimeouts } from "../core/http-timeouts";
+
 export interface ServerPlanProgress {
   readonly planId: string;
   readonly planRevision: string;
@@ -23,6 +25,7 @@ export interface ServerReadOptions {
   readonly baseUrl: string;
   readonly machineId: string;
   readonly token: string;
+  readonly connectTimeoutMs: number;
   readonly requestTimeoutMs: number;
   readonly fetch: FetchLike;
 }
@@ -130,19 +133,22 @@ export async function readServerProgress(
   options: ServerReadOptions,
   planId?: string,
 ): Promise<ServerProgressResponse> {
-  if (!Number.isSafeInteger(options.requestTimeoutMs) || options.requestTimeoutMs <= 0) {
-    throw new Error("server request timeout must be a positive integer");
-  }
   if (options.token.trim() === "") throw new Error("server token must not be empty");
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(options.machineId)) throw new Error("server machineId is invalid");
   const suffix = planId === undefined ? "/v1/progress" : `/v1/progress/${encodeURIComponent(planId)}`;
-  const response = await options.fetch(`${baseUrl(options.baseUrl)}${suffix}`, {
-    method: "GET",
-    headers: {
-      authorization: `Bearer ${options.token}`,
-      "x-planctl-machine-id": options.machineId,
+  const response = await fetchWithTimeouts(async (signal) => await options.fetch(
+    `${baseUrl(options.baseUrl)}${suffix}`,
+    {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${options.token}`,
+        "x-planctl-machine-id": options.machineId,
+      },
+      signal,
     },
-    signal: AbortSignal.timeout(options.requestTimeoutMs),
+  ), {
+    connectTimeoutMs: options.connectTimeoutMs,
+    requestTimeoutMs: options.requestTimeoutMs,
   });
   if (!response.ok) throw new Error(`server progress request failed with HTTP ${response.status}`);
   const parsed: unknown = await response.json();

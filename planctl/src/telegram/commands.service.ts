@@ -62,7 +62,8 @@ function agentsMessage(portfolio: PortfolioProgressView): string {
   const agents = portfolio.agents;
   return bounded([
     `Agents — ${agents.length}`,
-    ...agents.map((agent) => `${agent.machineId} · ${agent.agentId} · ${agent.taskId ?? "unassigned"} · ${agent.state} · `
+    ...agents.map((agent) => `${agent.machineId} · ${agent.agentId} · ${agent.taskId ?? "unassigned"} · ${agent.state}`
+      + `${agent.planDrift ? " · plan_drift" : ""} · `
       + `idle ${agent.idleSeconds}s · elapsed ${agent.elapsedActiveMinutes === null ? "unavailable" : `${metric(agent.elapsedActiveMinutes)}m`}`),
   ]);
 }
@@ -73,8 +74,10 @@ function staleMessage(portfolio: PortfolioProgressView): string {
   const offline = agents.filter((agent) => agent.machineState === "offline");
   return bounded([
     `Stale — ${stale.length}; offline observations — ${offline.length}`,
-    ...stale.map((agent) => `STALE ${agent.machineId} · ${agent.agentId} · ${agent.taskId ?? "unassigned"} · idle ${agent.idleSeconds}s`),
-    ...offline.map((agent) => `OFFLINE ${agent.machineId} · agent ${agent.agentId} remains ${agent.state}`),
+    ...stale.map((agent) => `STALE ${agent.machineId} · ${agent.agentId} · ${agent.taskId ?? "unassigned"} · idle ${agent.idleSeconds}s`
+      + (agent.planDrift ? " · plan_drift" : "")),
+    ...offline.map((agent) => `OFFLINE ${agent.machineId} · agent ${agent.agentId} remains ${agent.state}`
+      + (agent.planDrift ? " · plan_drift" : "")),
   ]);
 }
 
@@ -84,7 +87,8 @@ function waitingMessage(portfolio: PortfolioProgressView): string {
   return bounded([
     `Waiting for owner — ${waiting.length}`,
     ...waiting.flatMap((agent) => [
-      `WAITING ${agent.machineId} · ${agent.agentId} · ${agent.taskId ?? "unassigned"}`,
+      `WAITING ${agent.machineId} · ${agent.agentId} · ${agent.taskId ?? "unassigned"}`
+        + (agent.planDrift ? " · plan_drift" : ""),
       `Reason: ${ownerWaitReason(agent.ownerWaitReason)}`,
       `Wait duration: ${ownerWaitDuration(portfolio.generatedAt, agent.ownerWaitStartedAt)}`,
     ]),

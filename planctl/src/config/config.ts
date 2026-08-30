@@ -195,6 +195,11 @@ function machineConfig(input: Readonly<Record<string, unknown>>): MachineConfig 
   if (heartbeatSeconds >= staleAfterSeconds) {
     throw new Error("collector heartbeat_seconds must be less than stale_after_seconds");
   }
+  const connectTimeoutMs = positiveInteger(server.connect_timeout_ms, "server connect_timeout_ms");
+  const requestTimeoutMs = positiveInteger(server.request_timeout_ms, "server request_timeout_ms");
+  if (connectTimeoutMs > requestTimeoutMs) {
+    throw new Error("server connect_timeout_ms must not exceed request_timeout_ms");
+  }
   return {
     role: "machine",
     version: 1,
@@ -203,8 +208,8 @@ function machineConfig(input: Readonly<Record<string, unknown>>): MachineConfig 
     server: {
       url: endpoint(server.url, "server url"),
       tokenFile: secretFile(server.token_file, "server token_file"),
-      connectTimeoutMs: positiveInteger(server.connect_timeout_ms, "server connect_timeout_ms"),
-      requestTimeoutMs: positiveInteger(server.request_timeout_ms, "server request_timeout_ms"),
+      connectTimeoutMs,
+      requestTimeoutMs,
     },
     collector: {
       scanSeconds: positiveInteger(collector.scan_seconds, "collector scan_seconds"),

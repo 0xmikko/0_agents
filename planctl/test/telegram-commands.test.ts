@@ -23,6 +23,7 @@ const PLAN: PlanProgressView = {
     machineState: "online",
     agentId: "codex:waiting",
     state: "awaiting_owner",
+    planDrift: true,
     planId: PLAN_ID,
     taskId: "PLCTL_011",
     planRevision: "a".repeat(64),
@@ -36,6 +37,7 @@ const PLAN: PlanProgressView = {
     machineState: "online",
     agentId: "claude:stale",
     state: "stale",
+    planDrift: true,
     planId: PLAN_ID,
     taskId: "PLCTL_012",
     planRevision: "a".repeat(64),
@@ -49,6 +51,7 @@ const PLAN: PlanProgressView = {
     machineState: "offline",
     agentId: "codex:working",
     state: "working",
+    planDrift: false,
     planId: PLAN_ID,
     taskId: "PLCTL_013",
     planRevision: "a".repeat(64),
@@ -58,7 +61,7 @@ const PLAN: PlanProgressView = {
     ownerWaitReason: null,
     ownerWaitStartedAt: null,
   }],
-  attention: { ownerWait: 1, stale: 1, unassigned: 0, machineOffline: 1, planDrift: 0 },
+  attention: { ownerWait: 1, stale: 1, unassigned: 0, machineOffline: 1, planDrift: 2 },
   remainingActiveMinutes: 120,
   criticalPathMinutes: 75,
   calibratedCriticalPathMinutes: 90,
@@ -110,11 +113,11 @@ describe("Telegram progress commands", () => {
     expect(replies[0]).toContain("Progress — 1 active plan");
     expect(replies[0]).toContain("40.0% · 4/10 Tasks · critical path 90 min · ETA unknown (owner wait)");
     expect(replies[1]).toContain("Goal: Ship trustworthy distributed tracking");
-    expect(replies[1]).toContain("Blockers: owner 1 · stale 1 · offline machines 1 · drift 0");
-    expect(replies[2]).toContain("machine-a · codex:waiting · PLCTL_011 · awaiting_owner");
-    expect(replies[3]).toContain("STALE machine-b · claude:stale · PLCTL_012 · idle 1200s");
+    expect(replies[1]).toContain("Blockers: owner 1 · stale 1 · offline machines 1 · drift 2");
+    expect(replies[2]).toContain("machine-a · codex:waiting · PLCTL_011 · awaiting_owner · plan_drift");
+    expect(replies[3]).toContain("STALE machine-b · claude:stale · PLCTL_012 · idle 1200s · plan_drift");
     expect(replies[3]).toContain("OFFLINE machine-c · agent codex:working remains working");
-    expect(replies[4]).toContain("WAITING machine-a · codex:waiting · PLCTL_011");
+    expect(replies[4]).toContain("WAITING machine-a · codex:waiting · PLCTL_011 · plan_drift");
     expect(replies[4]).toContain("Reason: Choose the public hostname");
     expect(replies[4]).toContain("Wait duration: 15m");
     expect(replies.every((reply) => reply.length <= 4_096)).toBeTrue();

@@ -327,7 +327,7 @@ function legacyTaskRunFrom(value: unknown): TaskRunV1 {
 
 async function taskRunFrom(value: unknown): Promise<TaskRun> {
   if (basename(import.meta.dir) !== "cli") return legacyTaskRunFrom(value);
-  const runtime = await import(resolve(import.meta.dir, "../core/task-run.ts"));
+  const runtime = await import("../core/task-run");
   return runtime.decodeTaskRun(value);
 }
 
@@ -383,7 +383,7 @@ function dedicatedRuntime(): void {
 
 async function ownerWaitRuntime(): Promise<typeof import("../core/task-run")> {
   dedicatedRuntime();
-  return import(resolve(import.meta.dir, "../core/task-run.ts"));
+  return import("../core/task-run");
 }
 
 async function accountAndClearOwnerWait(
@@ -460,6 +460,21 @@ function explicitAgentId(args: readonly string[]): string | null {
   return claude === undefined || claude === "" ? null : `claude:${claude}`;
 }
 
+async function repositoryIdentity(
+  rootPath: string,
+  repositoryIds: Readonly<Record<string, string>>,
+): Promise<GitWorktreeIdentity> {
+  const common = gitCommonDir(rootPath);
+  const repositoryRoot = basename(common) === ".git" ? dirname(common) : rootPath;
+  const discoveryRuntime = await import("../machine/discovery/git-worktree.source");
+  const discovery = discoveryRuntime.discoverGitWorktrees([repositoryRoot], repositoryIds);
+  const identity = discovery.worktrees.find(
+    (worktree: GitWorktreeIdentity) => resolve(worktree.path) === resolve(rootPath),
+  );
+  if (identity !== undefined) return identity;
+  throw new Error(discovery.issues[0]?.message ?? `worktree ${rootPath} was not discovered`);
+}
+
 async function distributedTaskRun(
   args: readonly string[],
   rootPath: string,
@@ -470,7 +485,7 @@ async function distributedTaskRun(
   if (basename(import.meta.dir) !== "cli") return legacy;
   const agentId = explicitAgentId(args);
   if (agentId === null) return legacy;
-  const configRuntime = await import(resolve(import.meta.dir, "../config/config.ts"));
+  const configRuntime = await import("../config/config");
   const configPath = optionalFlag(args, "--config") ?? configRuntime.defaultPlanctlConfigPath("machine");
   if (!existsSync(configPath)) {
     if (args.includes("--agent") || args.includes("--config")) {
@@ -480,17 +495,12 @@ async function distributedTaskRun(
   }
   const config = configRuntime.loadPlanctlConfig(configPath, "machine");
   if (config.role !== "machine") throw new Error("start-task configuration has the wrong role");
-  const common = gitCommonDir(rootPath);
-  const repositoryRoot = basename(common) === ".git" ? dirname(common) : rootPath;
-  const discoveryRuntime = await import(resolve(import.meta.dir, "../machine/discovery/git-worktree.source.ts"));
-  const discovery = discoveryRuntime.discoverGitWorktrees([repositoryRoot], config.repositoryIds);
-  const identity = discovery.worktrees.find(
-    (worktree: GitWorktreeIdentity) => resolve(worktree.path) === resolve(rootPath),
-  );
-  if (identity === undefined) {
+  let identity: GitWorktreeIdentity;
+  try {
+    identity = await repositoryIdentity(rootPath, config.repositoryIds);
+  } catch (error: unknown) {
     if (!args.includes("--agent") && !args.includes("--config")) return legacy;
-    const reason = discovery.issues[0]?.message ?? `worktree ${rootPath} was not discovered`;
-    throw new Error(`distributed start-task has no repository identity: ${reason}`);
+    throw new Error(`distributed start-task has no repository identity: ${message(error)}`);
   }
   if (identity.branch === "(detached)") throw new Error("distributed start-task requires a named branch");
   const candidate: TaskRun = {
@@ -506,7 +516,7 @@ async function distributedTaskRun(
     accumulatedOwnerWaitSeconds: 0,
     lastAccountedOwnerWaitStartedAt: null,
   };
-  const taskRuntime = await import(resolve(import.meta.dir, "../core/task-run.ts"));
+  const taskRuntime = await import("../core/task-run");
   return taskRuntime.decodeTaskRun(candidate);
 }
 
@@ -540,13 +550,14 @@ interface MachineServerSettings {
   readonly machineId: string;
   readonly url: string;
   readonly token: string;
+  readonly connectTimeoutMs: number;
   readonly requestTimeoutMs: number;
   readonly repositoryIds: Readonly<Record<string, string>>;
 }
 
 async function machineServerSettings(args: readonly string[]): Promise<MachineServerSettings> {
   dedicatedRuntime();
-  const config = await import(resolve(import.meta.dir, "../config/config.ts"));
+  const config = await import("../config/config");
   const path = optionalFlag(args, "--config") ?? config.defaultPlanctlConfigPath("machine");
   if (!isAbsolute(path)) throw new Error("machine config path must be absolute");
   const loaded = config.loadPlanctlConfig(path, "machine");
@@ -557,6 +568,7 @@ async function machineServerSettings(args: readonly string[]): Promise<MachineSe
     machineId: loaded.machineId,
     url: loaded.server.url,
     token,
+    connectTimeoutMs: loaded.server.connectTimeoutMs,
     requestTimeoutMs: loaded.server.requestTimeoutMs,
     repositoryIds: loaded.repositoryIds,
   };
@@ -574,11 +586,12 @@ async function serverProgress(args: readonly string[]): Promise<{
   readonly response: Awaited<ReturnType<typeof import("./server-client")["readServerProgress"]>>;
 }> {
   const settings = await machineServerSettings(args);
-  const client = await import(resolve(import.meta.dir, "server-client.ts"));
+  const client = await import("./server-client");
   const response = await client.readServerProgress({
     baseUrl: settings.url,
     machineId: settings.machineId,
     token: settings.token,
+    connectTimeoutMs: settings.connectTimeoutMs,
     requestTimeoutMs: settings.requestTimeoutMs,
     fetch,
   });
@@ -614,9 +627,9 @@ async function focus(args: readonly string[]): Promise<void> {
           : `structured owner-wait receipt started at ${wait.startedAt}`;
   const now = new Date();
   const analytics = await Promise.all([
-    import(resolve(import.meta.dir, "../core/plan-progress.ts")),
-    import(resolve(import.meta.dir, "../core/delivery-forecast.ts")),
-    import(resolve(import.meta.dir, "render.ts")),
+    import("../core/plan-progress"),
+    import("../core/delivery-forecast"),
+    import("./render"),
   ]);
   const progress = analytics[0].projectPlanProgress(body);
   const activeTasks = brief === null || run === null || !runIsAncestral
@@ -655,9 +668,8 @@ async function focus(args: readonly string[]): Promise<void> {
   if (args.includes("--server")) {
     try {
       const remote = await serverProgress(args);
-      const repositoryId = remote.settings.repositoryIds[rootPath];
-      if (repositoryId === undefined) throw new Error(`machine config has no repository ID for ${rootPath}`);
-      const planId = `${repositoryId}:${target.relative}`;
+      const identity = await repositoryIdentity(rootPath, remote.settings.repositoryIds);
+      const planId = `${identity.repositoryId}:${target.relative}`;
       const serverPlan = remote.response.plans.find((plan) => plan.planId === planId);
       if (serverPlan === undefined) throw new Error(`server has no progress for ${planId}`);
       const localRevision = protocolImplementationHash(body);
@@ -683,7 +695,7 @@ async function focus(args: readonly string[]): Promise<void> {
 async function progress(args: readonly string[]): Promise<void> {
   dedicatedRuntime();
   const { target, body } = approvedPlan(args);
-  const render = await import(resolve(import.meta.dir, "render.ts"));
+  const render = await import("./render");
   if (args.includes("--server")) {
     try {
       const remote = await serverProgress(args);
@@ -713,8 +725,8 @@ async function progress(args: readonly string[]): Promise<void> {
     }
     return;
   }
-  const progressCore = await import(resolve(import.meta.dir, "../core/plan-progress.ts"));
-  const forecastCore = await import(resolve(import.meta.dir, "../core/delivery-forecast.ts"));
+  const progressCore = await import("../core/plan-progress");
+  const forecastCore = await import("../core/delivery-forecast");
   const projected = progressCore.projectPlanProgress(body);
   const forecast = forecastCore.forecastDelivery(body, {
     now: new Date().toISOString(),
@@ -856,9 +868,7 @@ async function configCommand(args: readonly string[]): Promise<void> {
   if (action !== "init" && action !== "check") throw new Error("config action must be init or check");
   const role = flag(args, "--role");
   if (role !== "machine" && role !== "server") throw new Error("--role must be machine or server");
-  const { defaultPlanctlConfigPath, loadPlanctlConfig, planctlConfigTemplate } = await import(
-    resolve(import.meta.dir, "../config/config.ts")
-  );
+  const { defaultPlanctlConfigPath, loadPlanctlConfig, planctlConfigTemplate } = await import("../config/config");
   const path = optionalFlag(args, "--path") ?? defaultPlanctlConfigPath(role);
   if (!isAbsolute(path)) throw new Error("config path must be absolute");
   if (action === "init") {

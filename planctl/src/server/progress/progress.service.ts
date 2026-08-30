@@ -11,13 +11,12 @@ import type {
   StoredAgentObservation,
 } from "../persistence/server-store";
 
-export type ProgressAgentState = AgentState | "plan_drift";
-
 export interface ProgressAgentView {
   readonly machineId: string;
   readonly machineState: "online" | "offline";
   readonly agentId: string;
-  readonly state: ProgressAgentState;
+  readonly state: AgentState;
+  readonly planDrift: boolean;
   readonly planId: string | null;
   readonly taskId: string | null;
   readonly planRevision: string | null;
@@ -151,7 +150,7 @@ function stageForecastWeights(
 function statePriority(agent: ProgressAgentView): number {
   if (agent.state === "awaiting_owner") return 0;
   if (agent.state === "stale") return 1;
-  if (agent.state === "plan_drift") return 2;
+  if (agent.planDrift) return 2;
   if (agent.state === "unassigned") return 3;
   if (agent.machineState === "offline") return 4;
   if (agent.state === "working") return 5;
@@ -182,16 +181,13 @@ function agentView(
   agent: StoredAgentObservation,
   plan: CanonicalPlanRecord | undefined,
 ): ProgressAgentView {
-  const state = agent.planId === null
-    ? agent.state
-    : plan !== undefined && alignedObservation(agent, plan)
-      ? agent.state
-      : "plan_drift";
+  const planDrift = agent.planId !== null && (plan === undefined || !alignedObservation(agent, plan));
   return {
     machineId: agent.machineId,
     machineState: agent.machineState,
     agentId: agent.agentId,
-    state,
+    state: agent.state,
+    planDrift,
     planId: agent.planId,
     taskId: agent.taskId,
     planRevision: agent.planRevision,
@@ -269,7 +265,7 @@ export class ProgressService {
       machineOffline: new Set(activeAgents
         .filter((agent) => agent.machineState === "offline")
         .map((agent) => agent.machineId)).size,
-      planDrift: activeAgents.filter((agent) => agent.state === "plan_drift").length,
+      planDrift: activeAgents.filter((agent) => agent.planDrift).length,
     };
     return {
       planId: plan.planId,

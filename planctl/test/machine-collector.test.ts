@@ -3,6 +3,9 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { NestFactory } from "@nestjs/core";
+
+import { MachineAppModule } from "../src/machine/app.module";
 import { CollectorService } from "../src/machine/collector.service";
 import { MachineStore } from "../src/machine/state/machine-store";
 import { ServerClient } from "../src/machine/transport/server-client";
@@ -15,6 +18,7 @@ import type {
   MachineObservation,
 } from "../src/machine/collector.service";
 import type { MachineSnapshot } from "../src/core/snapshot-protocol";
+import type { MachineConfig } from "../src/config/config";
 
 const roots: string[] = [];
 
@@ -101,6 +105,63 @@ class ScriptedTransport implements CollectorTransport {
 
 describe("planctld scheduled collector", () => {
   /**
+   * @test-id: tst_svc_planctld_connect_timeout_001
+   * @scenario: scn_planctld_connect_timeout_001
+   * @covers: planctl/src/machine/app.module.ts::MachineAppModule.register
+   * @covers: planctl/src/machine/transport/server-client.ts::ServerClient
+   * @deterministic: yes
+   * @fixtures: mode-0600 token and fetch boundary that never establishes a connection
+   */
+  it("tst_svc_planctld_connect_timeout_001 aborts connection establishment before the request deadline", async () => {
+    const root = temporaryRoot();
+    const tokenPath = join(root, "machine.token");
+    writeFileSync(tokenPath, "fixture-bearer-token\n", { mode: 0o600 });
+    chmodSync(tokenPath, 0o600);
+    const config: MachineConfig = {
+      role: "machine",
+      version: 1,
+      machineId: "machine-a",
+      repositoryIds: {},
+      server: {
+        url: "https://planctl.example.test",
+        tokenFile: tokenPath,
+        connectTimeoutMs: 5,
+        requestTimeoutMs: 500,
+      },
+      collector: {
+        scanSeconds: 5,
+        heartbeatSeconds: 15,
+        staleAfterSeconds: 900,
+        sessionLookbackDays: 7,
+        stateDb: join(root, "machine.sqlite"),
+        watchRoots: [root],
+        codexSessions: join(root, "codex"),
+        claudeSessions: join(root, "claude"),
+      },
+    };
+    let abortReason = "";
+    const app = await NestFactory.createApplicationContext(MachineAppModule.register(
+      config,
+      (request) => new Promise((_resolve, reject) => {
+        const aborted = (): void => reject(request.signal.reason);
+        const recordReason = (): void => {
+          abortReason = request.signal.reason instanceof Error ? request.signal.reason.message : String(request.signal.reason);
+          aborted();
+        };
+        if (request.signal.aborted) recordReason();
+        else request.signal.addEventListener("abort", recordReason, { once: true });
+      }),
+    ), { logger: false });
+    try {
+      const health = await app.get(CollectorService).collectOnce();
+      expect(health.status).toBe("degraded");
+      expect(abortReason).toContain("connection timeout");
+    } finally {
+      await app.close();
+    }
+  });
+
+  /**
    * @test-id: tst_svc_planctld_collector_001
    * @scenario: scn_planctld_collector_001
    * @covers: planctl/src/machine/collector.service.ts::CollectorService
@@ -179,6 +240,7 @@ describe("planctld scheduled collector", () => {
       machineId: "machine-a",
       baseUrl: "https://planctl.example.test",
       tokenFile: tokenPath,
+      connectTimeoutMs: 100,
       requestTimeoutMs: 500,
       fetch: (request) => {
         requests.push(request);

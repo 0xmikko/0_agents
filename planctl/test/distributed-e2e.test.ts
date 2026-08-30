@@ -207,6 +207,7 @@ describe("distributed planctl observer", () => {
         machineId,
         baseUrl: "https://planctl.fixture.test",
         tokenFile,
+        connectTimeoutMs: 100,
         requestTimeoutMs: 500,
         fetch: async (request) => {
           const subject = guard.authorize(machineId, request.headers.get("authorization") ?? undefined);
@@ -289,6 +290,7 @@ describe("distributed planctl observer", () => {
         machineId,
         baseUrl: "https://planctl.fixture.test",
         tokenFile,
+        connectTimeoutMs: 100,
         requestTimeoutMs: 500,
         fetch: async (request) => {
           const subject = guard.authorize(machineId, request.headers.get("authorization") ?? undefined);
@@ -402,6 +404,7 @@ describe("distributed planctl observer", () => {
           machineId: definition.machineId,
           baseUrl: "https://planctl.fixture.test",
           tokenFile,
+          connectTimeoutMs: 100,
           requestTimeoutMs: 500,
           fetch: async (request) => {
             if (!serverAvailable) throw new Error("fixture server outage");

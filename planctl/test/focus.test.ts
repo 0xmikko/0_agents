@@ -88,6 +88,7 @@ describe("planctl focus and progress", () => {
       baseUrl: "https://planctl.example.test",
       machineId: "machine-a",
       token: "machine-token",
+      connectTimeoutMs: 50,
       requestTimeoutMs: 250,
       fetch: async (_input, init) => {
         const headers = new Headers(init?.headers);
@@ -116,5 +117,39 @@ describe("planctl focus and progress", () => {
     });
     expect(remote.generatedAt).toBe("2026-08-29T20:00:00.000Z");
     expect(remote.plans[0]?.remainingActiveMinutes).toBe(45);
+
+    await expect(readServerProgress({
+      baseUrl: "https://planctl.example.test",
+      machineId: "machine-a",
+      token: "machine-token",
+      connectTimeoutMs: 5,
+      requestTimeoutMs: 500,
+      fetch: (_input, init) => new Promise((_resolve, reject) => {
+        const signal = init?.signal;
+        if (signal === null || signal === undefined) throw new Error("bounded request signal is missing");
+        const aborted = (): void => reject(signal.reason);
+        if (signal.aborted) aborted();
+        else signal.addEventListener("abort", aborted, { once: true });
+      }),
+    })).rejects.toThrow("connection timeout");
+
+    await expect(readServerProgress({
+      baseUrl: "https://planctl.example.test",
+      machineId: "machine-a",
+      token: "machine-token",
+      connectTimeoutMs: 5,
+      requestTimeoutMs: 20,
+      fetch: async (_input, init) => {
+        const signal = init?.signal;
+        if (signal === null || signal === undefined) throw new Error("bounded request signal is missing");
+        return new Response(new ReadableStream({
+          start: (controller) => {
+            const aborted = (): void => controller.error(signal.reason);
+            if (signal.aborted) aborted();
+            else signal.addEventListener("abort", aborted, { once: true });
+          },
+        }), { headers: { "content-type": "application/json" } });
+      },
+    })).rejects.toThrow("timed out");
   });
 });

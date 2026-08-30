@@ -371,6 +371,7 @@ export class ServerStore implements OnModuleDestroy {
       if (machine === null) throw new Error(`machine ${heartbeat.machineId} is not enrolled`);
       const committed = machineSnapshotFromRow(machine);
       if (committed !== null
+        && heartbeat.sequence === machine.last_sequence
         && heartbeat.sequence === committed.snapshot.heartbeat.sequence
         && heartbeat.snapshotHash === committed.snapshot.heartbeat.snapshotHash) {
         return {

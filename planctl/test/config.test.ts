@@ -106,6 +106,9 @@ notifier_scan_milliseconds = 5000
     writeFileSync(machinePath, machineToml.replace("heartbeat_seconds = 15", "heartbeat_seconds = 900"));
     expect(() => loadPlanctlConfig(machinePath, "machine")).toThrow("heartbeat_seconds");
 
+    writeFileSync(machinePath, machineToml.replace("connect_timeout_ms = 1000", "connect_timeout_ms = 6000"));
+    expect(() => loadPlanctlConfig(machinePath, "machine")).toThrow("connect_timeout_ms");
+
     writeFileSync(machinePath, machineToml);
     chmodSync(machineToken, 0o644);
     expect(() => loadPlanctlConfig(machinePath, "machine")).toThrow("0600");

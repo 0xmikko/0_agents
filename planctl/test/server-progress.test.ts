@@ -249,7 +249,8 @@ describe("central progress read model", () => {
         agent("codex:stale", "stale", CANONICAL_REVISION, "PLAN_003"),
       ], CANONICAL_REVISION) }, "machine-a");
       ingest.accept("machine-b", { kind: "snapshot", snapshot: snapshot("machine-b", 1, [
-        agent("codex:drift", "working", DRIFT_REVISION, "PLAN_004"),
+        agent("codex:drift-waiting", "awaiting_owner", DRIFT_REVISION, "PLAN_004"),
+        agent("codex:drift-stale", "stale", DRIFT_REVISION, "PLAN_004"),
       ], DRIFT_REVISION) }, "machine-b");
       ingest.accept("machine-c", { kind: "snapshot", snapshot: snapshot("machine-c", 1, [
         agent("codex:offline", "working", CANONICAL_REVISION, "PLAN_002"),
@@ -275,18 +276,20 @@ describe("central progress read model", () => {
       expect(view.estimatedDeliveryAt).toBeNull();
       expect(view.calibration).toEqual({ factor: 1.5, completedTaskSamples: 3, confidence: "medium" });
       expect(view.attention).toEqual({
-        ownerWait: 1,
-        stale: 1,
+        ownerWait: 2,
+        stale: 2,
         unassigned: 0,
         machineOffline: 3,
-        planDrift: 1,
+        planDrift: 2,
       });
       expect(view.activeAgents.map((entry) => entry.state)).toEqual([
         "awaiting_owner",
+        "awaiting_owner",
         "stale",
-        "plan_drift",
+        "stale",
         "working",
       ]);
+      expect(view.activeAgents.map((entry) => entry.planDrift)).toEqual([false, true, false, true, false]);
       expect(controller.plan(encodeURIComponent(PLAN_ID))).toEqual(view);
       expect(() => controller.plan(encodeURIComponent("missing:docs/plans/missing.md"))).toThrow("not found");
     } finally {

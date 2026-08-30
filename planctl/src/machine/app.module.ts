@@ -22,6 +22,7 @@ import type { Dirent } from "node:fs";
 import type { MachineConfig } from "../config/config";
 import type { TaskRun } from "../core/task-run";
 import type { ReportedPlanProgress } from "../core/snapshot-protocol";
+import type { FetchRequest } from "./transport/server-client";
 import type {
   CollectorClock,
   CollectorObservationSource,
@@ -253,7 +254,7 @@ export class LocalMachineObservationSource implements CollectorObservationSource
 
 @Module({})
 export class MachineAppModule {
-  static register(config: MachineConfig): DynamicModule {
+  static register(config: MachineConfig, transportFetch?: FetchRequest): DynamicModule {
     if (!isAbsolute(config.collector.stateDb)) throw new Error("machine state database path must be absolute");
     return {
       module: MachineAppModule,
@@ -275,7 +276,9 @@ export class MachineAppModule {
             machineId: config.machineId,
             baseUrl: config.server.url,
             tokenFile: config.server.tokenFile,
+            connectTimeoutMs: config.server.connectTimeoutMs,
             requestTimeoutMs: config.server.requestTimeoutMs,
+            ...(transportFetch === undefined ? {} : { fetch: transportFetch }),
           }),
         },
         {

@@ -307,6 +307,11 @@ describe("authenticated snapshot ingest", () => {
         snapshotRequest("machine-a", 2, "1".padStart(64, "0")),
         request,
       )).toThrow("sequence");
+      const transitionCount = store.transitions().length;
+      expect(() => controller.accept("machine-a", snapshotRequest("machine-a", 1), request)).toThrow("sequence");
+      expect(store.latestSnapshot("machine-a")?.sequence).toBe(2);
+      expect(store.snapshotCount("machine-a")).toBe(1);
+      expect(store.transitions()).toHaveLength(transitionCount);
       expect(store.latestSnapshot("machine-a")?.snapshot.agents).toHaveLength(1);
       expect(() => controller.accept(
         "machine-a",

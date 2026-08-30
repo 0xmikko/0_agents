@@ -2,7 +2,7 @@
 
 Status: APPROVED
 Spec lock: sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
-Implementation lock: sha256:cf3289f70bdfeaf56c73fa8e54344c15ca9f37d3408e110a3795f00e34fa8e2e owner:fix it until approved
+Implementation lock: sha256:e9ea8dd7323fe19415081e97c7b624c1862ec70a3effd7074144d32a90eef13f owner:fix it until approved
 Active Delivery: D1
 Unattended decisions: allowed
 
@@ -472,7 +472,7 @@ LLM summaries and UI work require separate owner-approved plans.
 
 Branch: `feat/planctl-observer-daemon`; Depends: none; Gate: cd planctl && bun run agent:verify:pr.
 
-Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7 -> D1-S8 -> D1-S9 -> D1-S10 -> D1-S11 -> D1-S12 -> D1-S13 -> D1-S14`.
+Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7 -> D1-S8 -> D1-S9 -> D1-S10 -> D1-S11 -> D1-S12 -> D1-S13 -> D1-S14 -> D1-S15`.
 
 <!-- plan:stage:D1-S1:start -->
 <!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["planctl/package.json","planctl/bun.lock","planctl/tsconfig.json","planctl/src/cli/main.ts","planctl/src/core/plan-gate.ts","planctl/src/core/plan-update.ts","planctl/test/package-boundary.test.ts","planctl/test/planctl.test.ts","planctl/test/plan-gate.test.ts","planctl/test/plan-update.test.ts","shared/code-production/runtime/planctl.ts","shared/code-production/runtime/plan-gate.ts","shared/code-production/runtime/plan-update.ts","shared/code-production/runtime/planctl.test.ts","shared/code-production/runtime/plan-gate.test.ts","shared/code-production/runtime/plan-update.test.ts","shared/code-production/agent-stack.ts","shared/code-production/agent-stack.test.ts","shared/code-production/README.md","shared/code-production/laws/development-process.md","shared/code-production/laws/git-workflow.md","shared/code-production/laws/plan-format.md","shared/code-production/laws/plan-protocol.md","bin/planctl"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S1"} -->
@@ -1031,6 +1031,50 @@ Predict: 100 active min / 40 credits.
 | PLCTL_029 | 157733486f7ceee3a4bc223caf2be9ca360d4c42 | 2026-08-30T11:09:41.250Z–2026-08-30T11:34:52.000Z | 24 / 25.18 min | unavailable: runner did not expose per-Stage token or credit usage | Exact committed snapshot retries now recover a lost acknowledgement without duplicate transitions or history; configured retention bounds historical rows while preserving current state and every pending alert. |
 <!-- plan:results:D1-S14:end -->
 <!-- plan:stage:D1-S14:end -->
+
+<!-- plan:stage:D1-S15:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S14"],"parallelWith":[],"writes":["planctl/src/cli/main.ts","planctl/src/cli/server-client.ts","planctl/src/config/config.ts","planctl/src/core/http-timeouts.ts","planctl/src/machine/app.module.ts","planctl/src/machine/transport/server-client.ts","planctl/src/server/persistence/server-store.ts","planctl/src/server/progress/progress.service.ts","planctl/src/telegram/commands.service.ts","planctl/test/config.test.ts","planctl/test/distributed-e2e.test.ts","planctl/test/focus.test.ts","planctl/test/machine-collector.test.ts","planctl/test/package-build.test.ts","planctl/test/server-ingest.test.ts","planctl/test/server-progress.test.ts","planctl/test/telegram-commands.test.ts"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S15"} -->
+#### Stage D1-S15 — Preserve every intervention signal through production artifacts and network bounds
+
+Owner: integrator; Profile: strong; Depends: D1-S14; Parallel with: none.
+Writes: `planctl/src/cli/main.ts`, `planctl/src/cli/server-client.ts`, `planctl/src/config/config.ts`, `planctl/src/core/http-timeouts.ts`, `planctl/src/machine/app.module.ts`, `planctl/src/machine/transport/server-client.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/test/config.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/focus.test.ts`, `planctl/test/machine-collector.test.ts`, `planctl/test/package-build.test.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/telegram-commands.test.ts`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S15` (must be absent at handoff).
+Predict: 180 active min / 72 credits.
+
+##### Tasks
+
+- [ ] PLCTL_030 — make emitted CLI commands bundle-complete and reuse normalized Git identity for remote focus
+      Writes: `planctl/src/cli/main.ts`, `planctl/test/package-build.test.ts`.
+      Predict: 70 active min / 28 credits.
+      How: replace source-path-only dynamic imports with bundle-resolvable module edges, consolidate one worktree identity resolver across start-task and focus, and exercise a built non-help command plus remote focus in a Git-remote-only repository with an empty explicit mapping
+      RED: `bun run agent:test:backend -- test/package-build.test.ts -t tst_cert_planctl_built_focus_001`
+- [ ] PLCTL_031 — keep stale and owner-wait state independent from plan revision drift in every owner view
+      Writes: `planctl/src/server/progress/progress.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/telegram-commands.test.ts`.
+      Predict: 45 active min / 18 credits.
+      How: retain the observed AgentState, add an orthogonal plan-drift flag, calculate each attention count independently, and prove drifted stale and owner-wait agents remain visible to /stale and /waiting
+      RED: `bun run agent:test:backend -- test/server-progress.test.ts -t tst_int_planctl_progress_001`
+- [ ] PLCTL_032 — reject delayed snapshot retries and enforce distinct connection and request deadlines in every machine client
+      Writes: `planctl/src/cli/main.ts`, `planctl/src/cli/server-client.ts`, `planctl/src/config/config.ts`, `planctl/src/core/http-timeouts.ts`, `planctl/src/machine/app.module.ts`, `planctl/src/machine/transport/server-client.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/test/config.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/focus.test.ts`, `planctl/test/machine-collector.test.ts`, `planctl/test/server-ingest.test.ts`.
+      Predict: 65 active min / 26 credits.
+      How: acknowledge an exact snapshot only while its sequence remains the machine's current accepted sequence, share a bounded HTTP helper that ends connection establishment at connect_timeout_ms while retaining the full request deadline, and thread both validated values through collector and CLI server reads
+      RED: `bun run agent:test:backend -- test/server-ingest.test.ts -t tst_int_planctl_ingest_001 && bun run agent:test:backend -- test/machine-collector.test.ts -t tst_svc_planctld_connect_timeout_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/package-build.test.ts` exits 0 — built non-help commands work and remote-only Git identity drives server focus without an explicit repository mapping
+- [ ] `cd planctl && bun run agent:test:backend -- test/server-progress.test.ts test/telegram-commands.test.ts` exits 0 — drift is orthogonal and never hides stale or owner-wait intervention evidence
+- [ ] `cd planctl && bun run agent:test:backend -- test/server-ingest.test.ts test/machine-collector.test.ts test/focus.test.ts test/config.test.ts` exits 0 — delayed retries conflict and configured connection/request deadlines are distinct and effective
+- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green
+- [ ] The registered Stage temp root is absent before publication
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S15:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S15:end -->
+<!-- plan:stage:D1-S15:end -->
 <!-- plan:delivery:D1:end -->
 <!-- plan:implementation:end -->
 
@@ -1170,4 +1214,14 @@ Predict: 100 active min / 40 credits.
 - record-result D1-S14 commit:157733486f7ceee3a4bc223caf2be9ca360d4c42
 
 - close D1-S14 partial commit:157733486f7ceee3a4bc223caf2be9ca360d4c42
+
+- amend implementation owner:fix it until approved sha256:e2acc8dc359a30b58a3fad9b708c30bb171e6dde0bcb3be7be4720c021aa94f6
+
+- amend implementation owner:fix it until approved sha256:d8e42327f7eba3471803ec13775b8572c80b0a586020f27653b8ca9a7cdb38c7
+
+- amend implementation owner:fix it until approved sha256:fa4c05a7cbfee702d497de35b4864015f064b079d8db9f0a6c4bcf441983df4f
+
+- amend implementation owner:fix it until approved sha256:a6fe4b781eaa07a63c56187a4751fb0b68b04472c02cc766f53107ccd2162b18
+
+- amend implementation owner:fix it until approved sha256:e9ea8dd7323fe19415081e97c7b624c1862ec70a3effd7074144d32a90eef13f
 <!-- plan:execution:end -->

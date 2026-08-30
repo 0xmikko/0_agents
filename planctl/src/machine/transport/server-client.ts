@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 
+import { fetchWithTimeouts } from "../../core/http-timeouts";
+
 import type { MachineHeartbeat, MachineSnapshot } from "../../core/snapshot-protocol";
 
 export type FetchRequest = (request: Request) => Promise<Response>;
@@ -8,6 +10,7 @@ export interface ServerClientOptions {
   readonly machineId: string;
   readonly baseUrl: string;
   readonly tokenFile: string;
+  readonly connectTimeoutMs: number;
   readonly requestTimeoutMs: number;
   readonly fetch?: FetchRequest;
 }
@@ -38,34 +41,35 @@ export class ServerClient {
   readonly #machineId: string;
   readonly #baseUrl: string;
   readonly #token: string;
+  readonly #connectTimeoutMs: number;
   readonly #requestTimeoutMs: number;
   readonly #fetch: FetchRequest;
 
   constructor(options: ServerClientOptions) {
-    if (!Number.isSafeInteger(options.requestTimeoutMs) || options.requestTimeoutMs <= 0) {
-      throw new Error("server request timeout must be a positive integer");
-    }
     this.#machineId = options.machineId;
     this.#baseUrl = options.baseUrl.replace(/\/$/, "");
     this.#token = token(options.tokenFile);
+    this.#connectTimeoutMs = options.connectTimeoutMs;
     this.#requestTimeoutMs = options.requestTimeoutMs;
     this.#fetch = options.fetch ?? (async (request): Promise<Response> => await fetch(request));
   }
 
   async #post(body: Readonly<Record<string, unknown>>): Promise<SnapshotAcknowledgement> {
-    const request = new Request(
+    const response = await fetchWithTimeouts(async (signal) => await this.#fetch(new Request(
       `${this.#baseUrl}/v1/machines/${encodeURIComponent(this.#machineId)}/snapshots`,
       {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${this.#token}`,
-        "content-type": "application/json",
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.#token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal,
       },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(this.#requestTimeoutMs),
-      },
-    );
-    const response = await this.#fetch(request);
+    )), {
+      connectTimeoutMs: this.#connectTimeoutMs,
+      requestTimeoutMs: this.#requestTimeoutMs,
+    });
     if (!response.ok) throw new Error(`planctl server returned HTTP ${response.status}`);
     const parsed: unknown = await response.json();
     return acknowledgement(parsed);
