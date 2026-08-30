@@ -55,8 +55,9 @@ Plan
 **Task**
 
 - Bad: “Refactor the scheduler.”
-- Bad: “CPP-014 — extend the existing parser in the named files; refuse overlap.”
-- Good: “CPP-014 — `src/scheduler/parse-lanes.ts` currently assigns two ready Stages that both write `src/shared.ts`; change `src/scheduler/parse-lanes.ts` to refuse the second assignment and add the RED case to `test/scheduler/parse-lanes.test.ts`; predict 18 min / 8 credits.”
+- Bad: “Finish the colleague's branch and apply the rename map in the named files.”
+- Good: D1-S2-T1 — Restore the missing `creditOperationMarket` export in `src/onchain/market/credit/index.ts`.
+- Good: D1-S2-T2 — Replace generic `Error` in `prepareResult` in `src/prepare/result.ts` with canonical `SDKError`.
 
 - Bad: “Done; tests green.”
 - Good: “CPP-014 → `abc1234`; expected RED observed; named test passed; 18 predicted / 21 actual min; usage unavailable because runner omitted tokens; no deviation; temp root absent.”
@@ -64,27 +65,34 @@ Plan
 ## Stage format
 
 ```markdown
-#### Stage D1-S1 — <one observable result>
-Owner: <integrator|child>; Profile: <fast|strong>; Depends: <IDs|none>.
-Parallel with: <IDs|none>; Writes: `<exact paths>`; Predict: <min>/<credits>.
-Temp root: `.tmp/code-production/<plan-slug>/<Stage-ID>`; absent at handoff.
+#### Stage D1-S2 — Restore the preview build after the Verify rename
+Result: Preview imports only canonical Verify modules.
+Route: depends D1-S1; parallel D1-S3; forecast 35 min / 6 credits.
 
 ##### Tasks
-- [ ] CPP-001 — <observable story>
-      Writes: `<exact Task paths>`.
-      Predict: <active min> / <credits>.
-      How: <procedure and exit>.
-      RED: `<deterministic test command>`
+- [ ] D1-S2-T1 — Restore the missing `creditOperationMarket` export in `src/onchain/market/credit/index.ts`.
+- [ ] D1-S2-T2 — Remove obsolete `underlyingToken` assignment from `src/onchain/market/credit/CreditSuite.ts`.
 
 ##### Acceptance criteria
-- [ ] `<command>` exits 0 — <behavior proved>
-- [ ] <reviewable outcome>
+- [ ] `bun run build` exits 0 — package exports and preview imports compile
+- [ ] Preview uses only canonical Verify modules
 - [ ] Commit
 
 ##### Results
-| Task | Commit | UTC start-end | Active/elapsed | Usage | Result/proof |
-|---|---|---|---:|---|---|
+- Build: <measured result appended during execution>
 ```
+
+The Stage owner view stops after its title, Result and Route: no narrative
+paragraph and no file dump. Its title is one observable result, never branch
+history. Each visible Task is one change, at most 180 characters/two rendered
+lines, and names its exact primary file. More than three writes or more than
+one independent action means more Tasks. `planctl` keeps writes, RED, profile
+and temp root once in machine-owned metadata in the same Markdown;
+`start-task` prints them when the executor needs them.
+
+Before approval, trace each acceptance story through public calls. If a story
+needs a method added to another service, that owning file must already be in a
+Task's writes. Do not discover the missing scope by editing it.
 
 Forecast aggregate work, longest dependency path and external waits separately. Never divide work by agent count and call it wall time. Missing usage is `unavailable`, never zero.
 
@@ -135,7 +143,9 @@ refused.
 While the plan is `SPEC_LOCKED`, rerunning `put-delivery` or `put-stage` with
 the same ID replaces that draft record in place; `remove-stage` deletes it.
 After `APPROVED` all three are refused. `put-stage --help` prints the copyable
-JSON contract plus good/bad Tasks.
+JSON contract plus short good/bad Tasks. The JSON carries technical metadata;
+its rendered owner view stays compact and never repeats the Stage write list
+inside every Task.
 `start-task` re-reads the committed plan or its journal-verified staged Result,
 refuses a blocked or closed Task, prints its exact scope and starts a Git-local
 timer without changing the plan. `complete-task` consumes that timer and compares the

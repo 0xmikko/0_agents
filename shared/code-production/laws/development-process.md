@@ -48,8 +48,9 @@ contract before code. Review rounds run only on the owner's word.
 
 - A **Plan** may contain sequential PR Deliveries.
 - A **PR Delivery** is one branch, one PR and one full publication gate.
-- A **Stage** is one delegable TDD result and one work commit.
-- A **Task** is one frozen, estimable observable story inside a Stage.
+- A **Stage** is one delegable, observable TDD result and one work commit.
+- A **Task** is one atomic code change inside a Stage, written so the owner and
+  executor understand it without chat history.
 
 Only one Delivery is active by default. This keeps base relationships and CI
 receipts obvious. Stages inside it may run in parallel when the plan names
@@ -58,20 +59,37 @@ serializes.
 
 ## Planning quality
 
-A Task must say what is wrong, what changes, where, and how success is
-observed. It names exact writes, and its `How` repeats every exact path with
-the behavior changed there; “the existing parser” and “the named files” are
-not locations. It also names a deterministic RED command, predicted active
-minutes and predicted credits.
+The owner view is a review interface, not an execution log.
 
-- Bad: “Refactor the scheduler.”
-- Bad: “TASK_014 — extend the existing parser in the named files; refuse
-  overlap.”
-- Good: “TASK_014 — `src/scheduler/parse-lanes.ts` currently assigns two ready
-  Stages that both write `src/shared.ts`; change
-  `src/scheduler/parse-lanes.ts` to refuse the second assignment and add the
-  RED case to `test/scheduler/parse-lanes.test.ts`; predict 18 active min / 8
-  credits.”
+- A Stage owner view is its title, one Result sentence and one Route line; it
+  has no free-form execution story or file dump. The title never says “finish
+  the colleague's branch”, “half-landed”, “remaining work” or anything else
+  that depends on history.
+- A Task names one concrete change and its exact primary file. Its visible
+  sentence is at most 180 characters and at most two rendered lines.
+- A Task owns at most three write paths. Split it when it crosses that limit or
+  when its sentence needs “and then” to join independent changes.
+- A Task stands alone. “Existing”, “new”, “named files”, “the map above” and
+  similar pointers are invalid unless the same sentence resolves them to an
+  exact symbol or path.
+- Writes, RED command and forecast are frozen execution metadata in the same
+  canonical Markdown. `planctl` records them once and `start-task` reveals
+  them; Stage prose and Task prose do not repeat them.
+
+Bad Stage: “Finish the colleague's branch: build fixes and Verify rewire.”
+
+Good Stage: “Restore the preview build after the Verify rename.”
+
+Bad Task: “Apply the rename map in the named files.”
+
+Good Task: Replace generic `Error` in `prepareResult` in
+`src/prepare/result.ts` with canonical `SDKError`.
+
+Before approval, follow every acceptance story through its public calls. Every
+file that must gain or change a public contract is a Task write, even when the
+call originates in another Stage file. A missing owning file makes the plan
+incomplete. After approval, amend before editing while the owner is available;
+unattended work uses the reversible decision protocol below.
 
 A Stage forecast is at least the sum of its Tasks. A Delivery reports aggregate
 active work, the longest dependency path and external waits separately.
