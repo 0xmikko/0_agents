@@ -132,9 +132,9 @@ it("tst_cert_planctl_built_focus_001 runs remote focus from the built CLI with G
     },
   });
   try {
-    const token = join(output, "machine.token");
-    writeFileSync(token, "fixture-machine-token\n", { mode: 0o600 });
-    chmodSync(token, 0o600);
+    const envFile = join(output, ".env");
+    writeFileSync(envFile, "PLANCTL_MACHINE_TOKEN=fixture-machine-token\n", { mode: 0o600 });
+    chmodSync(envFile, 0o600);
     const config = join(output, "machine.toml");
     writeFileSync(config, [
       "version = 1",
@@ -143,7 +143,7 @@ it("tst_cert_planctl_built_focus_001 runs remote focus from the built CLI with G
       "",
       "[server]",
       `url = "http://127.0.0.1:${server.port}"`,
-      `token_file = "${token}"`,
+      `env_file = "${envFile}"`,
       "connect_timeout_ms = 1000",
       "request_timeout_ms = 5000",
       "",

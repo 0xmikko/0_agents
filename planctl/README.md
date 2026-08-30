@@ -36,9 +36,11 @@ The repository wrappers in `bin/` run the TypeScript entrypoints with Bun.
 
 ## Configuration
 
-Configuration is strict TOML. All paths are absolute. Secret values are stored
-only in separate mode-`0600` files; TOML contains their paths. Initializers
-refuse to overwrite existing files and leave every required value commented:
+Configuration is strict TOML. All paths are absolute. Runtime secrets are
+loaded by Nest `ConfigModule` from one explicit mode-`0600` `.env`; TOML stores
+only its path. The same `.env` may serve the server and local machine role on a
+combined host. Initializers refuse to overwrite existing files and leave every
+required value commented:
 
 ```bash
 planctl config init --role server --path /home/planctl/.config/planctl/server.toml
@@ -56,7 +58,7 @@ machine_offline_after_seconds = 60
 history_retention_days = 90
 
 [telegram]
-bot_token_file = "/home/planctl/.config/planctl/telegram.token"
+env_file = "/home/planctl/.config/planctl/.env"
 allowed_user_ids = [123456789]
 default_chat_id = 123456789
 long_poll_seconds = 30
@@ -82,7 +84,7 @@ repository_ids = { "/home/marketing/Coding/private-repo" = "private-repo" }
 
 [server]
 url = "https://planctl.example.ts.net"
-token_file = "/home/marketing/.config/planctl/machine.token"
+env_file = "/home/marketing/.config/planctl/.env"
 connect_timeout_ms = 1000
 request_timeout_ms = 5000
 
@@ -103,12 +105,20 @@ normalized Git remote is unavailable. Machine IDs must be unique, heartbeat
 must be shorter than the stale threshold, and repository paths must be within
 one configured watch root.
 
-Create each secret file before validation:
+Create the explicit secret environment before validation. On a combined host
+it contains both keys; a dedicated host needs only the key used by its role:
 
 ```bash
-install -m 0600 /dev/null /home/planctl/.config/planctl/telegram.token
-install -m 0600 /dev/null /home/marketing/.config/planctl/machine.token
+install -m 0600 /dev/null /home/marketing/.config/planctl/.env
+$EDITOR /home/marketing/.config/planctl/.env
 ```
+
+```dotenv
+PLANCTL_TELEGRAM_BOT_TOKEN=replace-with-bot-token
+PLANCTL_MACHINE_TOKEN=replace-with-enrollment-token
+```
+
+The file path is explicit; ambient process variables are not a fallback.
 
 Then validate without starting a service:
 
@@ -120,11 +130,12 @@ planctl config check --role machine --path /home/marketing/.config/planctl/machi
 ## Enroll a machine
 
 The central store keeps only a derived credential. The raw token is printed
-once and must be copied into that machine's configured token file:
+once and must be copied into `PLANCTL_MACHINE_TOKEN` in that machine's
+configured `.env`:
 
 ```bash
 planctl-server machine create u3775 --config /home/planctl/.config/planctl/server.toml
-chmod 0600 /home/marketing/.config/planctl/machine.token
+chmod 0600 /home/marketing/.config/planctl/.env
 ```
 
 Do not place enrollment tokens in TOML, command history, plan files, Telegram,

@@ -114,9 +114,9 @@ describe("planctld scheduled collector", () => {
    */
   it("tst_svc_planctld_connect_timeout_001 aborts connection establishment before the request deadline", async () => {
     const root = temporaryRoot();
-    const tokenPath = join(root, "machine.token");
-    writeFileSync(tokenPath, "fixture-bearer-token\n", { mode: 0o600 });
-    chmodSync(tokenPath, 0o600);
+    const envFile = join(root, ".env");
+    writeFileSync(envFile, "PLANCTL_MACHINE_TOKEN=fixture-bearer-token\n", { mode: 0o600 });
+    chmodSync(envFile, 0o600);
     const config: MachineConfig = {
       role: "machine",
       version: 1,
@@ -124,7 +124,7 @@ describe("planctld scheduled collector", () => {
       repositoryIds: {},
       server: {
         url: "https://planctl.example.test",
-        tokenFile: tokenPath,
+        envFile,
         connectTimeoutMs: 5,
         requestTimeoutMs: 500,
       },
@@ -232,14 +232,11 @@ describe("planctld scheduled collector", () => {
     heartbeatCollector.stop();
     collector.stop();
 
-    const tokenPath = join(root, "machine.token");
-    writeFileSync(tokenPath, "fixture-bearer-token\n", { mode: 0o600 });
-    chmodSync(tokenPath, 0o600);
     const requests: Request[] = [];
     const client = new ServerClient({
       machineId: "machine-a",
       baseUrl: "https://planctl.example.test",
-      tokenFile: tokenPath,
+      token: "fixture-bearer-token",
       connectTimeoutMs: 100,
       requestTimeoutMs: 500,
       fetch: (request) => {

@@ -109,9 +109,9 @@ function assertCorrelationLifecycle(): void {
   git(root, "add", ".");
   git(root, "commit", "-qm", "test: correlation fixture");
 
-  const token = join(root, "machine.token");
-  writeFileSync(token, "fixture-machine-token\n", { mode: 0o600 });
-  chmodSync(token, 0o600);
+  const envFile = join(root, ".env");
+  writeFileSync(envFile, "PLANCTL_MACHINE_TOKEN=fixture-machine-token\n", { mode: 0o600 });
+  chmodSync(envFile, 0o600);
   const configRoot = join(root, "config");
   mkdirSync(join(configRoot, "planctl"), { recursive: true });
   const configPath = join(configRoot, "planctl/machine.toml");
@@ -122,7 +122,7 @@ repository_ids = {}
 
 [server]
 url = "https://planctl.example.test"
-token_file = "${token}"
+env_file = "${envFile}"
 connect_timeout_ms = 1000
 request_timeout_ms = 5000
 

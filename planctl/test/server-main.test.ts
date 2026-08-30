@@ -22,9 +22,9 @@ function fixture(): ServerConfig {
   const root = mkdtempSync(join(tmpdir(), "planctl-server-main-"));
   roots.push(root);
   mkdirSync(join(root, "state"), { recursive: true });
-  const token = join(root, "telegram.token");
-  writeFileSync(token, "fixture-bot-token\n", { mode: 0o600 });
-  chmodSync(token, 0o600);
+  const envFile = join(root, ".env");
+  writeFileSync(envFile, "PLANCTL_TELEGRAM_BOT_TOKEN=fixture-bot-token\n", { mode: 0o600 });
+  chmodSync(envFile, 0o600);
   const config = join(root, "server.toml");
   writeFileSync(config, `
 version = 1
@@ -35,7 +35,7 @@ machine_offline_after_seconds = 60
 history_retention_days = 90
 
 [telegram]
-bot_token_file = "${token}"
+env_file = "${envFile}"
 allowed_user_ids = [101]
 default_chat_id = 101
 long_poll_seconds = 30

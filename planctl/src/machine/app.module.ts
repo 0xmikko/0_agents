@@ -2,8 +2,10 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { Module } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { ScheduleModule, SchedulerRegistry } from "@nestjs/schedule";
 
+import { MACHINE_TOKEN_KEY, planctlSecretsModule } from "../config/config";
 import { protocolImplementationHash, protocolLockViolations } from "../core/plan-gate";
 import { projectPlanProgress } from "../core/plan-progress";
 import { completedStageSamples } from "../core/plan-update";
@@ -258,7 +260,7 @@ export class MachineAppModule {
     if (!isAbsolute(config.collector.stateDb)) throw new Error("machine state database path must be absolute");
     return {
       module: MachineAppModule,
-      imports: [ScheduleModule.forRoot()],
+      imports: [ScheduleModule.forRoot(), planctlSecretsModule(config.server.envFile, MACHINE_TOKEN_KEY)],
       providers: [
         SystemClock,
         {
@@ -272,10 +274,11 @@ export class MachineAppModule {
         },
         {
           provide: SERVER_TRANSPORT,
-          useFactory: (): ServerClient => new ServerClient({
+          inject: [ConfigService],
+          useFactory: (secrets: ConfigService): ServerClient => new ServerClient({
             machineId: config.machineId,
             baseUrl: config.server.url,
-            tokenFile: config.server.tokenFile,
+            token: secrets.getOrThrow<string>(MACHINE_TOKEN_KEY),
             connectTimeoutMs: config.server.connectTimeoutMs,
             requestTimeoutMs: config.server.requestTimeoutMs,
             ...(transportFetch === undefined ? {} : { fetch: transportFetch }),

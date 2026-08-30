@@ -573,12 +573,10 @@ async function machineServerSettings(args: readonly string[]): Promise<MachineSe
   if (!isAbsolute(path)) throw new Error("machine config path must be absolute");
   const loaded = config.loadPlanctlConfig(path, "machine");
   if (loaded.role !== "machine") throw new Error("machine config has the wrong role");
-  const token = readFileSync(loaded.server.tokenFile, "utf8").trim();
-  if (token === "") throw new Error("machine server token file is empty");
   return {
     machineId: loaded.machineId,
     url: loaded.server.url,
-    token,
+    token: config.readPlanctlSecret(loaded.server.envFile, config.MACHINE_TOKEN_KEY),
     connectTimeoutMs: loaded.server.connectTimeoutMs,
     requestTimeoutMs: loaded.server.requestTimeoutMs,
     repositoryIds: loaded.repositoryIds,

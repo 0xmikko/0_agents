@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -195,8 +195,6 @@ describe("distributed planctl observer", () => {
     try {
       const machineId = "machine-a";
       const token = "machine-a-private-token-001";
-      const tokenFile = join(root, "machine.token");
-      writeFileSync(tokenFile, `${token}\n`, { mode: 0o600 });
       app.get(MachineAdminService).registerMachine(machineId, token);
       const guard = app.get(MachineAuthGuard);
       const ingest = app.get(IngestService);
@@ -206,7 +204,7 @@ describe("distributed planctl observer", () => {
       const client = new ServerClient({
         machineId,
         baseUrl: "https://planctl.fixture.test",
-        tokenFile,
+        token,
         connectTimeoutMs: 100,
         requestTimeoutMs: 500,
         fetch: async (request) => {
@@ -281,15 +279,13 @@ describe("distributed planctl observer", () => {
     try {
       const machineId = "machine-a";
       const token = "machine-a-private-token-001";
-      const tokenFile = join(root, "machine.token");
-      writeFileSync(tokenFile, `${token}\n`, { mode: 0o600 });
       app.get(MachineAdminService).registerMachine(machineId, token);
       const guard = app.get(MachineAuthGuard);
       const ingest = app.get(IngestService);
       const client = new ServerClient({
         machineId,
         baseUrl: "https://planctl.fixture.test",
-        tokenFile,
+        token,
         connectTimeoutMs: 100,
         requestTimeoutMs: 500,
         fetch: async (request) => {
@@ -395,15 +391,13 @@ describe("distributed planctl observer", () => {
         admin.registerMachine(definition.machineId, definition.token);
         const machineRoot = join(root, definition.machineId);
         mkdirSync(machineRoot, { recursive: true });
-        const tokenFile = join(machineRoot, "machine.token");
-        writeFileSync(tokenFile, `${definition.token}\n`, { mode: 0o600 });
         const machineStore = new MachineStore(join(machineRoot, "machine.sqlite"));
         machineStores.push(machineStore);
         const source = new FixtureSource(definition.value);
         const client = new ServerClient({
           machineId: definition.machineId,
           baseUrl: "https://planctl.fixture.test",
-          tokenFile,
+          token: definition.token,
           connectTimeoutMs: 100,
           requestTimeoutMs: 500,
           fetch: async (request) => {

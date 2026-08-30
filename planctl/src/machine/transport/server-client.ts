@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-
 import { fetchWithTimeouts } from "../../core/http-timeouts";
 
 import type { MachineHeartbeat, MachineSnapshot } from "../../core/snapshot-protocol";
@@ -9,7 +7,7 @@ export type FetchRequest = (request: Request) => Promise<Response>;
 export interface ServerClientOptions {
   readonly machineId: string;
   readonly baseUrl: string;
-  readonly tokenFile: string;
+  readonly token: string;
   readonly connectTimeoutMs: number;
   readonly requestTimeoutMs: number;
   readonly fetch?: FetchRequest;
@@ -31,8 +29,7 @@ function acknowledgement(value: unknown): SnapshotAcknowledgement {
   return { machineId: entry.machineId, sequence: entry.sequence, snapshotHash: entry.snapshotHash };
 }
 
-function token(path: string): string {
-  const value = readFileSync(path, "utf8").trim();
+function token(value: string): string {
   if (value === "" || /\s/.test(value)) throw new Error("machine bearer token must be one non-empty token");
   return value;
 }
@@ -48,7 +45,7 @@ export class ServerClient {
   constructor(options: ServerClientOptions) {
     this.#machineId = options.machineId;
     this.#baseUrl = options.baseUrl.replace(/\/$/, "");
-    this.#token = token(options.tokenFile);
+    this.#token = token(options.token);
     this.#connectTimeoutMs = options.connectTimeoutMs;
     this.#requestTimeoutMs = options.requestTimeoutMs;
     this.#fetch = options.fetch ?? (async (request): Promise<Response> => await fetch(request));

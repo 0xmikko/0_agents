@@ -1,6 +1,15 @@
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 
+import { ConfigModule } from "@nestjs/config";
+import { parse } from "dotenv";
+
+import type { DynamicModule } from "@nestjs/common";
+
+export const MACHINE_TOKEN_KEY = "PLANCTL_MACHINE_TOKEN";
+export const TELEGRAM_BOT_TOKEN_KEY = "PLANCTL_TELEGRAM_BOT_TOKEN";
+export type PlanctlSecretKey = typeof MACHINE_TOKEN_KEY | typeof TELEGRAM_BOT_TOKEN_KEY;
+
 export interface MachineConfig {
   readonly role: "machine";
   readonly version: 1;
@@ -8,7 +17,7 @@ export interface MachineConfig {
   readonly repositoryIds: Readonly<Record<string, string>>;
   readonly server: {
     readonly url: string;
-    readonly tokenFile: string;
+    readonly envFile: string;
     readonly connectTimeoutMs: number;
     readonly requestTimeoutMs: number;
   };
@@ -33,7 +42,7 @@ export interface ServerConfig {
   readonly machineOfflineAfterSeconds: number;
   readonly historyRetentionDays: number;
   readonly telegram: {
-    readonly botTokenFile: string;
+    readonly envFile: string;
     readonly allowedUserIds: readonly number[];
     readonly defaultChatId: number;
     readonly longPollSeconds: number;
@@ -65,7 +74,7 @@ export function planctlConfigTemplate(role: PlanctlRole): string {
       "# repository_ids = { \"/absolute/repository/path\" = \"explicit-repository-id\" }",
       "# [server]",
       "# url = \"https://planctl.example.ts.net\"",
-      "# token_file = \"/absolute/path/to/mode-0600-machine.token\"",
+      "# env_file = \"/absolute/path/to/.env\"",
       "# connect_timeout_ms = 1000",
       "# request_timeout_ms = 5000",
       "# [collector]",
@@ -89,7 +98,7 @@ export function planctlConfigTemplate(role: PlanctlRole): string {
     "# machine_offline_after_seconds = 60",
     "# history_retention_days = 90",
     "# [telegram]",
-    "# bot_token_file = \"/absolute/path/to/mode-0600-telegram.token\"",
+    "# env_file = \"/absolute/path/to/.env\"",
     "# allowed_user_ids = [123456789]",
     "# default_chat_id = 123456789",
     "# long_poll_seconds = 30",
@@ -142,6 +151,36 @@ function secretFile(value: unknown, name: string): string {
   return path;
 }
 
+/**
+ * @tested-by: tst_unit_planctl_config_002
+ * @invariant: runtime credentials come only from one explicit mode-0600 dotenv file and never from ambient process state.
+ */
+export function readPlanctlSecret(envFile: string, key: PlanctlSecretKey): string {
+  const values = parse(readFileSync(envFile));
+  const token = values[key];
+  if (token === undefined) throw new Error(`env_file must define ${key}`);
+  if (token === "" || /\s/.test(token)) throw new Error(`${key} must be one non-empty token`);
+  return token;
+}
+
+function validateSecretEnvironment(key: PlanctlSecretKey, values: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const token = values[key];
+  if (typeof token !== "string" || token === "" || /\s/.test(token)) {
+    throw new Error(`env_file must define ${key} as one non-empty token`);
+  }
+  return { [key]: token };
+}
+
+export function planctlSecretsModule(envFile: string, key: PlanctlSecretKey): Promise<DynamicModule> {
+  return ConfigModule.forRoot({
+    envFilePath: envFile,
+    validatePredefined: false,
+    skipProcessEnv: true,
+    override: true,
+    validate: (values: Record<string, unknown>): Record<string, unknown> => validateSecretEnvironment(key, values),
+  });
+}
+
 function endpoint(value: unknown, name: string): string {
   const raw = text(value, name);
   let parsed: URL;
@@ -167,7 +206,7 @@ function machineConfig(input: Readonly<Record<string, unknown>>): MachineConfig 
   keys(input, ["version", "machine_id", "repository_ids", "server", "collector"], "machine config");
   if (input.version !== 1) throw new Error("machine config version must be 1");
   const server = record(input.server, "machine server");
-  keys(server, ["url", "token_file", "connect_timeout_ms", "request_timeout_ms"], "machine server");
+  keys(server, ["url", "env_file", "connect_timeout_ms", "request_timeout_ms"], "machine server");
   const collector = record(input.collector, "machine collector");
   keys(collector, [
     "scan_seconds",
@@ -200,6 +239,8 @@ function machineConfig(input: Readonly<Record<string, unknown>>): MachineConfig 
   if (connectTimeoutMs > requestTimeoutMs) {
     throw new Error("server connect_timeout_ms must not exceed request_timeout_ms");
   }
+  const envFile = secretFile(server.env_file, "server env_file");
+  readPlanctlSecret(envFile, MACHINE_TOKEN_KEY);
   return {
     role: "machine",
     version: 1,
@@ -207,7 +248,7 @@ function machineConfig(input: Readonly<Record<string, unknown>>): MachineConfig 
     repositoryIds,
     server: {
       url: endpoint(server.url, "server url"),
-      tokenFile: secretFile(server.token_file, "server token_file"),
+      envFile,
       connectTimeoutMs,
       requestTimeoutMs,
     },
@@ -237,7 +278,7 @@ function serverConfig(input: Readonly<Record<string, unknown>>): ServerConfig {
   if (input.version !== 1) throw new Error("server config version must be 1");
   const telegram = record(input.telegram, "server telegram");
   keys(telegram, [
-    "bot_token_file",
+    "env_file",
     "allowed_user_ids",
     "default_chat_id",
     "long_poll_seconds",
@@ -250,6 +291,8 @@ function serverConfig(input: Readonly<Record<string, unknown>>): ServerConfig {
   const allowedUserIds = telegram.allowed_user_ids.map((id) => positiveInteger(id, "telegram allowed_user_id"));
   const defaultChatId = positiveInteger(telegram.default_chat_id, "telegram default_chat_id");
   if (!allowedUserIds.includes(defaultChatId)) throw new Error("telegram default_chat_id must be authorized");
+  const envFile = secretFile(telegram.env_file, "telegram env_file");
+  readPlanctlSecret(envFile, TELEGRAM_BOT_TOKEN_KEY);
   return {
     role: "server",
     version: 1,
@@ -262,7 +305,7 @@ function serverConfig(input: Readonly<Record<string, unknown>>): ServerConfig {
     ),
     historyRetentionDays: positiveInteger(input.history_retention_days, "server history_retention_days"),
     telegram: {
-      botTokenFile: secretFile(telegram.bot_token_file, "telegram bot_token_file"),
+      envFile,
       allowedUserIds,
       defaultChatId,
       longPollSeconds: positiveInteger(telegram.long_poll_seconds, "telegram long_poll_seconds"),
@@ -276,7 +319,7 @@ function serverConfig(input: Readonly<Record<string, unknown>>): ServerConfig {
 }
 
 /**
- * @tested-by: tst_unit_planctl_config_001
+ * @tested-by: tst_unit_planctl_config_001, tst_unit_planctl_config_002
  * @invariant: configuration is explicit, role-specific and refuses unsafe secret permissions or endpoints.
  */
 export function loadPlanctlConfig(path: string, role: PlanctlRole): PlanctlConfig {
