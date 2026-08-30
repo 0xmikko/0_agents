@@ -2,4 +2,5 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_DIR/planctl"
 exec bun "$REPO_DIR/planctl/src/machine/main.ts" "$@"
