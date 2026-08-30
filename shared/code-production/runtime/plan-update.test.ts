@@ -346,6 +346,8 @@ describe("two-line task contract", () => {
       }],
     }).body;
     expect(body).toContain("<!-- plan:task-meta:");
+    // the per-task time stays visible as a compact suffix on the story line
+    expect(body).toContain("as one callable entrypoint. (8 min)");
     const tasksBlock = body.slice(body.indexOf("##### Tasks"), body.indexOf("##### Acceptance criteria"));
     expect(tasksBlock).not.toMatch(/^\s+Writes:/m);
     expect(tasksBlock).not.toMatch(/^\s+How:/m);

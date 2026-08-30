@@ -415,7 +415,7 @@ function renderStage(input: StageInput): string {
     });
     if (taskMeta.includes("-->")) throw new Error(`Task ${task.id} metadata must not contain "-->"`);
     return [
-      `- [ ] ${task.id} — ${task.story}`,
+      `- [ ] ${task.id} — ${task.story} (${task.predictedActiveMinutes} min)`,
       `<!-- plan:task-meta:${taskMeta} -->`,
     ];
   });
@@ -500,13 +500,14 @@ function stageInputs(body: string): readonly StageInput[] {
       if (typeof meta.how !== "string" || typeof meta.red !== "string") {
         throw new Error(`Task ${id} metadata must carry how and red`);
       }
+      const rawStory = capture(task, 1, "Task state") === "x"
+        ? capture(task, 3, "Task story").replace(/ — [0-9a-f]{7,40}$/, "")
+        : capture(task, 3, "Task story");
       return {
         index: task.index ?? 0,
         input: {
           id,
-          story: capture(task, 1, "Task state") === "x"
-            ? capture(task, 3, "Task story").replace(/ — [0-9a-f]{7,40}$/, "")
-            : capture(task, 3, "Task story"),
+          story: rawStory.replace(/ \(\d+(?:\.\d+)? min\)$/, ""),
           writes: stringArray(meta.writes, `Task ${id} writes`),
           predictedActiveMinutes: Number(meta.predictedActiveMinutes),
           predictedCredits: Number(meta.predictedCredits),
