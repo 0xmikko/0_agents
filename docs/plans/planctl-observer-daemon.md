@@ -897,7 +897,7 @@ Predict: 80 active min / 30 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_024 — preserve distributed binding and completed calibration evidence before, during and after Task completion
+- [x] PLCTL_024 — preserve distributed binding and completed calibration evidence before, during and after Task completion — 8c60c2dfceb0b5fdbb5c9ac373a7ab7a10e04e9f
       Writes: `planctl/src/cli/main.ts`, `planctl/src/machine/app.module.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/README.md`.
       Predict: 80 active min / 30 credits.
       How: upgrade an existing V1 receipt when explicit identity arrives, reuse normalized Git discovery for repository identity, discover approved plans independently of active receipts, and prove the final completed sample remains observable after receipt consumption
@@ -905,16 +905,17 @@ Predict: 80 active min / 30 credits.
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/distributed-correlation.test.ts` exits 0 — remote identity, V1 upgrade and post-completion evidence all traverse the real collector
-- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green
+- [x] `cd planctl && bun run agent:test:backend -- test/distributed-correlation.test.ts` exits 0 — remote identity, V1 upgrade and post-completion evidence all traverse the real collector — 8c60c2dfceb0b5fdbb5c9ac373a7ab7a10e04e9f
+- [x] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate remains green — 8c60c2dfceb0b5fdbb5c9ac373a7ab7a10e04e9f
 - [ ] The registered Stage temp root is absent before publication
-- [ ] Commit
+- [x] Commit — 8c60c2dfceb0b5fdbb5c9ac373a7ab7a10e04e9f
 
 ##### Results
 
 <!-- plan:results:D1-S11:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_024 | 8c60c2dfceb0b5fdbb5c9ac373a7ab7a10e04e9f | 2026-08-30T09:01:07.426Z–2026-08-30T09:15:15.000Z | 13 / 14.13 min | unavailable: runner did not expose per-Stage token or credit usage | V1 receipts upgrade without resetting time, Git origin supplies repository identity, and final completed samples survive Task receipt consumption. |
 <!-- plan:results:D1-S11:end -->
 <!-- plan:stage:D1-S11:end -->
 <!-- plan:delivery:D1:end -->
@@ -1016,4 +1017,8 @@ Predict: 80 active min / 30 credits.
 - amend implementation owner:fix it until approved sha256:021285faee8dc4e07f2a0b2b2eac7b61c2322f2f071963c786d440c3f84c4759
 
 - amend implementation owner:fix it until approved sha256:b19c9926ae6da74c571a7b1152b523c2f84ce5a39160354f7ae687462e50613e
+
+- record-result D1-S11 commit:8c60c2dfceb0b5fdbb5c9ac373a7ab7a10e04e9f
+
+- close D1-S11 partial commit:8c60c2dfceb0b5fdbb5c9ac373a7ab7a10e04e9f
 <!-- plan:execution:end -->
