@@ -6,6 +6,7 @@ import { ScheduleModule, SchedulerRegistry } from "@nestjs/schedule";
 
 import { protocolImplementationHash } from "../core/plan-gate";
 import { projectPlanProgress } from "../core/plan-progress";
+import { completedStageSamples } from "../core/plan-update";
 import { decodeTaskRun } from "../core/task-run";
 import { CollectorService, COLLECTOR_OPTIONS } from "./collector.service";
 import { discoverGitWorktrees, findGitRepositories } from "./discovery/git-worktree.source";
@@ -168,6 +169,7 @@ function reportedPlans(taskRuns: readonly TaskRun[]): {
         planRevision: protocolImplementationHash(body),
         goal: planGoal(body),
         progress: projectPlanProgress(body),
+        completedTaskSamples: completedStageSamples(body),
       };
       const existing = plans.get(planId);
       if (existing !== undefined && existing.planRevision !== candidate.planRevision) {

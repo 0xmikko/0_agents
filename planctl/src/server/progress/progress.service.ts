@@ -19,6 +19,7 @@ export interface ProgressAgentView {
   readonly idleSeconds: number;
   readonly elapsedActiveMinutes: number | null;
   readonly ownerWaitReason: string | null;
+  readonly ownerWaitStartedAt: string | null;
 }
 
 export interface PlanAttentionView {
@@ -164,6 +165,7 @@ export class ProgressService {
       idleSeconds: agent.idleSeconds,
       elapsedActiveMinutes: agent.elapsedActiveMinutes,
       ownerWaitReason: agent.ownerWaitReason,
+      ownerWaitStartedAt: agent.ownerWaitStartedAt,
     })).sort((left, right) => statePriority(left) - statePriority(right)
       || left.machineId.localeCompare(right.machineId)
       || left.agentId.localeCompare(right.agentId));

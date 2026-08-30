@@ -42,6 +42,7 @@ function agent(
     idleSeconds: state === "stale" ? 900 : 0,
     elapsedActiveMinutes: state === "unassigned" ? null : 10,
     ownerWaitReason: state === "awaiting_owner" ? "Choose the deployment host" : null,
+    ownerWaitStartedAt: state === "awaiting_owner" ? "2026-08-28T23:55:00.000Z" : null,
   };
 }
 
@@ -50,6 +51,7 @@ function progress(planRevision: string): MachineSnapshot["plans"][number] {
     planId: "0xmikko/0_agents:docs/plans/example.md",
     planRevision,
     goal: "Ship distributed plan tracking",
+    completedTaskSamples: [],
     progress: {
       deliveryId: "D1",
       tasks: { completed: 0, total: 1 },
@@ -177,6 +179,7 @@ describe("persisted attention transitions", () => {
       expect(new Set(events.map((event) => event.transitionKey)).size).toBe(events.length);
       expect(events.find((event) => event.kind === "owner_wait")?.detail).toEqual({
         ownerWaitReason: "Choose the deployment host",
+        ownerWaitStartedAt: "2026-08-28T23:55:00.000Z",
         state: "awaiting_owner",
       });
     } finally {

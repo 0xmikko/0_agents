@@ -86,6 +86,7 @@ function reportedPlan(revision: string): ReportedPlanProgress {
     planId: PLAN_ID,
     planRevision: revision,
     goal: "Keep distributed coding agents focused and observable",
+    completedTaskSamples: [],
     progress: {
       deliveryId: "D1",
       tasks: { completed: 1, total: 3 },
@@ -125,6 +126,7 @@ function observedAgent(
     idleSeconds: state === "stale" ? 900 : 0,
     elapsedActiveMinutes: 20,
     ownerWaitReason: state === "awaiting_owner" ? "Approve the production hostname" : null,
+    ownerWaitStartedAt: state === "awaiting_owner" ? "2026-08-29T19:45:00.000Z" : null,
   };
 }
 

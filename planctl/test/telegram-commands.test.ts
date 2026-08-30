@@ -29,6 +29,7 @@ const PLAN: PlanProgressView = {
     idleSeconds: 300,
     elapsedActiveMinutes: 25,
     ownerWaitReason: "Choose the public hostname",
+    ownerWaitStartedAt: "2026-08-29T19:45:00.000Z",
   }, {
     machineId: "machine-b",
     machineState: "online",
@@ -40,6 +41,7 @@ const PLAN: PlanProgressView = {
     idleSeconds: 1_200,
     elapsedActiveMinutes: 44,
     ownerWaitReason: null,
+    ownerWaitStartedAt: null,
   }, {
     machineId: "machine-c",
     machineState: "offline",
@@ -51,6 +53,7 @@ const PLAN: PlanProgressView = {
     idleSeconds: 60,
     elapsedActiveMinutes: 10,
     ownerWaitReason: null,
+    ownerWaitStartedAt: null,
   }],
   attention: { ownerWait: 1, stale: 1, unassigned: 0, machineOffline: 1, planDrift: 0 },
   remainingActiveMinutes: 120,
@@ -109,8 +112,22 @@ describe("Telegram progress commands", () => {
     expect(replies[3]).toContain("OFFLINE machine-c · agent codex:working remains working");
     expect(replies[4]).toContain("WAITING machine-a · codex:waiting · PLCTL_011");
     expect(replies[4]).toContain("Reason: Choose the public hostname");
-    expect(replies[4]).toContain("Wait duration: unavailable (snapshot omits owner-wait start)");
+    expect(replies[4]).toContain("Wait duration: 15m");
     expect(replies.every((reply) => reply.length <= 4_096)).toBeTrue();
     expect(replies.join("\n")).not.toContain("DO_NOT_UPLOAD");
+  });
+
+  /**
+   * @test-id: tst_svc_planctl_wait_duration_001
+   * @scenario: scn_planctl_wait_duration_001
+   * @covers: planctl/src/telegram/commands.service.ts::CommandsService.handle
+   * @deterministic: yes
+   * @fixtures: fixed server-generated time and structured owner-wait start
+   */
+  it("tst_svc_planctl_wait_duration_001 renders evidence-based owner wait duration", () => {
+    const commands = new CommandsService(new FixtureProgress(), { allowedUserIds: [101] });
+    const reply = commands.handle({ updateId: 99, userId: 101, chatId: 101, text: "/waiting" });
+    expect(reply).toContain("Reason: Choose the public hostname");
+    expect(reply).toContain("Wait duration: 15m");
   });
 });

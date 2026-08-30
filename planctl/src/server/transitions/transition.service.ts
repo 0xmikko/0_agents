@@ -29,7 +29,11 @@ function agentChange(agent: StoredAgentObservation, occurredAt: string): Observe
     taskId: agent.taskId,
     occurredAt,
     detail: agent.state === "awaiting_owner"
-      ? { state: agent.state, ownerWaitReason: agent.ownerWaitReason }
+      ? {
+        state: agent.state,
+        ownerWaitReason: agent.ownerWaitReason,
+        ownerWaitStartedAt: agent.ownerWaitStartedAt,
+      }
       : { state: agent.state },
   };
 }

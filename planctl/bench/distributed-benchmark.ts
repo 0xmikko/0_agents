@@ -55,6 +55,7 @@ function progress(): ReportedPlanProgress {
     planId: PLAN_ID,
     planRevision: PLAN_REVISION,
     goal: "Measure the distributed observer baseline",
+    completedTaskSamples: [],
     progress: {
       deliveryId: "D1",
       tasks: { completed: 5, total: 10 },
@@ -89,6 +90,7 @@ function agent(machineIndex: number, agentIndex: number, observedAt: string): Ag
     idleSeconds: agentIndex,
     elapsedActiveMinutes: agentIndex + 1,
     ownerWaitReason: null,
+    ownerWaitStartedAt: null,
   };
 }
 

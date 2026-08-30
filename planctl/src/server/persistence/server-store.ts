@@ -204,6 +204,7 @@ function canonicalPlanFromRow(row: CanonicalPlanRow): CanonicalPlanRecord {
       planId: row.plan_id,
       planRevision: row.plan_revision,
       goal: row.goal,
+      completedTaskSamples: [],
       progress: JSON.parse(row.progress_json) as unknown,
     }],
   });
@@ -287,9 +288,11 @@ export class ServerStore implements OnModuleDestroy {
       CREATE TABLE IF NOT EXISTS calibration_samples (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         repository_id TEXT NOT NULL,
+        sample_id TEXT NOT NULL,
         predicted_active_minutes REAL NOT NULL CHECK (predicted_active_minutes > 0),
         actual_active_minutes REAL NOT NULL CHECK (actual_active_minutes >= 0),
-        completed_at TEXT NOT NULL
+        completed_at TEXT NOT NULL,
+        UNIQUE (repository_id, sample_id)
       );
     `);
   }
@@ -376,6 +379,18 @@ export class ServerStore implements OnModuleDestroy {
         heartbeat.machineId,
       );
       for (const plan of snapshot.plans) {
+        const separator = plan.planId.indexOf(":");
+        if (separator <= 0) throw new Error(`plan ${plan.planId} has no repository identity`);
+        const repositoryId = plan.planId.slice(0, separator);
+        for (const sample of plan.completedTaskSamples) {
+          this.recordCalibrationSample(
+            repositoryId,
+            sample.sampleId,
+            sample.predictedActiveMinutes,
+            sample.actualActiveMinutes,
+            sample.completedAt,
+          );
+        }
         const existing = this.#database.query<CanonicalPlanRow, [string]>(
           "SELECT * FROM canonical_plans WHERE plan_id = ?",
         ).get(plan.planId);
@@ -605,19 +620,21 @@ export class ServerStore implements OnModuleDestroy {
 
   recordCalibrationSample(
     repositoryId: string,
+    sampleId: string,
     predictedActiveMinutes: number,
     actualActiveMinutes: number,
     completedAtInput: string,
   ): void {
     const completedAt = requireTimestamp(completedAtInput, "calibration completedAt");
-    if (repositoryId === "" || predictedActiveMinutes <= 0 || actualActiveMinutes < 0) {
+    if (repositoryId === "" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(sampleId)
+      || predictedActiveMinutes <= 0 || actualActiveMinutes < 0) {
       throw new Error("calibration sample is invalid");
     }
     this.#database.query(`
-      INSERT INTO calibration_samples
-        (repository_id, predicted_active_minutes, actual_active_minutes, completed_at)
-      VALUES (?, ?, ?, ?)
-    `).run(repositoryId, predictedActiveMinutes, actualActiveMinutes, completedAt);
+      INSERT OR IGNORE INTO calibration_samples
+        (repository_id, sample_id, predicted_active_minutes, actual_active_minutes, completed_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(repositoryId, sampleId, predictedActiveMinutes, actualActiveMinutes, completedAt);
   }
 
   calibrationSamples(repositoryId: string): readonly CalibrationSampleRecord[] {

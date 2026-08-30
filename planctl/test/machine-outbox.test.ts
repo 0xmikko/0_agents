@@ -56,6 +56,7 @@ describe("planctld SQLite outbox", () => {
         idleSeconds: 0,
         elapsedActiveMinutes: index,
         ownerWaitReason: null,
+        ownerWaitStartedAt: null,
         transcriptPayload: "DO_NOT_PERSIST_TRANSCRIPT",
       };
       store.queueLatest({

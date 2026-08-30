@@ -34,6 +34,7 @@ function plan(planRevision: string): ReportedPlanProgress {
     planId: PLAN_ID,
     planRevision,
     goal: "Ship trustworthy distributed tracking",
+    completedTaskSamples: [],
     progress: {
       deliveryId: "D1",
       tasks: { completed: 1, total: 4 },
@@ -97,6 +98,7 @@ function agent(
     idleSeconds: state === "stale" ? 900 : 0,
     elapsedActiveMinutes: 10,
     ownerWaitReason: state === "awaiting_owner" ? "Approve the production host" : null,
+    ownerWaitStartedAt: state === "awaiting_owner" ? "2026-08-28T23:55:00.000Z" : null,
   };
 }
 
@@ -205,9 +207,9 @@ describe("central progress read model", () => {
       ingest.accept("machine-c", { kind: "snapshot", snapshot: snapshot("machine-c", 1, [
         agent("codex:offline", "working", CANONICAL_REVISION, "PLAN_002"),
       ], CANONICAL_REVISION) }, "machine-c");
-      store.recordCalibrationSample("0xmikko/0_agents", 10, 20, clock.value);
-      store.recordCalibrationSample("0xmikko/0_agents", 20, 30, clock.value);
-      store.recordCalibrationSample("0xmikko/0_agents", 10, 10, clock.value);
+      store.recordCalibrationSample("0xmikko/0_agents", "sample-1", 10, 20, clock.value);
+      store.recordCalibrationSample("0xmikko/0_agents", "sample-2", 20, 30, clock.value);
+      store.recordCalibrationSample("0xmikko/0_agents", "sample-3", 10, 10, clock.value);
 
       clock.value = "2026-08-29T00:01:00.000Z";
       transitions.evaluate();

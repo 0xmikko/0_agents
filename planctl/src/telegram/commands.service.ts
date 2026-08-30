@@ -87,9 +87,16 @@ function waitingMessage(portfolio: PortfolioProgressView): string {
     ...waiting.flatMap((agent) => [
       `WAITING ${agent.machineId} · ${agent.agentId} · ${agent.taskId ?? "unassigned"}`,
       `Reason: ${ownerWaitReason(agent.ownerWaitReason)}`,
-      "Wait duration: unavailable (snapshot omits owner-wait start)",
+      `Wait duration: ${ownerWaitDuration(portfolio.generatedAt, agent.ownerWaitStartedAt)}`,
     ]),
   ]);
+}
+
+function ownerWaitDuration(generatedAt: string, startedAt: string | null): string {
+  if (startedAt === null) throw new Error("awaiting_owner observation has no structured start time");
+  const duration = (Date.parse(generatedAt) - Date.parse(startedAt)) / 60_000;
+  if (!Number.isFinite(duration) || duration < 0) throw new Error("owner wait duration evidence is invalid");
+  return `${metric(duration)}m`;
 }
 
 function ownerWaitReason(value: string | null): string {

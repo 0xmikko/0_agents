@@ -87,6 +87,8 @@ describe("planctl role setup", () => {
       "allowed_user_ids = [101]",
       "default_chat_id = 101",
       "long_poll_seconds = 30",
+      "claim_lease_seconds = 60",
+      "notifier_scan_milliseconds = 5000",
       "",
     ].join("\n"));
     writeFileSync(join(root, "fake-systemctl"), [

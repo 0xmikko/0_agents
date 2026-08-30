@@ -2,7 +2,7 @@
 
 Status: APPROVED
 Spec lock: sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
-Implementation lock: sha256:0689bd837271577b2f09beba3f289c26b8266ff8978735713775bdf6e4b664d0 owner:fix it until approved
+Implementation lock: sha256:cc72a20367b5251240a02ea6c02a85cd310db621679b4d24982b00840e4b4fc1 owner:fix it until approved
 Active Delivery: D1
 Unattended decisions: allowed
 
@@ -811,12 +811,12 @@ Predict: 150 active min / 60 credits.
 
 ##### Tasks
 
-- [ ] PLCTL_019 — start the configured Telegram command and alert services from the real server bootstrap
+- [x] PLCTL_019 — start the configured Telegram command and alert services from the real server bootstrap — fd8de4da888961c1e24c4c647b2fad050143975a
       Writes: `planctl/src/config/config.ts`, `planctl/src/server/main.ts`, `planctl/test/config.test.ts`, `planctl/test/server-main.test.ts`, `planctl/README.md`.
       Predict: 90 active min / 35 credits.
       How: load the mode-0600 bot token, pass every explicit poll/claim/scan setting through the existing Telegram composition root, keep machine enrollment free of bot side effects, and exercise the production factory with an injected fake Telegram transport
       RED: `bun run agent:test:backend -- test/server-main.test.ts -t tst_int_planctl_server_bootstrap_001`
-- [ ] PLCTL_020 — authenticate every HTTP progress read with an enrolled machine identity and bearer credential
+- [x] PLCTL_020 — authenticate every HTTP progress read with an enrolled machine identity and bearer credential — fd8de4da888961c1e24c4c647b2fad050143975a
       Writes: `planctl/src/cli/main.ts`, `planctl/src/cli/server-client.ts`, `planctl/src/server/auth/progress-auth.guard.ts`, `planctl/src/server/progress/progress.controller.ts`, `planctl/src/server/progress/progress.module.ts`, `planctl/test/focus.test.ts`, `planctl/test/server-progress.test.ts`.
       Predict: 60 active min / 25 credits.
       How: reuse MachineAdminService credential verification, require an explicit machine identity header beside the bearer token, send both from the existing bounded CLI reader, and prove missing, invalid and valid HTTP requests
@@ -824,25 +824,27 @@ Predict: 150 active min / 60 credits.
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/server-main.test.ts` exits 0 — the production factory activates Telegram polling and notifications without live network access
-- [ ] `cd planctl && bun run agent:test:backend -- test/server-progress.test.ts` exits 0 — progress rejects missing or invalid identity and accepts one enrolled machine
+- [x] `cd planctl && bun run agent:test:backend -- test/server-main.test.ts` exits 0 — the production factory activates Telegram polling and notifications without live network access — fd8de4da888961c1e24c4c647b2fad050143975a
+- [x] `cd planctl && bun run agent:test:backend -- test/server-progress.test.ts` exits 0 — progress rejects missing or invalid identity and accepts one enrolled machine — fd8de4da888961c1e24c4c647b2fad050143975a
 - [ ] The registered Stage temp root is absent before publication
-- [ ] Commit
+- [x] Commit — fd8de4da888961c1e24c4c647b2fad050143975a
 
 ##### Results
 
 <!-- plan:results:D1-S9:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| PLCTL_019 | fd8de4da888961c1e24c4c647b2fad050143975a | 2026-08-30T07:37:55.052Z–2026-08-30T07:52:52.000Z | 14 / 14.95 min | unavailable: runner did not expose per-Stage token or credit usage | Production enables configured Telegram polling and alerts; HTTP progress now requires an enrolled machine identity and bearer token. |
+| PLCTL_020 | fd8de4da888961c1e24c4c647b2fad050143975a | 2026-08-30T07:37:55.052Z–2026-08-30T07:52:52.000Z | 14 / 14.95 min | unavailable: runner did not expose per-Stage token or credit usage | Production enables configured Telegram polling and alerts; HTTP progress now requires an enrolled machine identity and bearer token. |
 <!-- plan:results:D1-S9:end -->
 <!-- plan:stage:D1-S9:end -->
 
 <!-- plan:stage:D1-S10:start -->
-<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S9"],"parallelWith":[],"writes":["planctl/src/cli/main.ts","planctl/src/core/plan-update.ts","planctl/src/core/snapshot-protocol.ts","planctl/src/machine/app.module.ts","planctl/src/machine/sessions/session-source.ts","planctl/src/server/persistence/server-store.ts","planctl/src/server/progress/progress.service.ts","planctl/src/server/transitions/transition.service.ts","planctl/src/telegram/commands.service.ts","planctl/bench/distributed-benchmark.ts","planctl/test/distributed-benchmark.test.ts","planctl/test/distributed-correlation.test.ts","planctl/test/distributed-e2e.test.ts","planctl/test/machine-collector.test.ts","planctl/test/machine-outbox.test.ts","planctl/test/machine-sessions.test.ts","planctl/test/server-ingest.test.ts","planctl/test/server-progress.test.ts","planctl/test/server-transitions.test.ts","planctl/test/task-run.test.ts","planctl/test/telegram-alerts.test.ts","planctl/test/telegram-commands.test.ts","planctl/README.md"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S10"} -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S9"],"parallelWith":[],"writes":["planctl/src/cli/main.ts","planctl/src/core/plan-update.ts","planctl/src/core/snapshot-protocol.ts","planctl/src/machine/app.module.ts","planctl/src/machine/sessions/session-source.ts","planctl/src/server/persistence/server-store.ts","planctl/src/server/progress/progress.service.ts","planctl/src/server/transitions/transition.service.ts","planctl/src/telegram/commands.service.ts","planctl/bench/distributed-benchmark.ts","planctl/test/distributed-benchmark.test.ts","planctl/test/distributed-correlation.test.ts","planctl/test/distributed-e2e.test.ts","planctl/test/machine-collector.test.ts","planctl/test/machine-outbox.test.ts","planctl/test/machine-sessions.test.ts","planctl/test/server-ingest.test.ts","planctl/test/server-progress.test.ts","planctl/test/server-transitions.test.ts","planctl/test/setup-planctl.test.ts","planctl/test/task-run.test.ts","planctl/test/telegram-alerts.test.ts","planctl/test/telegram-commands.test.ts","planctl/README.md"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S10"} -->
 #### Stage D1-S10 — Preserve distributed execution and forecast evidence end to end
 
 Owner: integrator; Profile: strong; Depends: D1-S9; Parallel with: none.
-Writes: `planctl/src/cli/main.ts`, `planctl/src/core/plan-update.ts`, `planctl/src/core/snapshot-protocol.ts`, `planctl/src/machine/app.module.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/server/transitions/transition.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/distributed-benchmark.test.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/machine-collector.test.ts`, `planctl/test/machine-outbox.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/telegram-alerts.test.ts`, `planctl/test/telegram-commands.test.ts`, `planctl/README.md`.
+Writes: `planctl/src/cli/main.ts`, `planctl/src/core/plan-update.ts`, `planctl/src/core/snapshot-protocol.ts`, `planctl/src/machine/app.module.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/server/transitions/transition.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/distributed-benchmark.test.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/machine-collector.test.ts`, `planctl/test/machine-outbox.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/setup-planctl.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/telegram-alerts.test.ts`, `planctl/test/telegram-commands.test.ts`, `planctl/README.md`.
 Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S10` (must be absent at handoff).
 Predict: 240 active min / 95 credits.
 
@@ -859,7 +861,7 @@ Predict: 240 active min / 95 credits.
       How: extend the canonical plan parser with stable completed-Stage samples, carry only predicted/actual timing evidence on the versioned snapshot, deduplicate it transactionally by sample identity, and prove real ingest changes calibration
       RED: `bun run agent:test:backend -- test/server-ingest.test.ts -t tst_int_planctl_calibration_001`
 - [ ] PLCTL_023 — retain structured owner-wait start time through snapshots, persistence and Telegram rendering
-      Writes: `planctl/src/core/snapshot-protocol.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/server/transitions/transition.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/distributed-benchmark.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/machine-collector.test.ts`, `planctl/test/machine-outbox.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/telegram-alerts.test.ts`, `planctl/test/telegram-commands.test.ts`.
+      Writes: `planctl/src/core/snapshot-protocol.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/server/transitions/transition.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/distributed-benchmark.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/machine-collector.test.ts`, `planctl/test/machine-outbox.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/setup-planctl.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/telegram-alerts.test.ts`, `planctl/test/telegram-commands.test.ts`.
       Predict: 50 active min / 20 credits.
       How: carry the validated marker timestamp beside its safe reason, retain it in the read model and transition evidence, and render a deterministic duration relative to the server-generated progress time
       RED: `bun run agent:test:backend -- test/telegram-commands.test.ts -t tst_svc_planctl_wait_duration_001`
@@ -963,4 +965,10 @@ Predict: 240 active min / 95 credits.
 - record-result D1-S8 commit:04baa0e0d1e5c5bb27f9431dc82c12e493a6ef95
 
 - close D1-S8 partial commit:04baa0e0d1e5c5bb27f9431dc82c12e493a6ef95
+
+- record-result D1-S9 commit:fd8de4da888961c1e24c4c647b2fad050143975a
+
+- close D1-S9 partial commit:fd8de4da888961c1e24c4c647b2fad050143975a
+
+- amend implementation owner:fix it until approved sha256:cc72a20367b5251240a02ea6c02a85cd310db621679b4d24982b00840e4b4fc1
 <!-- plan:execution:end -->

@@ -122,7 +122,9 @@ export function classifySessionActivities(input: SessionClassificationInput): re
         ? null
         : input.ownerWaits?.find((wait) => wait.plan === correlated.plan && wait.taskId === correlated.taskId
           && (wait.agentId === undefined || wait.agentId === activity.agentId)) ?? null;
-      const ownerWaitReason = externalOwnerWait?.reason ?? correlated?.ownerWait?.reason ?? null;
+      const ownerWait = externalOwnerWait ?? correlated?.ownerWait ?? null;
+      const ownerWaitReason = ownerWait?.reason ?? null;
+      const ownerWaitStartedAt = ownerWait?.startedAt ?? null;
       const stale = idleSeconds >= input.staleAfterSeconds;
       const state = ownerWaitReason !== null
         ? "awaiting_owner"
@@ -149,6 +151,7 @@ export function classifySessionActivities(input: SessionClassificationInput): re
         idleSeconds,
         elapsedActiveMinutes,
         ownerWaitReason,
+        ownerWaitStartedAt,
       } satisfies AgentSnapshot;
     });
 }

@@ -12,6 +12,7 @@ import { ServerAppModule } from "../src/server/app.module";
 import { MachineAuthGuard } from "../src/server/auth/machine-auth.guard";
 import { IngestController } from "../src/server/ingest/ingest.controller";
 import { ServerStore } from "../src/server/persistence/server-store";
+import { ProgressService } from "../src/server/progress/progress.service";
 
 import type { INestApplicationContext } from "@nestjs/common";
 
@@ -47,6 +48,7 @@ function snapshot(machineId: string, sequence: number, hash = sequence.toString(
       idleSeconds: 1,
       elapsedActiveMinutes: null,
       ownerWaitReason: null,
+      ownerWaitStartedAt: null,
     }],
     plans: [],
   };
@@ -83,6 +85,85 @@ afterEach(() => {
 });
 
 describe("authenticated snapshot ingest", () => {
+  /**
+   * @test-id: tst_int_planctl_calibration_001
+   * @scenario: scn_planctl_calibration_001
+   * @covers: planctl/src/server/persistence/server-store.ts::ServerStore.acceptSnapshot
+   * @deterministic: yes
+   * @fixtures: two monotonic snapshots carrying one stable completed-work sample
+   */
+  it("tst_int_planctl_calibration_001 ingests completed forecast evidence idempotently", async () => {
+    const root = fixtureRoot();
+    const app = await server(root);
+    try {
+      const admin = app.get(MachineAdminService);
+      const controller = app.get(IngestController);
+      const store = app.get(ServerStore);
+      admin.registerMachine("machine-a", "fixture-bearer-secret");
+      const request = { headers: {}, params: {}, machineSubject: "machine-a" };
+      const calibrated = (sequence: number): unknown => ({
+        kind: "snapshot",
+        snapshot: {
+          ...(snapshot("machine-a", sequence) as Readonly<Record<string, unknown>>),
+          plans: [{
+            planId: "fixture/repository:docs/plans/example.md",
+            planRevision: "a".repeat(64),
+            goal: "Calibrate delivery evidence",
+            progress: {
+              deliveryId: "D1",
+              tasks: { completed: 1, total: 2 },
+              activeMinutes: { completed: 10, remaining: 10, total: 20 },
+              credits: { completed: 1, remaining: 1, total: 2 },
+              completionPercent: 50,
+              stages: [{
+                id: "D1-S1", depends: [], parallelWith: [],
+                tasks: { completed: 1, total: 2 },
+                activeMinutes: { completed: 10, remaining: 10, total: 20 },
+                credits: { completed: 1, remaining: 1, total: 2 },
+                completionPercent: 50,
+              }],
+            },
+            completedTaskSamples: [{
+              sampleId: "D1-S1:a1b2c3d",
+              predictedActiveMinutes: 10,
+              actualActiveMinutes: 20,
+              completedAt: "2026-08-29T00:00:00.000Z",
+            }, {
+              sampleId: "D1-S2:a1b2c3e",
+              predictedActiveMinutes: 20,
+              actualActiveMinutes: 30,
+              completedAt: "2026-08-29T00:01:00.000Z",
+            }, {
+              sampleId: "D1-S3:a1b2c3f",
+              predictedActiveMinutes: 10,
+              actualActiveMinutes: 10,
+              completedAt: "2026-08-29T00:02:00.000Z",
+            }],
+          }],
+        },
+      });
+      controller.accept("machine-a", calibrated(1), request);
+      controller.accept("machine-a", calibrated(2), request);
+      expect(store.calibrationSamples("fixture/repository")).toEqual([{
+        predictedActiveMinutes: 10,
+        actualActiveMinutes: 20,
+      }, {
+        predictedActiveMinutes: 20,
+        actualActiveMinutes: 30,
+      }, {
+        predictedActiveMinutes: 10,
+        actualActiveMinutes: 10,
+      }]);
+      expect(app.get(ProgressService).plan("fixture/repository:docs/plans/example.md")?.calibration).toEqual({
+        factor: 1.5,
+        completedTaskSamples: 3,
+        confidence: "medium",
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   /**
    * @test-id: tst_int_planctl_ingest_001
    * @scenario: scn_planctl_ingest_001

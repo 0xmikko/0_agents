@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import { decodeMachineSnapshot } from "../src/core/snapshot-protocol";
+import { completedStageSamples } from "../src/core/plan-update";
 import { decodeTaskRun, taskRunCorrelation } from "../src/core/task-run";
 
 describe("Task run and snapshot contracts", () => {
@@ -56,6 +57,44 @@ describe("Task run and snapshot contracts", () => {
     });
     expect(() => decodeTaskRun({ ...distributed, machineId: undefined })).toThrow("TaskRunV2 machineId");
 
+    const resultPlan = [
+      "<!-- plan:stage:D1-S1:start -->",
+      '<!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["src/example.ts"],"tempRoot":".tmp/example"} -->',
+      "#### Stage D1-S1 — Example",
+      "",
+      "Owner: agent; Profile: fast; Depends: none; Parallel with: none.",
+      "Writes: `src/example.ts`.",
+      "Temp root: `.tmp/example` (must be absent at handoff).",
+      "Predict: 10 active min / 2 credits.",
+      "",
+      "##### Tasks",
+      "",
+      `- [x] TASK_001 — finish one measured task — ${"a".repeat(40)}`,
+      "      Writes: `src/example.ts`.",
+      "      Predict: 10 active min / 2 credits.",
+      "      How: change the existing example through its canonical owner",
+      "      RED: `bun run agent:test:backend -- test/example.test.ts`",
+      "",
+      "##### Acceptance criteria",
+      "",
+      "- [ ] Commit",
+      "",
+      "##### Results",
+      "",
+      "<!-- plan:results:D1-S1:start -->",
+      "| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |",
+      "|---|---|---|---:|---|---|",
+      `| TASK_001 | ${"a".repeat(40)} | 2026-08-29T00:00:00.000Z–2026-08-29T00:20:00.000Z | 20 / 20 min | unavailable | done |`,
+      "<!-- plan:results:D1-S1:end -->",
+      "<!-- plan:stage:D1-S1:end -->",
+    ].join("\n");
+    expect(completedStageSamples(resultPlan)).toEqual([{
+      sampleId: `D1-S1:${"a".repeat(40)}`,
+      predictedActiveMinutes: 10,
+      actualActiveMinutes: 20,
+      completedAt: "2026-08-29T00:20:00.000Z",
+    }]);
+
     const snapshot = decodeMachineSnapshot({
       heartbeat: {
         protocolVersion: 1,
@@ -78,11 +117,13 @@ describe("Task run and snapshot contracts", () => {
         idleSeconds: 1,
         elapsedActiveMinutes: null,
         ownerWaitReason: null,
+        ownerWaitStartedAt: null,
       }],
       plans: [{
         planId: "0xmikko/0_agents:docs/plans/example.md",
         planRevision: "b".repeat(64),
         goal: "Ship the fixture",
+        completedTaskSamples: [],
         progress: {
           deliveryId: "D1",
           tasks: { completed: 0, total: 1 },

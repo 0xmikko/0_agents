@@ -102,6 +102,13 @@ export interface StageResultReceipt {
   readonly tempRoots: readonly { readonly path: string; readonly state: "absent" }[];
 }
 
+export interface CompletedWorkSample {
+  readonly sampleId: string;
+  readonly predictedActiveMinutes: number;
+  readonly actualActiveMinutes: number;
+  readonly completedAt: string;
+}
+
 export interface UnattendedDecisionReceipt {
   readonly version: 1;
   readonly decidedAt: string;
@@ -512,7 +519,56 @@ export function stageInputs(body: string): readonly ParsedStageInput[] {
   return inputs;
 }
 
+/**
+ * @tested-by: tst_int_planctl_calibration_001
+ * @invariant: completed forecast evidence is derived from canonical Stage Results, not a second execution registry.
+ */
+export function completedStageSamples(body: string): readonly CompletedWorkSample[] {
+  const samples: CompletedWorkSample[] = [];
+  for (const stage of stageInputs(body)) {
+    const block = region(body, stageStart(stage.id), stageEnd(stage.id)).text;
+    const groups = new Map<string, {
+      readonly commit: string;
+      readonly completedAt: string;
+      readonly actualActiveMinutes: number;
+      readonly taskIds: Set<string>;
+    }>();
+    const rows = block.matchAll(
+      /^\| ([A-Z][A-Z0-9_-]*) \| ([0-9a-f]{40}) \| ([^|\s]+)–([^|\s]+) \| (\d+(?:\.\d+)?) \/ \d+(?:\.\d+)? min \|/gm,
+    );
+    for (const match of rows) {
+      const taskId = capture(match, 1, "Stage Result Task ID");
+      const commit = capture(match, 2, "Stage Result commit");
+      const completedAt = capture(match, 4, "Stage Result end");
+      const actualActiveMinutes = Number(capture(match, 5, "Stage Result active minutes"));
+      if (!Number.isFinite(Date.parse(completedAt)) || !Number.isFinite(actualActiveMinutes)) {
+        throw new Error(`Stage ${stage.id} has invalid completed timing evidence`);
+      }
+      const key = `${commit}:${completedAt}:${actualActiveMinutes}`;
+      const grouped = groups.get(key) ?? { commit, completedAt, actualActiveMinutes, taskIds: new Set<string>() };
+      grouped.taskIds.add(taskId);
+      groups.set(key, grouped);
+    }
+    for (const grouped of groups.values()) {
+      const predictedActiveMinutes = [...grouped.taskIds].reduce((total, taskId) => {
+        const task = stage.tasks.find((candidate) => candidate.id === taskId);
+        if (task === undefined) throw new Error(`Stage ${stage.id} Result names unknown Task ${taskId}`);
+        return total + task.predictedActiveMinutes;
+      }, 0);
+      samples.push({
+        sampleId: `${stage.id}:${grouped.commit}`,
+        predictedActiveMinutes,
+        actualActiveMinutes: grouped.actualActiveMinutes,
+        completedAt: grouped.completedAt,
+      });
+    }
+  }
+  return samples.sort((left, right) => left.completedAt.localeCompare(right.completedAt)
+    || left.sampleId.localeCompare(right.sampleId));
+}
+
 export function deliveryMetas(body: string): readonly DeliveryMeta[] {
+
   const values: DeliveryMeta[] = [];
   const expression = /<!-- plan:delivery:(D[1-9]\d*):start -->\n<!-- plan:delivery-meta:(\{[^\n]*\}) -->/g;
   for (const match of body.matchAll(expression)) {

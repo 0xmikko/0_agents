@@ -75,6 +75,7 @@ class ChangingSource implements CollectorObservationSource {
         idleSeconds: 0,
         elapsedActiveMinutes: this.scans,
         ownerWaitReason: null,
+        ownerWaitStartedAt: null,
       }],
       plans: [],
       sourceIssues: [],

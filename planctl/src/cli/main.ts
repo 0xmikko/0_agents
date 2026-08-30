@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, u
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import type { DeliveryMeta, ParsedStageInput, TaskExecutionBrief } from "../core/plan-update";
+import type { TaskRun, TaskRunV1 } from "../core/task-run";
 import type { FocusView, ProgressPlanView } from "./render";
 
 function portableRuntimeFile(name: "plan-gate.ts" | "plan-update.ts"): string {
@@ -118,7 +119,7 @@ Bad Task (rejected):
 
 Locks the Delivery/Stage/Task contract after explicit owner approval.
 `,
-  "start-task": `Usage: planctl start-task <plan.md> --task <Task-ID>
+  "start-task": `Usage: planctl start-task <plan.md> --task <Task-ID> [--agent <codex:id|claude:id>] [--config <absolute.toml>]
 
 Reads the Task from the committed or journal-verified staged APPROVED Markdown
 source of truth, checks its Delivery and Stage dependencies, prints the exact
@@ -204,16 +205,6 @@ values. check validates the strict role schema, absolute paths, endpoint safety
 and mode-0600 secret files.
 `,
 };
-
-interface TaskRun {
-  readonly version: 1;
-  readonly plan: string;
-  readonly deliveryId: string;
-  readonly stageId: string;
-  readonly taskId: string;
-  readonly startedAt: string;
-  readonly baseHead: string;
-}
 
 interface CompletionHeader {
   readonly plan: string;
@@ -301,7 +292,7 @@ function gitCommonDir(rootPath: string): string {
   return git(rootPath, "rev-parse", "--path-format=absolute", "--git-common-dir");
 }
 
-function taskRunFrom(value: unknown): TaskRun {
+function legacyTaskRunFrom(value: unknown): TaskRunV1 {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Task start receipt is invalid");
   const record = value as Readonly<Record<string, unknown>>;
   if (record.version !== 1 || typeof record.plan !== "string" || typeof record.deliveryId !== "string"
@@ -320,11 +311,20 @@ function taskRunFrom(value: unknown): TaskRun {
   };
 }
 
+async function taskRunFrom(value: unknown): Promise<TaskRun> {
+  if (basename(import.meta.dir) !== "cli") return legacyTaskRunFrom(value);
+  const runtime = await import(resolve(import.meta.dir, "../core/task-run.ts"));
+  return runtime.decodeTaskRun(value);
+}
+
 function printTaskStart(brief: TaskExecutionBrief, run: TaskRun): void {
+  const distributed = run.version === 1
+    ? "unavailable (TaskRunV1)"
+    : `TaskRunV2 ${run.machineId} / ${run.agentId} / ${run.repositoryId}`;
   console.log([
     `Task ${brief.id} STARTED`,
     `Source: ${run.plan}`,
-    "Distributed correlation: unavailable (TaskRunV1)",
+    `Distributed correlation: ${distributed}`,
     `Delivery / Stage: ${brief.deliveryId} / ${brief.stageId} — ${brief.stageTitle}`,
     `Owner / Profile: ${brief.owner} / ${brief.profile}`,
     `Started: ${run.startedAt}`,
@@ -383,7 +383,7 @@ async function startTask(args: readonly string[]): Promise<void> {
   const brief = taskExecutionBrief(body, flag(args, "--task"));
   const path = taskRunPath(rootPath, target.relative, brief.id);
   if (existsSync(path)) {
-    const existing = taskRunFrom(JSON.parse(readFileSync(path, "utf8")) as unknown);
+    const existing = await taskRunFrom(JSON.parse(readFileSync(path, "utf8")) as unknown);
     if (existing.plan !== target.relative || existing.taskId !== brief.id || existing.stageId !== brief.stageId) {
       throw new Error(`Task ${brief.id} has a conflicting start receipt`);
     }
@@ -394,7 +394,7 @@ async function startTask(args: readonly string[]): Promise<void> {
     printTaskStart(brief, existing);
     return;
   }
-  const run: TaskRun = {
+  const legacy: TaskRunV1 = {
     version: 1,
     plan: target.relative,
     deliveryId: brief.deliveryId,
@@ -403,10 +403,64 @@ async function startTask(args: readonly string[]): Promise<void> {
     startedAt: new Date().toISOString(),
     baseHead: git(rootPath, "rev-parse", "HEAD"),
   };
+  const run = await distributedTaskRun(args, rootPath, target.relative, body, legacy);
   await clearOwnerWaitForTask(rootPath, target.relative, brief.id);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(run, null, 2)}\n`);
+  writeFileSync(path, `${JSON.stringify(run, null, 2)}\n`, { mode: 0o600 });
   printTaskStart(brief, run);
+}
+
+function explicitAgentId(args: readonly string[]): string | null {
+  const flagged = optionalFlag(args, "--agent");
+  if (flagged !== undefined) return flagged;
+  const codex = process.env.CODEX_SESSION_ID ?? process.env.CODEX_THREAD_ID;
+  if (codex !== undefined && codex !== "") return `codex:${codex}`;
+  const claude = process.env.CLAUDE_SESSION_ID;
+  return claude === undefined || claude === "" ? null : `claude:${claude}`;
+}
+
+async function distributedTaskRun(
+  args: readonly string[],
+  rootPath: string,
+  plan: string,
+  body: string,
+  legacy: TaskRunV1,
+): Promise<TaskRun> {
+  if (basename(import.meta.dir) !== "cli") return legacy;
+  const agentId = explicitAgentId(args);
+  if (agentId === null) return legacy;
+  const configRuntime = await import(resolve(import.meta.dir, "../config/config.ts"));
+  const configPath = optionalFlag(args, "--config") ?? configRuntime.defaultPlanctlConfigPath("machine");
+  if (!existsSync(configPath)) {
+    if (args.includes("--agent") || args.includes("--config")) {
+      throw new Error(`distributed start-task configuration does not exist: ${configPath}`);
+    }
+    return legacy;
+  }
+  const config = configRuntime.loadPlanctlConfig(configPath, "machine");
+  if (config.role !== "machine") throw new Error("start-task configuration has the wrong role");
+  const common = gitCommonDir(rootPath);
+  const repositoryRoot = basename(common) === ".git" ? dirname(common) : rootPath;
+  const repositoryId = config.repositoryIds[repositoryRoot];
+  if (repositoryId === undefined) {
+    if (!args.includes("--agent") && !args.includes("--config")) return legacy;
+    throw new Error(`machine config has no repository ID for ${repositoryRoot}`);
+  }
+  const branch = git(rootPath, "rev-parse", "--abbrev-ref", "HEAD");
+  if (branch === "HEAD") throw new Error("distributed start-task requires a named branch");
+  const candidate: TaskRun = {
+    ...legacy,
+    version: 2,
+    machineId: config.machineId,
+    agentId,
+    repositoryId,
+    worktree: rootPath,
+    branch,
+    planRevision: protocolImplementationHash(body),
+    ownerWait: null,
+  };
+  const taskRuntime = await import(resolve(import.meta.dir, "../core/task-run.ts"));
+  return taskRuntime.decodeTaskRun(candidate);
 }
 
 function planGoal(body: string): string {
@@ -429,10 +483,10 @@ function readyTaskIds(body: string, currentTaskId?: string): readonly string[] {
     .flatMap((stage) => stage.tasks.filter((task) => !task.completed && task.id !== currentTaskId).map((task) => task.id));
 }
 
-function existingTaskRun(rootPath: string, plan: string, taskId: string): TaskRun | null {
+async function existingTaskRun(rootPath: string, plan: string, taskId: string): Promise<TaskRun | null> {
   const path = taskRunPath(rootPath, plan, taskId);
   if (!existsSync(path)) return null;
-  return taskRunFrom(JSON.parse(readFileSync(path, "utf8")) as unknown);
+  return await taskRunFrom(JSON.parse(readFileSync(path, "utf8")) as unknown);
 }
 
 interface MachineServerSettings {
@@ -489,7 +543,7 @@ async function focus(args: readonly string[]): Promise<void> {
   const { rootPath, target, body } = approvedPlan(args);
   const taskId = optionalFlag(args, "--task");
   const brief = taskId === undefined ? null : taskExecutionBrief(body, taskId);
-  const run = taskId === undefined ? null : existingTaskRun(rootPath, target.relative, taskId);
+  const run = taskId === undefined ? null : await existingTaskRun(rootPath, target.relative, taskId);
   const waits = await ownerWaitRuntime();
   const wait = taskId === undefined
     ? null
@@ -641,7 +695,7 @@ async function needsOwner(args: readonly string[]): Promise<void> {
   const { rootPath, target, body } = approvedPlan(args);
   const taskId = flag(args, "--task");
   const brief = taskExecutionBrief(body, taskId);
-  const run = existingTaskRun(rootPath, target.relative, taskId);
+  const run = await existingTaskRun(rootPath, target.relative, taskId);
   if (run === null) throw new Error(`Task ${taskId} has no start receipt; run planctl start-task first`);
   if (spawnSync("git", ["-C", rootPath, "merge-base", "--is-ancestor", run.baseHead, "HEAD"]).status !== 0) {
     throw new Error(`Task ${taskId} start base is not ancestral to HEAD`);
@@ -687,18 +741,18 @@ function completionHeader(value: unknown): CompletionHeader {
   };
 }
 
-function completeTask(args: readonly string[]): number {
+async function completeTask(args: readonly string[]): Promise<number> {
   const plan = args[1];
   if (plan === undefined) throw new Error("plan path is required");
   const rootPath = root();
   const target = addressedPath(rootPath, plan);
   const receipt = completionHeader(JSON.parse(readFileSync(resolve(rootPath, flag(args, "--from")), "utf8")) as unknown);
   if (receipt.plan !== target.relative) throw new Error(`Stage result names ${receipt.plan}, expected ${target.relative}`);
-  const runs = receipt.taskIds.map((taskId) => {
+  const runs = await Promise.all(receipt.taskIds.map(async (taskId) => {
     const path = taskRunPath(rootPath, target.relative, taskId);
     if (!existsSync(path)) throw new Error(`Task ${taskId} has no start receipt; run planctl start-task first`);
-    return { path, run: taskRunFrom(JSON.parse(readFileSync(path, "utf8")) as unknown) };
-  });
+    return { path, run: await taskRunFrom(JSON.parse(readFileSync(path, "utf8")) as unknown) };
+  }));
   const earliest = runs.reduce((value, entry) => entry.run.startedAt < value ? entry.run.startedAt : value, runs[0]?.run.startedAt ?? "");
   if (receipt.startedAt !== earliest) throw new Error(`Stage result startedAt must equal the earliest start-task receipt (${earliest})`);
   const startedMs = Date.parse(receipt.startedAt);
@@ -832,7 +886,7 @@ async function run(args: readonly string[]): Promise<number> {
     await resumeTask(args);
     return 0;
   }
-  if (command === "complete-task") return completeTask(args);
+  if (command === "complete-task") return await completeTask(args);
   const engineCommand = ENGINE_COMMANDS[command];
   if (engineCommand === undefined) throw new Error(`unknown command ${command}; run planctl --help`);
   return runEngine(args, engineCommand);

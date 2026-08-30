@@ -1,4 +1,5 @@
 import type { PlanProgressSnapshot } from "./plan-progress";
+import type { CompletedWorkSample } from "./plan-update";
 
 export const SNAPSHOT_PROTOCOL_VERSION = 1 as const;
 
@@ -27,6 +28,7 @@ export interface AgentSnapshot {
   readonly idleSeconds: number;
   readonly elapsedActiveMinutes: number | null;
   readonly ownerWaitReason: string | null;
+  readonly ownerWaitStartedAt: string | null;
 }
 
 export interface ReportedPlanProgress {
@@ -34,6 +36,7 @@ export interface ReportedPlanProgress {
   readonly planRevision: string;
   readonly goal: string;
   readonly progress: PlanProgressSnapshot;
+  readonly completedTaskSamples: readonly CompletedWorkSample[];
 }
 
 export interface MachineSnapshot {
@@ -142,6 +145,22 @@ function heartbeat(input: unknown): MachineHeartbeat {
   };
 }
 
+function completedWorkSample(input: unknown): CompletedWorkSample {
+  const value = record(input, "completed work sample");
+  const predictedActiveMinutes = nonNegative(
+    value.predictedActiveMinutes,
+    "completed work sample predictedActiveMinutes",
+  );
+  const actualActiveMinutes = nonNegative(value.actualActiveMinutes, "completed work sample actualActiveMinutes");
+  if (predictedActiveMinutes <= 0) throw new Error("completed work sample prediction must be positive");
+  return {
+    sampleId: text(value.sampleId, "completed work sample sampleId", /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/),
+    predictedActiveMinutes,
+    actualActiveMinutes,
+    completedAt: timestamp(value.completedAt, "completed work sample completedAt"),
+  };
+}
+
 function agent(input: unknown): AgentSnapshot {
   const value = record(input, "agent snapshot");
   const provider = value.provider;
@@ -153,8 +172,15 @@ function agent(input: unknown): AgentSnapshot {
     ? null
     : nonNegative(value.elapsedActiveMinutes, "agent elapsedActiveMinutes");
   const ownerWaitReason = nullableText(value.ownerWaitReason, "agent ownerWaitReason");
+  const ownerWaitStartedAt = value.ownerWaitStartedAt === null
+    ? null
+    : timestamp(value.ownerWaitStartedAt, "agent ownerWaitStartedAt");
   if (ownerWaitReason?.includes("\n") === true || (ownerWaitReason?.length ?? 0) > 240) {
     throw new Error("agent ownerWaitReason must be one safe line");
+  }
+  if ((ownerWaitReason === null) !== (ownerWaitStartedAt === null)
+    || (state === "awaiting_owner") !== (ownerWaitReason !== null)) {
+    throw new Error("awaiting_owner requires matching structured reason and start time");
   }
   return {
     agentId: text(value.agentId, "agent agentId", /^(codex|claude):[^\s:][^\s]*$/),
@@ -172,6 +198,7 @@ function agent(input: unknown): AgentSnapshot {
     idleSeconds: nonNegative(value.idleSeconds, "agent idleSeconds"),
     elapsedActiveMinutes: elapsed,
     ownerWaitReason,
+    ownerWaitStartedAt,
   };
 }
 
@@ -190,11 +217,15 @@ export function decodeMachineSnapshot(input: unknown): MachineSnapshot {
     agents: value.agents.map(agent),
     plans: value.plans.map((entry) => {
       const plan = record(entry, "reported plan progress");
+      if (!Array.isArray(plan.completedTaskSamples)) {
+        throw new Error("reported plan completedTaskSamples must be an array");
+      }
       return {
         planId: text(plan.planId, "reported planId"),
         planRevision: text(plan.planRevision, "reported planRevision", /^[0-9a-f]{64}$/),
         goal: text(plan.goal, "reported plan goal"),
         progress: progressSnapshot(plan.progress),
+        completedTaskSamples: plan.completedTaskSamples.map(completedWorkSample),
       };
     }),
   };

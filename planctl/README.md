@@ -162,12 +162,19 @@ Enable user lingering on unattended Linux hosts so services survive logout.
 Inside an approved plan worktree:
 
 ```bash
+planctl start-task docs/plans/example.md --task EXAMPLE_001 --agent codex:session-id --config /absolute/machine.toml
 planctl focus docs/plans/example.md
 planctl progress docs/plans/example.md
 planctl progress docs/plans/example.md --server --config /absolute/machine.toml
 planctl needs-owner docs/plans/example.md --task EXAMPLE_001 --reason "Approve the production hostname"
 planctl resume-task docs/plans/example.md --task EXAMPLE_001
 ```
+
+`start-task` emits a distributed TaskRunV2 when a validated machine config and
+an explicit `--agent` identity are present. Codex/Claude session environment
+identity is used automatically when available. Without telemetry identity or
+machine configuration, the existing TaskRunV1 local execution path remains
+available and server unavailability never blocks the Task.
 
 Observer progress reads authenticate with the configured machine ID and its
 enrollment bearer token. Telegram reads the same internal progress service
@@ -177,6 +184,9 @@ Telegram owner commands are `/progress`, `/progress <plan>`, `/agents`,
 `/stale`, and `/waiting`. Alerts are emitted once for stale, owner-wait,
 machine-offline, and recovery transitions. Messages use structured plan,
 machine, task, timing, and owner-wait fields only—never transcript excerpts.
+`/waiting` calculates duration from the structured owner-wait start time.
+Completed Stage Result timing is carried as stable, idempotent samples so the
+server can calibrate forecasts from actual deliveries.
 
 ## Verification and scale baseline
 
@@ -189,10 +199,3 @@ bun run bench/distributed-benchmark.ts
 The deterministic certificate fixes cardinality at 100 machines and 1,000
 agents. Host timings are reported as an optimization baseline, never used as
 flaky pass/fail thresholds.
-
-## Delivery 1 limitations
-
-- Snapshots do not yet carry completed-Task timing receipts, so collectors
-  cannot populate empirical ETA calibration samples.
-- Agent snapshots do not carry owner-wait start time; `/waiting` reports the
-  safe reason and explicitly marks duration unavailable.
