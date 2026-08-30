@@ -11,6 +11,7 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { execSync, spawnSync } from "node:child_process";
+import { basename } from "node:path";
 
 export interface GateViolation {
   kind: "missing-receipt" | "unknown-receipt" | "stray-receipt" | "criterion-failed" | "open-box"
@@ -542,7 +543,7 @@ function autoMergedTree(root: string, mergeHead: string): { tree: string; confli
   return { tree: tree.trim(), conflicted: new Set(rest.filter((entry) => entry !== "")) };
 }
 
-if (import.meta.main) {
+if (import.meta.main && ["plan-gate.ts", "plan-gate.js"].includes(basename(import.meta.path))) {
   const args = process.argv.slice(2);
   // --freeze: the staged-diff mode the commit hook calls. It gathers what the
   // pure check needs — the parent version, the candidate version, and git's
@@ -603,12 +604,16 @@ if (import.meta.main) {
   const closure = args.includes("--closure");
   const start = args.includes("--start");
   const noExec = args.includes("--no-exec");
+  const plan = args.find((a) => a.endsWith(".md"));
+  if (plan === undefined) {
+    console.error("usage: bun planctl/src/core/plan-gate.ts <plan.md> [--closure] [--start] [--no-exec] [--root <repo>]");
+    process.exit(64);
+  }
   const rootFlag = args.indexOf("--root");
   const root = rootFlag === -1
     ? execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).trim()
     : args[rootFlag + 1];
-  const plan = args.find((a) => a.endsWith(".md"));
-  if (!plan || !root) {
+  if (!root) {
     console.error("usage: bun planctl/src/core/plan-gate.ts <plan.md> [--closure] [--start] [--no-exec] [--root <repo>]");
     process.exit(64);
   }

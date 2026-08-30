@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
 import { MACHINABLE, protocolImplementationHash, protocolSpecHash } from "./plan-gate";
@@ -1167,7 +1167,7 @@ function usage(): never {
   process.exit(64);
 }
 
-if (import.meta.main) {
+if (import.meta.main && ["plan-update.ts", "plan-update.js"].includes(basename(import.meta.path))) {
   const args = process.argv.slice(2);
   const plan = args[0];
   const command = args[1];

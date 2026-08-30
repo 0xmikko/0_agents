@@ -13,13 +13,17 @@
     "agent:verify:docs": "bun test test/package-boundary.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src test bench",
-    "build": "bun build src/cli/main.ts src/machine/main.ts src/server/main.ts --outdir dist --target bun"
+    "build": "bun build src/cli/main.ts src/core/plan-gate.ts src/core/plan-update.ts src/machine/main.ts src/server/main.ts --outdir dist --target bun --external @nestjs/platform-socket.io --external nats --external ioredis --external mqtt --external kafkajs --external amqplib --external amqp-connection-manager --external @grpc/grpc-js --external @grpc/proto-loader"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",
     "@nestjs/core": "^11.1.6",
+    "@nestjs/microservices": "^11.1.6",
     "@nestjs/platform-express": "^11.1.6",
     "@nestjs/schedule": "^6.0.1",
+    "@nestjs/websockets": "^11.1.6",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },

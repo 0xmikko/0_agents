@@ -10,8 +10,9 @@ import type { FocusView, ProgressPlanView } from "./render";
 
 function portableRuntimeFile(name: "plan-gate.ts" | "plan-update.ts"): string {
   const layout = basename(import.meta.dir);
-  if (layout === "cli") return resolve(import.meta.dir, "../core", name);
-  if (layout === "runtime") return resolve(import.meta.dir, name);
+  const runtimeName = import.meta.path.endsWith(".js") ? name.replace(/\.ts$/, ".js") : name;
+  if (layout === "cli") return resolve(import.meta.dir, "../core", runtimeName);
+  if (layout === "runtime") return resolve(import.meta.dir, runtimeName);
   throw new Error(`unsupported planctl runtime layout: ${import.meta.dir}`);
 }
 

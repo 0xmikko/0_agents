@@ -2,7 +2,7 @@
 
 Status: APPROVED
 Spec lock: sha256:82a658272d7a7f12f1c37cc23733bb99f4d08099baa5108f6ab0dd29980034b6 owner:the spec is good, lets plan
-Implementation lock: sha256:5301ecd18a44b5c0b0a5916590b9a5c4d3b095f1e78a762d9ff094e3b10d22a1 owner:$blueprint-start
+Implementation lock: sha256:0689bd837271577b2f09beba3f289c26b8266ff8978735713775bdf6e4b664d0 owner:fix it until approved
 Active Delivery: D1
 Unattended decisions: allowed
 
@@ -472,7 +472,7 @@ LLM summaries and UI work require separate owner-approved plans.
 
 Branch: `feat/planctl-observer-daemon`; Depends: none; Gate: cd planctl && bun run agent:verify:pr.
 
-Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7`.
+Stage graph: `D1-S1 -> D1-S2 -> (D1-S3 || D1-S4 || D1-S6); D1-S4 -> D1-S5; (D1-S3 + D1-S5 + D1-S6) -> D1-S7 -> D1-S8 -> D1-S9 -> D1-S10`.
 
 <!-- plan:stage:D1-S1:start -->
 <!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["planctl/package.json","planctl/bun.lock","planctl/tsconfig.json","planctl/src/cli/main.ts","planctl/src/core/plan-gate.ts","planctl/src/core/plan-update.ts","planctl/test/package-boundary.test.ts","planctl/test/planctl.test.ts","planctl/test/plan-gate.test.ts","planctl/test/plan-update.test.ts","shared/code-production/runtime/planctl.ts","shared/code-production/runtime/plan-gate.ts","shared/code-production/runtime/plan-update.ts","shared/code-production/runtime/planctl.test.ts","shared/code-production/runtime/plan-gate.test.ts","shared/code-production/runtime/plan-update.test.ts","shared/code-production/agent-stack.ts","shared/code-production/agent-stack.test.ts","shared/code-production/README.md","shared/code-production/laws/development-process.md","shared/code-production/laws/git-workflow.md","shared/code-production/laws/plan-format.md","shared/code-production/laws/plan-protocol.md","bin/planctl"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S1"} -->
@@ -766,6 +766,119 @@ Predict: 180 active min / 70 credits.
 | PLCTL_017 | a3c1cb4d1b91756c4b9534a419685c2be1a3e91f | 2026-08-29T20:39:31.065Z–2026-08-29T21:30:40.000Z | 51 / 51.15 min | unavailable: runner did not expose usage | Three collectors converge through outage and recovery; validated role setup is idempotent; the 100-machine/1,000-agent baseline is measured. |
 <!-- plan:results:D1-S7:end -->
 <!-- plan:stage:D1-S7:end -->
+
+<!-- plan:stage:D1-S8:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S7"],"parallelWith":[],"writes":["planctl/package.json","planctl/bun.lock","planctl/src/cli/main.ts","planctl/src/core/plan-gate.ts","planctl/src/core/plan-update.ts","planctl/src/machine/main.ts","planctl/test/package-build.test.ts"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S8"} -->
+#### Stage D1-S8 — Restore the publishable planctl package build
+
+Owner: integrator; Profile: fast; Depends: D1-S7; Parallel with: none.
+Writes: `planctl/package.json`, `planctl/bun.lock`, `planctl/src/cli/main.ts`, `planctl/src/core/plan-gate.ts`, `planctl/src/core/plan-update.ts`, `planctl/src/machine/main.ts`, `planctl/test/package-build.test.ts`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S8` (must be absent at handoff).
+Predict: 25 active min / 10 credits.
+
+##### Tasks
+
+- [ ] PLCTL_018 — publish runnable CLI, machine and server artifacts without requiring unused Nest optional integrations
+      Writes: `planctl/package.json`, `planctl/bun.lock`, `planctl/src/cli/main.ts`, `planctl/src/core/plan-gate.ts`, `planctl/src/core/plan-update.ts`, `planctl/src/machine/main.ts`, `planctl/test/package-build.test.ts`.
+      Predict: 25 active min / 10 credits.
+      How: make bundled runtime-module resolution explicit, emit every required internal entrypoint, install and bundle the Nest peer modules referenced by framework runtime loaders, and smoke-run every artifact from an isolated output tree
+      RED: `bun run agent:test:backend -- test/package-build.test.ts -t tst_cert_planctl_build_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/package-build.test.ts` exits 0 — all three declared production entrypoints build and their deterministic help paths execute from an isolated output tree
+- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — typecheck, lint, deterministic tests and package build are green
+- [ ] The registered Stage temp root is absent before publication
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S8:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S8:end -->
+<!-- plan:stage:D1-S8:end -->
+
+<!-- plan:stage:D1-S9:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S8"],"parallelWith":[],"writes":["planctl/src/config/config.ts","planctl/src/cli/main.ts","planctl/src/cli/server-client.ts","planctl/src/server/main.ts","planctl/src/server/auth/progress-auth.guard.ts","planctl/src/server/progress/progress.controller.ts","planctl/src/server/progress/progress.module.ts","planctl/test/config.test.ts","planctl/test/focus.test.ts","planctl/test/server-main.test.ts","planctl/test/server-progress.test.ts","planctl/README.md"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S9"} -->
+#### Stage D1-S9 — Secure and activate the production observer boundary
+
+Owner: integrator; Profile: strong; Depends: D1-S8; Parallel with: none.
+Writes: `planctl/src/config/config.ts`, `planctl/src/cli/main.ts`, `planctl/src/cli/server-client.ts`, `planctl/src/server/main.ts`, `planctl/src/server/auth/progress-auth.guard.ts`, `planctl/src/server/progress/progress.controller.ts`, `planctl/src/server/progress/progress.module.ts`, `planctl/test/config.test.ts`, `planctl/test/focus.test.ts`, `planctl/test/server-main.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/README.md`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S9` (must be absent at handoff).
+Predict: 150 active min / 60 credits.
+
+##### Tasks
+
+- [ ] PLCTL_019 — start the configured Telegram command and alert services from the real server bootstrap
+      Writes: `planctl/src/config/config.ts`, `planctl/src/server/main.ts`, `planctl/test/config.test.ts`, `planctl/test/server-main.test.ts`, `planctl/README.md`.
+      Predict: 90 active min / 35 credits.
+      How: load the mode-0600 bot token, pass every explicit poll/claim/scan setting through the existing Telegram composition root, keep machine enrollment free of bot side effects, and exercise the production factory with an injected fake Telegram transport
+      RED: `bun run agent:test:backend -- test/server-main.test.ts -t tst_int_planctl_server_bootstrap_001`
+- [ ] PLCTL_020 — authenticate every HTTP progress read with an enrolled machine identity and bearer credential
+      Writes: `planctl/src/cli/main.ts`, `planctl/src/cli/server-client.ts`, `planctl/src/server/auth/progress-auth.guard.ts`, `planctl/src/server/progress/progress.controller.ts`, `planctl/src/server/progress/progress.module.ts`, `planctl/test/focus.test.ts`, `planctl/test/server-progress.test.ts`.
+      Predict: 60 active min / 25 credits.
+      How: reuse MachineAdminService credential verification, require an explicit machine identity header beside the bearer token, send both from the existing bounded CLI reader, and prove missing, invalid and valid HTTP requests
+      RED: `bun run agent:test:backend -- test/server-progress.test.ts -t tst_int_planctl_progress_auth_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/server-main.test.ts` exits 0 — the production factory activates Telegram polling and notifications without live network access
+- [ ] `cd planctl && bun run agent:test:backend -- test/server-progress.test.ts` exits 0 — progress rejects missing or invalid identity and accepts one enrolled machine
+- [ ] The registered Stage temp root is absent before publication
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S9:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S9:end -->
+<!-- plan:stage:D1-S9:end -->
+
+<!-- plan:stage:D1-S10:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S9"],"parallelWith":[],"writes":["planctl/src/cli/main.ts","planctl/src/core/plan-update.ts","planctl/src/core/snapshot-protocol.ts","planctl/src/machine/app.module.ts","planctl/src/machine/sessions/session-source.ts","planctl/src/server/persistence/server-store.ts","planctl/src/server/progress/progress.service.ts","planctl/src/server/transitions/transition.service.ts","planctl/src/telegram/commands.service.ts","planctl/bench/distributed-benchmark.ts","planctl/test/distributed-benchmark.test.ts","planctl/test/distributed-correlation.test.ts","planctl/test/distributed-e2e.test.ts","planctl/test/machine-collector.test.ts","planctl/test/machine-outbox.test.ts","planctl/test/machine-sessions.test.ts","planctl/test/server-ingest.test.ts","planctl/test/server-progress.test.ts","planctl/test/server-transitions.test.ts","planctl/test/task-run.test.ts","planctl/test/telegram-alerts.test.ts","planctl/test/telegram-commands.test.ts","planctl/README.md"],"tempRoot":".tmp/code-production/planctl-observer-daemon/D1-S10"} -->
+#### Stage D1-S10 — Preserve distributed execution and forecast evidence end to end
+
+Owner: integrator; Profile: strong; Depends: D1-S9; Parallel with: none.
+Writes: `planctl/src/cli/main.ts`, `planctl/src/core/plan-update.ts`, `planctl/src/core/snapshot-protocol.ts`, `planctl/src/machine/app.module.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/server/transitions/transition.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/distributed-benchmark.test.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/machine-collector.test.ts`, `planctl/test/machine-outbox.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/telegram-alerts.test.ts`, `planctl/test/telegram-commands.test.ts`, `planctl/README.md`.
+Temp root: `.tmp/code-production/planctl-observer-daemon/D1-S10` (must be absent at handoff).
+Predict: 240 active min / 95 credits.
+
+##### Tasks
+
+- [ ] PLCTL_021 — emit TaskRunV2 from real start-task execution whenever explicit machine, repository and session identity are available
+      Writes: `planctl/src/cli/main.ts`, `planctl/test/distributed-correlation.test.ts`, `planctl/README.md`.
+      Predict: 90 active min / 35 credits.
+      How: derive machine and repository identity from validated machine config, accept or detect one explicit Codex/Claude session identity, retain V1 when telemetry identity is absent, and prove the resulting receipt binds through the real local collector
+      RED: `bun run agent:test:backend -- test/distributed-correlation.test.ts -t tst_int_planctl_correlation_001`
+- [ ] PLCTL_022 — ingest idempotent completed-work samples from canonical Stage Results into forecast calibration
+      Writes: `planctl/src/core/plan-update.ts`, `planctl/src/core/snapshot-protocol.ts`, `planctl/src/machine/app.module.ts`, `planctl/src/server/persistence/server-store.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/task-run.test.ts`.
+      Predict: 100 active min / 40 credits.
+      How: extend the canonical plan parser with stable completed-Stage samples, carry only predicted/actual timing evidence on the versioned snapshot, deduplicate it transactionally by sample identity, and prove real ingest changes calibration
+      RED: `bun run agent:test:backend -- test/server-ingest.test.ts -t tst_int_planctl_calibration_001`
+- [ ] PLCTL_023 — retain structured owner-wait start time through snapshots, persistence and Telegram rendering
+      Writes: `planctl/src/core/snapshot-protocol.ts`, `planctl/src/machine/sessions/session-source.ts`, `planctl/src/server/progress/progress.service.ts`, `planctl/src/server/transitions/transition.service.ts`, `planctl/src/telegram/commands.service.ts`, `planctl/bench/distributed-benchmark.ts`, `planctl/test/distributed-benchmark.test.ts`, `planctl/test/distributed-e2e.test.ts`, `planctl/test/machine-collector.test.ts`, `planctl/test/machine-outbox.test.ts`, `planctl/test/machine-sessions.test.ts`, `planctl/test/server-ingest.test.ts`, `planctl/test/server-progress.test.ts`, `planctl/test/server-transitions.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/telegram-alerts.test.ts`, `planctl/test/telegram-commands.test.ts`.
+      Predict: 50 active min / 20 credits.
+      How: carry the validated marker timestamp beside its safe reason, retain it in the read model and transition evidence, and render a deterministic duration relative to the server-generated progress time
+      RED: `bun run agent:test:backend -- test/telegram-commands.test.ts -t tst_svc_planctl_wait_duration_001`
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/distributed-correlation.test.ts` exits 0 — a real CLI receipt is observed as assigned by the collector
+- [ ] `cd planctl && bun run agent:test:backend -- test/server-ingest.test.ts test/server-progress.test.ts` exits 0 — completed evidence is idempotent and changes calibrated forecast
+- [ ] `cd planctl && bun run agent:test:backend -- test/telegram-commands.test.ts` exits 0 — waiting output includes the evidence-based duration
+- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete Delivery gate is green
+- [ ] The registered Stage temp root is absent before publication
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S10:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S10:end -->
+<!-- plan:stage:D1-S10:end -->
 <!-- plan:delivery:D1:end -->
 <!-- plan:implementation:end -->
 
@@ -831,4 +944,18 @@ Predict: 180 active min / 70 credits.
 - close D1-S7 partial commit:a3c1cb4d1b91756c4b9534a419685c2be1a3e91f
 
 - deviation D1-S7: Benchmark evidence on u3775 (linux x64, Bun 1.3.13): 100 machines/1,000 agents; 521,500 total and 5,215 average snapshot bytes; ingest p50 0.095331 ms/p95 0.171315 ms; progress query p50 3.333644 ms/p95 4.172725 ms. The imported Stage result proof summarized the baseline without embedding these exact fields, so that criterion remains open pending an owner-authorized result correction.
+
+- amend implementation owner:fix it until approved sha256:2918de0152df212666331d0a22c4d8f20ade32d6941afdc83a6eb0ede0e8387c
+
+- amend implementation owner:fix it until approved sha256:b14b99ffd83b904c8d2151c59ef680600bf8cf4aa68b5a312a2c7d7fd75ab3bc
+
+- amend implementation owner:fix it until approved sha256:f29c848dc1350d0e8cdc3a6193c99ab56e9c81d423c9f36f11c28c191e599f7f
+
+- amend implementation owner:fix it until approved sha256:9fbb97ed61451a73c2be42356d055c96eb6a249829ec5a2718292bce6f48a6a8
+
+- amend implementation owner:fix it until approved sha256:11f9b8efd8bdbeecb6d67e38a7b1dd8d136ba54c8b6b7c2f6b61f10b375c71a6
+
+- amend implementation owner:fix it until approved sha256:3028c3559c908520a3426c4de1f9f5b751355ea194be642f08129fe8019a95dc
+
+- amend implementation owner:fix it until approved sha256:0689bd837271577b2f09beba3f289c26b8266ff8978735713775bdf6e4b664d0
 <!-- plan:execution:end -->

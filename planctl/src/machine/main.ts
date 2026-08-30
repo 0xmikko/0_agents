@@ -18,8 +18,12 @@ function configPath(args: readonly string[]): string {
   return resolve(path);
 }
 
-async function main(): Promise<void> {
-  const loaded = loadPlanctlConfig(configPath(process.argv.slice(2)), "machine");
+async function main(args: readonly string[]): Promise<void> {
+  if (args[0] === "--help" || args[0] === "-h") {
+    console.log("Usage: planctld [--config <machine.toml>]");
+    return;
+  }
+  const loaded = loadPlanctlConfig(configPath(args), "machine");
   if (loaded.role !== "machine") throw new Error("planctld requires machine configuration");
   const app = await NestFactory.createApplicationContext(MachineAppModule.register(loaded), { logger: false });
   app.enableShutdownHooks();
@@ -27,9 +31,11 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({ service: "planctld", machineId: loaded.machineId, ...health }));
 }
 
-try {
-  await main();
-} catch (error: unknown) {
-  console.error(error instanceof Error ? error.message : "planctld failed");
-  process.exitCode = 1;
+if (import.meta.main) {
+  try {
+    await main(process.argv.slice(2));
+  } catch (error: unknown) {
+    console.error(error instanceof Error ? error.message : "planctld failed");
+    process.exitCode = 1;
+  }
 }
