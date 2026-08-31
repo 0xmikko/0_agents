@@ -25,7 +25,7 @@ An interrupted or lost-ack upload is retried without creating another object or 
 - The first server backend is its local filesystem plus the existing SQLite database. Filesystem objects are content-addressed; SQLite stores metadata and references only.
 - Built-in discovery adapters cover Codex and Claude. The archive protocol and candidate interface accept validated provider identifiers so another provider can be added without changing the endpoint or persistence schema.
 - Codex completion is evidenced by `event_msg.payload.type = task_complete`. Claude completion is evidenced by an assistant `message.stop_reason = end_turn`. A required settle interval lets provider bookkeeping lines finish before the revision is spooled.
-- Upload and durable indexing are in this Delivery. Reading archives, analytics, semantic extraction, UI, Telegram archive commands, cloud object storage and automatic retention are later work.
+- Upload, durable indexing, local server inspection and explicit raw export are in this Delivery. Analytics, semantic extraction, UI, Telegram archive commands, cloud object storage and automatic retention are later work.
 
 ### Configuration
 
@@ -69,7 +69,21 @@ X-Planctl-Uncompressed-Bytes: <bytes>
 
 `:sha256` is the lowercase SHA-256 of the uncompressed JSONL. The server streams the body through bounded gunzip and hashing into an archive-root temporary file; it does not materialize the full session in memory. It rejects unsupported versions/providers, malformed IDs or timestamps, a URL/authenticated machine mismatch, non-GitHub project IDs, missing length, either size limit, invalid gzip and hash/length mismatches.
 
-After validation, the object is atomically placed at a digest-derived path containing no machine-, project- or session-controlled path segment. SQLite maps `(machine_id, provider, session_id, sha256)` to project, start/end timestamps, byte counts, object digest and receipt time. An exact replay returns the same acknowledgement with `disposition = replayed`; the first commit returns `disposition = stored`. The same digest may be referenced by multiple metadata rows without duplicating object bytes.
+After validation, the object is atomically placed at a digest-derived path containing no machine-, project- or session-controlled path segment. SQLite maps a deterministic `archiveId` and `(machine_id, provider, session_id, sha256)` to project, start/end timestamps, byte counts, object digest and receipt time. An exact replay returns the same acknowledgement with `disposition = replayed`; the first commit returns `disposition = stored`. The same digest may be referenced by multiple metadata rows without duplicating object bytes.
+
+### Server inspection flow
+
+The server operator can inspect the archive without a second network authentication system:
+
+```text
+planctl-server archive list [--project <github-id>] [--provider <id>] [--machine <id>] [--limit <n>] [--json]
+planctl-server archive inspect <archiveId> [--json]
+planctl-server archive export <archiveId> --output </absolute/path.jsonl>
+```
+
+`list` returns newest-first bounded metadata rows; its default text view includes archive ID, project, provider/session, machine, revision time and sizes. `inspect` shows one revision plus the ordered revision history for its session. Both commands support stable JSON for scripts and never read or print raw session content.
+
+`export` is an explicit local-server operation. It resolves the digest-derived object from trusted metadata, streams gunzip while rechecking the raw SHA-256 and byte count, and atomically creates a new mode-`0600` JSONL file at the required absolute output path. It refuses an existing destination, a missing object or any integrity mismatch. No unauthenticated or machine-authenticated HTTP read route is added in this Delivery.
 
 ### Machine flow
 
@@ -88,7 +102,8 @@ After validation, the object is atomically placed at a digest-derived path conta
 4. Given a completed session that later resumes and completes again, the second raw digest creates a second ordered revision under the same machine/provider/session identity.
 5. Given an unlinked directory, non-GitHub remote, unsupported provider, running session, malformed/truncated tail, oversize payload, invalid gzip or digest mismatch, no archive row/object is committed and a bounded non-payload error is reported.
 6. Given raw prompts containing a secret marker, that marker exists only inside the private spool/server object and never in snapshot JSON, SQLite metadata, logs, HTTP errors or Telegram messages.
-7. Given archive upload disabled or unavailable, existing progress snapshots, stale detection, task execution and heartbeats continue unchanged.
+7. Given stored revisions across projects and providers, the server operator can filter and inspect their metadata as text or JSON, then export one selected revision to a new private file whose decompressed bytes and digest exactly match the source.
+8. Given archive upload disabled or unavailable, existing progress snapshots, stale detection, task execution and heartbeats continue unchanged.
 
 ### Invariants
 
@@ -100,12 +115,14 @@ After validation, the object is atomically placed at a digest-derived path conta
 - **ARC-006 — privacy boundary:** raw session bytes enter only the private spool and archive object store, never telemetry, metadata, diagnostics or notifications.
 - **ARC-007 — explicit completion:** only provider-supported terminal evidence plus the settle boundary creates a candidate; inactivity alone is not completion.
 - **ARC-008 — observer independence:** archive failures degrade archive health but never block local Planctl commands or ordinary telemetry delivery.
+- **ARC-009 — explicit local reads:** metadata inspection is bounded and content-free; raw bytes leave the object store only through an explicit integrity-checked export to a new mode-`0600` file.
 
 ### Success measures
 
 - Deterministic integration coverage proves Codex, Claude, replay-after-lost-ack, resumed revision, rejection and privacy stories through the public collector/client/controller/store calls.
 - Replaying the same revision 100 times leaves one metadata row and one content object.
 - The configured maximum-size fixture is processed through bounded streams without a full-body archive buffer in application code.
+- Text/JSON list and inspect fixtures return stable filtered metadata, while export reproduces exact raw bytes and refuses overwrite or corruption.
 - The complete `agent:verify:pr` gate passes once on the final local SHA; CI verifies the published SHA.
 
 ### Constraints and reuse
@@ -113,12 +130,13 @@ After validation, the object is atomically placed at a digest-derived path conta
 - Extend `MachineAuthGuard`, `ServerClient`, `MachineStore`, `ServerStore`, strict TOML decoding, JSONL readers and Git worktree identity. A second credential system, HTTP wrapper, SQLite layer or repository resolver is forbidden.
 - Keep raw archives out of `MachineSnapshot`; the existing privacy-safe observer protocol remains small and bounded.
 - Archive paths are derived only from trusted digests. Client-controlled IDs are metadata, never filesystem paths.
+- Extend the existing `planctl-server` command surface and `ServerStore` for local inspection; do not add a public read endpoint or a second bearer-token family.
 - PR #7 (`fix/planctl-env-secrets`) should merge before implementation; this Delivery extends the resulting ConfigModule-based runtime rather than reintroducing token files.
 - This repository currently has no `staging` branch, so the plan worktree and draft PR use its sole integration branch, `main`.
 
 ### Non-goals
 
-- Query/download APIs, dashboards, Telegram archive output or analysis jobs.
+- Remote HTTP read/download APIs, dashboards, Telegram archive output or analysis jobs.
 - Redaction, secret scanning or claiming raw archives are safe to share.
 - S3-compatible storage, cross-server replication, encryption with a separate application key or automatic deletion/retention.
 - Importing arbitrary user-supplied files outside configured provider roots.
