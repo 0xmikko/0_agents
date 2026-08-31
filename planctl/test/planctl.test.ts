@@ -98,6 +98,9 @@ describe("planctl", () => {
     expect(task.stdout).toContain("planctl complete-task <plan.md> --from <stage-result.json>");
     expect(task.stdout).toContain('"taskIds": ["PLANCTL_001"]');
     expect(task.stdout).toContain("<exact Started value from start-task>");
+    expect(task.stdout).toContain('"obsoleteTests": []');
+    expect(task.stdout).toMatch(/declared changed\s+replacement test/);
+    expect(task.stdout).toContain('"replacementTest":"frontend/src/routes/dashboard.test.ts"');
 
     const stage = run(import.meta.dir, "put-stage", "--help");
     expect(stage.status).toBe(0);

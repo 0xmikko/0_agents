@@ -158,7 +158,8 @@ declared write union, it lands as a `fix(review): ...` rework commit and is
 counted from Git in the Delivery handoff and scorecard. The approved plan does
 not change: a new Stage would falsely rewrite the forecast after the work was
 discovered. A changed outcome, acceptance contract or write union is an
-Amendment; unattended execution uses the reversible decision protocol.
+Amendment, except for the machine-proven `obsoleteTests` cleanup below;
+unattended execution uses the reversible decision protocol.
 
 Before approval, the planner traces each acceptance story across service and
 module boundaries. Every public contract that must change appears in the
@@ -172,7 +173,12 @@ refuses blocked/closed work and starts a Git-local timer without copying or
 changing the plan. After the work commit, `complete-task` proves the receipt
 paths equal both frozen Task writes and the commit diff (excluding the
 journal-proved plan bookkeeping that rides that commit), then consumes that
-timer. The Markdown file remains the only contract source of truth.
+timer. The sole derived-write exception is `obsoleteTests`: `planctl` accepts
+an extra deleted JS/TS test only when its previous Git blob directly imports a
+declared source deleted in the same commit and a declared changed test replaces
+it. This records mechanical fallout without rewriting the forecast or granting
+general write expansion. The Markdown file remains the only contract source
+of truth.
 
 ## Mechanics plan-gate enforces
 

@@ -198,7 +198,7 @@ Stage 3: <description>
      until APPROVED
    - A REAL fix inside the approved result and Delivery write union is not a new
      Stage and needs no Amendment; amend only a changed contract or expanded
-     write union
+     write union beyond a machine-proven `obsoleteTests` cleanup
 3. **Publish.** `git push` the branch. A finished branch that lives only on this
    disk is indistinguishable from lost work — nobody can see it, review it, or
    recover it.

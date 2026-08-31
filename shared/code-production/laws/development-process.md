@@ -134,6 +134,13 @@ For each Task:
    its paths with frozen Task writes and the actual commit diff.
 8. Continue automatically to the next ready Stage.
 
+One narrow derived write needs no Amendment: a commit gate may reveal a JS/TS
+test made obsolete by a declared source deletion. Put it in the result
+receipt's `obsoleteTests` only when a declared changed test replaces it.
+`planctl` proves from Git that the extra path is deleted, directly imported the
+declared deleted source, and has that declared replacement in the same commit.
+Anything else remains an unauthorized extra path.
+
 An owner-response wait is runtime state, not prose. Immediately before asking a
 question that blocks an active Task, record one safe-line reason with
 `planctl needs-owner <plan> --task <ID> --reason <text>`. After the response,
@@ -172,8 +179,8 @@ public-API defect. Continue the fix/gate/re-review loop until `APPROVED`.
 
 An Amendment is required only when the proposed response changes a locked
 outcome or acceptance contract, or needs a path outside the Delivery's declared
-write union. Unattended work follows the reversible decision protocol instead
-of waiting.
+write union and is not a machine-proven `obsoleteTests` cleanup. Unattended work
+follows the reversible decision protocol instead of waiting.
 
 ## Failure and unattended behavior
 
@@ -183,6 +190,8 @@ of waiting.
 - Predicted time exceeded: record actuals; do not stop merely because an
   estimate was wrong.
 - Unrelated file appears in the diff: remove it from the Stage or amend scope.
+  A machine-proven `obsoleteTests` deletion is consequential cleanup, not an
+  unrelated write.
 - Existing base failure: record its exact command/SHA; fix it only when it
   blocks the Delivery and the plan authorizes the change.
 - Stop unattended work only for irreversible data loss, security damage or

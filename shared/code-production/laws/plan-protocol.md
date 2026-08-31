@@ -131,7 +131,8 @@ A green test counts only after it failed for the expected reason against incompl
 - A round cap drops NIT/style loops only. Never defer a REAL correctness defect
   because the counter reached two; continue until `APPROVED`.
 - Amend only a changed outcome/acceptance contract or an expanded Delivery write
-  union. At night use the reversible decision protocol and continue.
+  union other than a machine-proven `obsoleteTests` cleanup. At night use the
+  reversible decision protocol and continue.
 
 ## Plan writer
 
@@ -170,7 +171,10 @@ the rendered Task stays compact and never repeats the Stage write list.
 `start-task` re-reads the committed plan or its journal-verified staged Result,
 refuses a blocked or closed Task, prints its exact scope and starts a Git-local
 timer without changing the plan. `complete-task` consumes that timer and compares the
-receipt's paths with both Task writes and the actual work-commit diff.
+receipt's paths with both Task writes and the actual work-commit diff. Its
+`obsoleteTests` field is the only derived-write exception: an extra deleted
+JS/TS test must directly import a declared deleted source and name a declared
+changed replacement test; `planctl` proves all three facts from Git.
 `focus` reprints the Goal, current Task, next ready work, drift and progress.
 `progress` stays local unless `--server` explicitly requests one bounded read.
 Immediately before an owner-blocking question, `needs-owner` atomically writes

@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { basename, posix, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
 import { MACHINABLE, protocolImplementationHash, protocolSpecHash } from "./plan-gate";
@@ -103,10 +103,17 @@ export interface StageResultReceipt {
   readonly elapsedMinutes: number;
   readonly usage: UsageReceipt;
   readonly paths: readonly string[];
+  readonly obsoleteTests?: readonly ObsoleteTestCleanupReceipt[];
   readonly tests: readonly { readonly id: string; readonly command: string }[];
   readonly result: string;
   readonly deviations: readonly string[];
   readonly tempRoots: readonly { readonly path: string; readonly state: "absent" }[];
+}
+
+export interface ObsoleteTestCleanupReceipt {
+  readonly path: string;
+  readonly imports: string;
+  readonly replacementTest: string;
 }
 
 export interface CompletedWorkSample {
@@ -148,7 +155,14 @@ export interface StageCloseResult extends MutationResult {
 interface StageResultOptions {
   readonly commitIsAncestor?: (commit: string) => boolean;
   readonly commitPaths?: (commit: string) => readonly string[];
+  readonly commitChanges?: (commit: string) => readonly CommitPathChange[];
+  readonly previousFile?: (commit: string, path: string) => string;
   readonly pathExists?: (path: string) => boolean;
+}
+
+interface CommitPathChange {
+  readonly status: string;
+  readonly path: string;
 }
 
 export interface TaskExecutionBrief extends TaskInput {
@@ -883,6 +897,7 @@ function assertReceipt(receipt: StageResultReceipt): void {
   if (receipt.tests.length === 0) throw new Error("Stage result must name at least one test");
   assertUnique(receipt.taskIds, "Stage result Task IDs");
   assertUnique(receipt.paths, "Stage result paths");
+  assertUnique((receipt.obsoleteTests ?? []).map((cleanup) => cleanup.path), "obsolete test paths");
   assertUnique(receipt.tests.map((test) => test.id), "Stage result test IDs");
   assertUnique(receipt.tempRoots.map((temp) => temp.path), "Stage result temp roots");
   for (const taskId of receipt.taskIds) {
@@ -893,6 +908,11 @@ function assertReceipt(receipt: StageResultReceipt): void {
     assertSafeInline(test.command, `Stage result test ${test.id} command`);
   }
   for (const path of receipt.paths) assertSafeInline(path, "Stage result path");
+  for (const cleanup of receipt.obsoleteTests ?? []) {
+    assertSafeInline(cleanup.path, "obsolete test path");
+    assertSafeInline(cleanup.imports, `obsolete test ${cleanup.path} imported source`);
+    assertSafeInline(cleanup.replacementTest, `obsolete test ${cleanup.path} replacement`);
+  }
   for (const deviation of receipt.deviations) assertSafeInline(deviation, "Stage result deviation");
   assertNonEmpty(receipt.result, "Stage result");
   if (receipt.usage.kind === "credits") {
@@ -906,6 +926,30 @@ function assertReceipt(receipt: StageResultReceipt): void {
   }
 }
 
+const JS_TS_MODULE_EXTENSION = /\.(?:[cm]?[jt]sx?)$/i;
+
+function isJavaScriptTestPath(path: string): boolean {
+  if (!JS_TS_MODULE_EXTENSION.test(path)) return false;
+  return /(?:^|\/)(?:test|tests|__tests__)(?:\/|$)/i.test(path)
+    || /(?:[._-](?:test|spec))\.[cm]?[jt]sx?$/i.test(path);
+}
+
+function moduleStem(path: string): string {
+  return posix.normalize(path).replace(JS_TS_MODULE_EXTENSION, "");
+}
+
+function directlyImports(testPath: string, sourcePath: string, body: string): boolean {
+  const pattern = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)(["'])([^"']+)\1/g;
+  for (const match of body.matchAll(pattern)) {
+    const specifier = match[2];
+    if (specifier === undefined || !specifier.startsWith(".")) continue;
+    const imported = moduleStem(posix.join(posix.dirname(testPath), specifier));
+    const source = moduleStem(sourcePath);
+    if (imported === source || `${imported}/index` === source) return true;
+  }
+  return false;
+}
+
 function defaultCommitIsAncestor(commit: string): boolean {
   return spawnSync("git", ["merge-base", "--is-ancestor", commit, "HEAD"]).status === 0;
 }
@@ -916,8 +960,8 @@ export function stageResultCommitPaths(commit: string, root = process.cwd()): re
     encoding: "utf8",
   });
   const result = firstParent.status === 0
-    ? spawnSync("git", ["diff", "--name-only", firstParent.stdout.trim(), commit], { cwd: root, encoding: "utf8" })
-    : spawnSync("git", ["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", commit], {
+    ? spawnSync("git", ["diff", "--no-renames", "--name-only", firstParent.stdout.trim(), commit], { cwd: root, encoding: "utf8" })
+    : spawnSync("git", ["diff-tree", "--root", "--no-renames", "--no-commit-id", "--name-only", "-r", commit], {
         cwd: root,
         encoding: "utf8",
       });
@@ -925,8 +969,41 @@ export function stageResultCommitPaths(commit: string, root = process.cwd()): re
   return result.stdout.split("\n").filter((path) => path !== "");
 }
 
+export function stageResultCommitChanges(commit: string, root = process.cwd()): readonly CommitPathChange[] {
+  const firstParent = spawnSync("git", ["rev-parse", "--verify", `${commit}^1`], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (firstParent.status !== 0) throw new Error("obsolete test cleanup requires a non-root Stage commit");
+  const result = spawnSync("git", ["diff", "--no-renames", "--name-status", firstParent.stdout.trim(), commit], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) throw new Error(`cannot inspect Stage result changes ${commit}`);
+  return result.stdout.split("\n").filter((line) => line !== "").map((line) => {
+    const [status, firstPath, renamedPath] = line.split("\t");
+    const path = status?.startsWith("R") === true ? renamedPath : firstPath;
+    if (status === undefined || path === undefined) throw new Error(`cannot parse Stage result change: ${line}`);
+    return { status, path };
+  });
+}
+
+export function previousStageFile(commit: string, path: string, root = process.cwd()): string {
+  const result = spawnSync("git", ["show", `${commit}^1:${path}`], { cwd: root, encoding: "utf8" });
+  if (result.status !== 0) throw new Error(`cannot read obsolete test before ${commit}: ${path}`);
+  return result.stdout;
+}
+
 function defaultCommitPaths(commit: string): readonly string[] {
   return stageResultCommitPaths(commit);
+}
+
+function defaultCommitChanges(commit: string): readonly CommitPathChange[] {
+  return stageResultCommitChanges(commit);
+}
+
+function defaultPreviousFile(commit: string, path: string): string {
+  return previousStageFile(commit, path);
 }
 
 export function recordStageResult(
@@ -943,12 +1020,44 @@ export function recordStageResult(
     throw new Error(`Stage ${receipt.stageId} result names an unknown Task`);
   }
   const declaredPaths = [...new Set(addressedTasks.flatMap((task) => task?.writes ?? []))];
-  if (!equalSets(receipt.paths, declaredPaths)) throw new Error(`Stage ${receipt.stageId} result paths differ from addressed Task writes`);
+  const obsoleteTests = receipt.obsoleteTests ?? [];
+  const expectedPaths = [...declaredPaths, ...obsoleteTests.map((cleanup) => cleanup.path)];
+  if (!equalSets(receipt.paths, expectedPaths)) {
+    throw new Error(`Stage ${receipt.stageId} result paths differ from addressed Task writes and proven obsolete tests`);
+  }
   const commitIsAncestor = options.commitIsAncestor ?? defaultCommitIsAncestor;
   if (!commitIsAncestor(receipt.commit)) throw new Error(`Stage result commit ${receipt.commit} is not ancestral to HEAD`);
   const commitPaths = options.commitPaths ?? defaultCommitPaths;
   const actualPaths = commitPaths(receipt.commit).filter((path) => path !== receipt.plan);
   if (!equalSets(receipt.paths, actualPaths)) throw new Error(`Stage result paths differ from commit ${receipt.commit} diff`);
+  if (obsoleteTests.length > 0) {
+    const commitChanges = options.commitChanges ?? defaultCommitChanges;
+    const previousFile = options.previousFile ?? defaultPreviousFile;
+    const changes = commitChanges(receipt.commit);
+    const statusOf = (path: string): string | undefined => changes.find((change) => change.path === path)?.status;
+    for (const cleanup of obsoleteTests) {
+      if (!isJavaScriptTestPath(cleanup.path)) {
+        throw new Error(`obsolete test cleanup is limited to JS/TS test files: ${cleanup.path}`);
+      }
+      if (declaredPaths.includes(cleanup.path)) {
+        throw new Error(`obsolete test is already a declared Task write: ${cleanup.path}`);
+      }
+      if (!declaredPaths.includes(cleanup.imports) || statusOf(cleanup.imports) !== "D") {
+        throw new Error(`obsolete test ${cleanup.path} must import a declared deleted source`);
+      }
+      const replacementStatus = statusOf(cleanup.replacementTest);
+      if (!declaredPaths.includes(cleanup.replacementTest) || !isJavaScriptTestPath(cleanup.replacementTest)
+        || (replacementStatus !== "A" && replacementStatus !== "M")) {
+        throw new Error(`obsolete test ${cleanup.path} needs a declared changed replacement test`);
+      }
+      if (statusOf(cleanup.path) !== "D") {
+        throw new Error(`obsolete test cleanup may only delete the extra test: ${cleanup.path}`);
+      }
+      if (!directlyImports(cleanup.path, cleanup.imports, previousFile(receipt.commit, cleanup.path))) {
+        throw new Error(`obsolete test ${cleanup.path} does not import declared deleted source ${cleanup.imports}`);
+      }
+    }
+  }
   const pathExists = options.pathExists ?? existsSync;
   if (receipt.tempRoots.length !== 1 || receipt.tempRoots[0]?.path !== stage.tempRoot) {
     throw new Error(`Stage ${receipt.stageId} result must prove its registered temp root absent: ${stage.tempRoot}`);
@@ -974,6 +1083,9 @@ export function recordStageResult(
   changedBlock = changedBlock.replace(resultMarker, `${rows}\n${resultMarker}`);
   let next = `${body.slice(0, block.from)}${changedBlock}${body.slice(block.to)}`;
   next = appendExecution(next, `record-result ${receipt.stageId} commit:${receipt.commit}`);
+  for (const cleanup of obsoleteTests) {
+    next = appendExecution(next, `obsolete-test-cleanup ${receipt.stageId} ${cleanup.path} imports:${cleanup.imports} replacement:${cleanup.replacementTest}`);
+  }
   for (const deviation of receipt.deviations) next = appendExecution(next, `deviation ${receipt.stageId}: ${deviation}`);
   return { body: next };
 }
@@ -1297,6 +1409,19 @@ function testsFrom(value: unknown): StageResultReceipt["tests"] {
   });
 }
 
+function obsoleteTestsFrom(value: unknown): readonly ObsoleteTestCleanupReceipt[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error("obsoleteTests must be an array");
+  return value.map((entry) => {
+    const cleanup = object(entry, "obsolete test cleanup");
+    return {
+      path: requiredString(cleanup, "path"),
+      imports: requiredString(cleanup, "imports"),
+      replacementTest: requiredString(cleanup, "replacementTest"),
+    };
+  });
+}
+
 function tempRootsFrom(value: unknown): StageResultReceipt["tempRoots"] {
   if (!Array.isArray(value)) throw new Error("tempRoots must be an array");
   return value.map((entry) => {
@@ -1322,6 +1447,7 @@ function stageResultFrom(value: unknown): StageResultReceipt {
     elapsedMinutes: requiredNumber(result, "elapsedMinutes"),
     usage: usageFrom(result.usage),
     paths: stringArray(result.paths, "paths"),
+    obsoleteTests: obsoleteTestsFrom(result.obsoleteTests),
     tests: testsFrom(result.tests),
     result: requiredString(result, "result"),
     deviations: stringArray(result.deviations, "deviations"),

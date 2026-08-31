@@ -40,6 +40,12 @@ own all project-specific commands.
    closure commit.
 7. Continue automatically to the next ready Stage.
 
+If the commit gate exposes a JS/TS test that directly imports a declared source
+deleted by this Task, and a declared changed test replaces its behavior, delete
+the obsolete test and describe it in the result receipt's `obsoleteTests`.
+`planctl` verifies those Git facts. This consequential cleanup needs neither a
+new Stage nor an Amendment; any other extra path still does.
+
 If a Task cannot continue without an owner response, run
 `planctl needs-owner <plan> --task <TASK_ID> --reason <one-safe-line>`
 immediately before asking. Do not infer an owner obligation from transcript
@@ -65,8 +71,8 @@ Deviation, commit it and continue. Time overrun alone is not a reason to stop.
    Refresh the invalidated exact-head gate once, then re-review. A round ceiling
    drops NIT/style loops only; continue REAL fixes until APPROVED.
 3. Amend only when a response changes the locked outcome/acceptance contract or
-   expands the Delivery write union. Unattended work uses the reversible decision
-   protocol and continues.
+   expands the Delivery write union beyond a machine-proven `obsoleteTests`
+   cleanup. Unattended work uses the reversible decision protocol and continues.
 4. Push the exact green head. The push reuses its local receipt; CI independently
    verifies the published SHA.
 5. Fix a real CI failure locally with its exact command before one new push.

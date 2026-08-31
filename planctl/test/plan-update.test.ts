@@ -11,7 +11,9 @@ import {
   lockPlanSpec,
   putDelivery,
   putStage,
+  previousStageFile,
   recordStageResult,
+  stageResultCommitChanges,
   stageResultCommitPaths,
   type DeliveryInput,
   type StageInput,
@@ -109,6 +111,22 @@ function approvedWithStages(): string {
     owner: "integrator",
     depends: ["D1-S2", "D1-S3"],
     parallelWith: [],
+  }).body;
+  return approvePlan(body, "approve").body;
+}
+
+function approvedWithDashboardReplacement(): string {
+  let body = lockPlanSpec(draft(), "spec").body;
+  body = putDelivery(body, delivery()).body;
+  const dashboard = stage("D1-S1", ["frontend/lib/dashboard.ts", "frontend/src/routes/dashboard.test.ts"]);
+  const task = dashboard.tasks[0];
+  if (task === undefined) throw new Error("dashboard fixture must have one Task");
+  body = putStage(body, {
+    ...dashboard,
+    tasks: [{
+      ...task,
+      story: "Delete dashboard.ts and preserve its route behavior in dashboard.test.ts.",
+    }],
   }).body;
   return approvePlan(body, "approve").body;
 }
@@ -241,6 +259,83 @@ describe("plan-update", () => {
       tempRoots: [{ path: ".tmp/code-production/fixture/D1-S1", state: "absent" }],
     }, { commitIsAncestor: () => true, commitPaths: () => receipt.paths, pathExists: () => true })).toThrow(/temp root still exists/i);
     rmSync(root, { recursive: true, force: true });
+  });
+
+  // @test-id: tst_scripts_planupdate_015
+  // @scenario: scn_plan_control_obsolete_test_cleanup_001
+  // @covers: planctl/src/core/plan-update.ts::recordStageResult
+  // @deterministic: yes
+  // @invariant: a Stage may delete one mechanically obsolete JS/TS test only
+  // when it imports a declared deleted source and a declared replacement test changed.
+  it("tst_scripts_planupdate_015 accepts a proven obsolete test without widening approved scope", () => {
+    const root = mkdtempSync(join(tmpdir(), "plan-update-obsolete-test-"));
+    const git = (...args: readonly string[]): string =>
+      execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+    try {
+      git("init", "-q");
+      git("config", "user.email", "test@example.com");
+      git("config", "user.name", "Test");
+      mkdirSync(join(root, "frontend", "lib"), { recursive: true });
+      mkdirSync(join(root, "tests", "frontend"), { recursive: true });
+      writeFileSync(join(root, "frontend", "lib", "dashboard.ts"), "export const dashboard = true;\n");
+      writeFileSync(
+        join(root, "tests", "frontend", "dashboard_test.ts"),
+        'import { dashboard } from "../../frontend/lib/dashboard";\n',
+      );
+      git("add", ".");
+      git("commit", "-qm", "base");
+      rmSync(join(root, "frontend", "lib", "dashboard.ts"));
+      rmSync(join(root, "tests", "frontend", "dashboard_test.ts"));
+      mkdirSync(join(root, "frontend", "src", "routes"), { recursive: true });
+      writeFileSync(join(root, "frontend", "src", "routes", "dashboard.test.ts"), "test('dashboard route', () => {});\n");
+      git("add", "-A");
+      git("commit", "-qm", "replace dashboard route");
+      const commit = git("rev-parse", "HEAD");
+      const receipt = {
+        version: 1 as const,
+        plan: "docs/plans/fixture.md",
+        deliveryId: "D1",
+        stageId: "D1-S1",
+        taskIds: ["D1-S1-T1"],
+        commit,
+        startedAt: "2026-08-31T09:00:00Z",
+        endedAt: "2026-08-31T09:10:00Z",
+        activeMinutes: 10,
+        elapsedMinutes: 10,
+        usage: { kind: "unavailable" as const, reason: "runner omitted usage" },
+        paths: [
+          "frontend/lib/dashboard.ts",
+          "frontend/src/routes/dashboard.test.ts",
+          "tests/frontend/dashboard_test.ts",
+        ],
+        obsoleteTests: [{
+          path: "tests/frontend/dashboard_test.ts",
+          imports: "frontend/lib/dashboard.ts",
+          replacementTest: "frontend/src/routes/dashboard.test.ts",
+        }],
+        tests: [{ id: "tst_scripts_planupdate_015", command: "bun test" }],
+        result: "Vite route coverage replaces the obsolete Next dashboard test.",
+        deviations: [],
+        tempRoots: [{ path: ".tmp/code-production/fixture/D1-S1", state: "absent" as const }],
+      };
+      const options = {
+        commitIsAncestor: () => true,
+        commitPaths: () => stageResultCommitPaths(commit, root),
+        commitChanges: () => stageResultCommitChanges(commit, root),
+        previousFile: (_commit: string, path: string) => previousStageFile(commit, path, root),
+        pathExists: () => false,
+      };
+
+      const accepted = recordStageResult(approvedWithDashboardReplacement(), receipt, options).body;
+      expect(accepted).toContain("obsolete-test-cleanup D1-S1 tests/frontend/dashboard_test.ts");
+
+      expect(() => recordStageResult(approvedWithDashboardReplacement(), receipt, {
+        ...options,
+        previousFile: () => 'import { dashboard } from "../../frontend/lib/something-else";\n',
+      })).toThrow(/does not import declared deleted source/i);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   // @test-id: tst_scripts_planupdate_004

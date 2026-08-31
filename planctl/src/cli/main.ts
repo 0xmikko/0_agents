@@ -165,6 +165,10 @@ ancestry and actual diff paths, declared tests, time/usage and temp cleanup.
 Every addressed Task must have a start-task receipt; successful import consumes
 those local timers, checks the Task boxes and appends Result rows.
 
+An optional obsoleteTests entry permits only a deleted JS/TS test that Git
+proves directly imported a declared deleted source and has a declared changed
+replacement test in the same commit. It does not permit arbitrary extra paths.
+
 Copy this stage-result.json shape after the work commit:
 {
   "version": 1,
@@ -179,11 +183,16 @@ Copy this stage-result.json shape after the work commit:
   "elapsedMinutes": 12,
   "usage": {"kind":"unavailable","reason":"runner did not expose usage"},
   "paths": ["src/scheduler.ts", "test/scheduler.test.ts"],
+  "obsoleteTests": [],
   "tests": [{"id":"tst_scheduler_005","command":"bun run agent:test:backend -- test/scheduler.test.ts"}],
   "result": "Approved plan changes are rejected outside planctl.",
   "deviations": [],
   "tempRoots": [{"path":".tmp/code-production/scheduler-overlap/D1-S1","state":"absent"}]
 }
+
+When a declared source deletion makes an old test mechanically obsolete, add
+the deleted test to paths and replace obsoleteTests with:
+[{"path":"tests/frontend/dashboard_test.ts","imports":"frontend/lib/dashboard.ts","replacementTest":"frontend/src/routes/dashboard.test.ts"}]
 `,
   "add-deviation": `Usage: planctl add-deviation <plan.md> --stage <D1-S1> --reason <text>
 
