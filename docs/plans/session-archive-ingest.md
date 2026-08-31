@@ -9,129 +9,148 @@ Unattended decisions: allowed
 <!-- plan:spec:start -->
 ## The Goal
 
-Give every opted-in coding machine a lossless, retry-safe path for archiving completed Claude, Codex and future provider sessions on the Planctl server, indexed by canonical GitHub project identity, so later analysis can use exact session evidence without scraping developer machines or mixing repositories. Success means a completed session is stored once per content revision despite retries, remains attributable to one authenticated machine and one GitHub repository, and never leaks raw payloads into telemetry, SQLite metadata, logs or Telegram.
+Continuously synchronize every discovered Claude, Codex and future provider session from opted-in coding machines to the Planctl server, indexed by canonical GitHub project identity, so the server always has a queryable latest version plus immutable history for later analysis. Success means an unchanged session produces no content read, spool object or network request; an appended session uploads only new complete JSONL bytes; retries never duplicate data; and raw payloads never leak into telemetry, SQLite metadata, logs or Telegram.
 
 ## The target
 
 ### Owner-visible outcome
 
-After archive upload is explicitly enabled on a machine, `planctld` discovers completed session revisions below its configured provider roots, resolves the session working directory to a Git worktree and canonical GitHub remote, spools an immutable gzip object, and uploads it in the background. The server authenticates the existing machine credential, verifies identity, declared limits and the uncompressed SHA-256, stores the object atomically, and records searchable project/session metadata in SQLite.
+After session synchronization is explicitly enabled, a separate scheduled `planctld` job scans every JSONL file below the configured Codex and Claude roots, including existing, active and completed sessions. It resolves each session working directory to a Git worktree and canonical GitHub remote, compares the file with durable per-source sync state, and skips it immediately when its filesystem version is unchanged.
 
-An interrupted or lost-ack upload is retried without creating another object or metadata row. If the same resumable session receives later work and reaches another terminal record, that changed content becomes a new immutable revision. Files with no supported terminal evidence, no GitHub project, malformed JSONL or excessive size remain local and surface a bounded machine health code; Planctl never guesses a project from a folder name.
+When complete JSONL records were appended, the daemon spools only the new byte range as one or more deterministic gzip chunks and uploads them in the background. The server verifies authenticated machine identity, project/session metadata, contiguous offsets, limits and raw chunk hashes before atomically extending the session generation. Server metadata exposes the latest synchronized offset/state while preserving prior chunks and generations.
+
+An interrupted or lost-ack upload is retried without creating another chunk. File truncation, replacement or mutation of the already acknowledged prefix never overwrites history: it starts a new generation at offset zero. Files with no GitHub project, malformed JSONL or unsupported metadata remain local and surface a bounded health code; Planctl never guesses a project from a folder name.
 
 ### Scope decisions
 
-- Archive content is the exact source JSONL compressed as deterministic gzip. This is an explicit raw-data opt-in because prompts, tool output and secrets may be present.
-- The first server backend is its local filesystem plus the existing SQLite database. Filesystem objects are content-addressed; SQLite stores metadata and references only.
-- Built-in discovery adapters cover Codex and Claude. The archive protocol and candidate interface accept validated provider identifiers so another provider can be added without changing the endpoint or persistence schema.
-- Codex completion is evidenced by `event_msg.payload.type = task_complete`. Claude completion is evidenced by an assistant `message.stop_reason = end_turn`. A required settle interval lets provider bookkeeping lines finish before the revision is spooled.
+- Synchronize all session files under the explicit provider roots; completion is metadata, not an upload gate.
+- Run synchronization on an explicit Nest scheduled interval inside `planctld`, not an operating-system cron entry, so configuration, health and shutdown remain in one daemon.
+- Archive exact source JSONL bytes in append chunks compressed as deterministic gzip. This is an explicit raw-data opt-in because prompts, tool output and secrets may be present.
+- The machine persists the last observed filesystem version and last server-acknowledged generation/offset. A matching `device + inode + size + mtime` is a no-op before content is opened or hashed.
+- Built-in adapters cover Codex and Claude. The chunk protocol and source interface accept validated provider identifiers so another provider can be added without changing the endpoint or storage schema.
+- The first server backend is its local filesystem plus the existing SQLite database. Chunk objects are content-addressed; SQLite stores manifests, offsets, metadata and references only.
 - Upload, durable indexing, local server inspection and explicit raw export are in this Delivery. Analytics, semantic extraction, UI, Telegram archive commands, cloud object storage and automatic retention are later work.
 
 ### Configuration
 
-Raw archiving is disabled unless the machine TOML contains a complete `[archive]` block:
+Raw synchronization is disabled unless the machine TOML contains a complete `[archive]` block:
 
 ```toml
 [archive]
 enabled = true
 spool = "/absolute/private/planctl/archive-spool"
-settle_seconds = 30
-initial_lookback_days = 30
-max_uncompressed_bytes = 67108864
+sync_seconds = 60
+max_chunk_uncompressed_bytes = 8388608
 ```
+
+The first enabled scan includes every session file below the already explicit `collector.codex_sessions` and `collector.claude_sessions` roots; archive synchronization is not limited by telemetry `session_lookback_days`.
 
 The server requires its own storage boundary:
 
 ```toml
 [archive]
 root = "/absolute/private/planctl/session-archives"
-max_compressed_bytes = 67108864
-max_uncompressed_bytes = 67108864
+max_chunk_compressed_bytes = 8388608
+max_chunk_uncompressed_bytes = 8388608
 ```
 
-All values are explicit and strictly decoded. Archive directories are mode `0700`, spool/object files are mode `0600`, and remote machine URLs must already satisfy the existing HTTPS-or-loopback rule. Disabling archive discovery does not disable ordinary snapshots or heartbeats.
+All values are explicit and strictly decoded. Archive directories are mode `0700`; spool, chunk and export files are mode `0600`. Remote machine URLs must already satisfy the existing HTTPS-or-loopback rule. Disabling synchronization does not disable ordinary snapshots or heartbeats.
 
-### Upload contract
+### Version and change detection
+
+`MachineStore` keeps one sync record per source path with provider/session identity, device, inode, last observed size/mtime, last complete JSONL offset, current generation, server-acknowledged offset, and a SHA-256 of the acknowledged raw prefix.
+
+Each scheduled scan follows this order:
+
+1. `stat` the source. If device, inode, size and mtime match the stored observation, return without opening the file, hashing, spooling or calling the server.
+2. Read from the stored complete-record cursor and advance only through newline-terminated valid JSON objects. A partial final line is retained locally until a later scan completes it.
+3. Revalidate the already acknowledged prefix when the filesystem version changed. If the inode changed, size shrank or prefix bytes no longer match, start the next generation; never amend acknowledged history.
+4. If there are no new complete bytes, persist the new filesystem observation and skip upload.
+5. Split new complete bytes on JSONL record boundaries without exceeding the configured raw chunk limit. Persist deterministic gzip spool objects and non-coalescing outbox rows before network I/O.
+6. Upload due chunks in offset order. Delete a spool object/outbox row only after a matching server acknowledgement, then advance the durable acknowledged offset/prefix hash.
+
+Codex `event_msg.payload.type = task_complete` and Claude assistant `message.stop_reason = end_turn` update the generation state to `complete`; any later appended record returns it to `active`. State changes ride the next raw chunk and do not create payload-free network writes.
+
+### Chunk upload contract
 
 The provider-neutral route is:
 
 ```text
-PUT /v1/machines/:machineId/session-archives/:provider/:sessionId/revisions/:sha256
+PUT /v1/machines/:machineId/session-archives/:provider/:sessionId/generations/:generation/chunks/:startOffset/:endOffset/:sha256
 Authorization: Bearer <existing machine credential>
 Content-Type: application/gzip
 Content-Length: <compressed bytes>
 X-Planctl-Archive-Version: 1
 X-Planctl-Project-Id: github.com/<owner>/<repository>
 X-Planctl-Started-At: <ISO-8601>
-X-Planctl-Ended-At: <ISO-8601>
-X-Planctl-Uncompressed-Bytes: <bytes>
+X-Planctl-Observed-At: <ISO-8601>
+X-Planctl-Session-State: active|complete
+X-Planctl-Uncompressed-Bytes: <endOffset-startOffset>
 ```
 
-`:sha256` is the lowercase SHA-256 of the uncompressed JSONL. The server streams the body through bounded gunzip and hashing into an archive-root temporary file; it does not materialize the full session in memory. It rejects unsupported versions/providers, malformed IDs or timestamps, a URL/authenticated machine mismatch, non-GitHub project IDs, missing length, either size limit, invalid gzip and hash/length mismatches.
+`:sha256` is the lowercase SHA-256 of the uncompressed chunk. The server streams the body through bounded gunzip and hashing into an archive-root temporary file; it never materializes a complete chunk or session in memory. It rejects unsupported versions/providers, malformed IDs, offsets or timestamps, a URL/authenticated machine mismatch, non-GitHub project IDs, missing length, either size limit, invalid gzip and hash/length mismatches.
 
-After validation, the object is atomically placed at a digest-derived path containing no machine-, project- or session-controlled path segment. SQLite maps a deterministic `archiveId` and `(machine_id, provider, session_id, sha256)` to project, start/end timestamps, byte counts, object digest and receipt time. An exact replay returns the same acknowledgement with `disposition = replayed`; the first commit returns `disposition = stored`. The same digest may be referenced by multiple metadata rows without duplicating object bytes.
+For a new generation, the first accepted `startOffset` is zero. Later chunks must start at the manifest's acknowledged end offset. An exact replay of an already committed offset range and digest returns the original acknowledgement with `disposition = replayed`; overlap, gaps, changed metadata or a different digest for a committed range return conflict. The first commit returns `disposition = stored` and the manifest's new latest offset/state.
+
+After validation, a chunk is atomically placed at a digest-derived path containing no machine-, project- or session-controlled segment. SQLite maps a deterministic generation `archiveId` and ordered chunk rows to machine, project, provider/session, generation, state, time range, offsets, byte counts, digests and receipt times. Identical chunk bytes may be referenced by multiple manifests without duplicating objects.
 
 ### Server inspection flow
 
-The server operator can inspect the archive without a second network authentication system:
+The server operator can inspect synchronized data without a second network authentication system:
 
 ```text
-planctl-server archive list [--project <github-id>] [--provider <id>] [--machine <id>] [--limit <n>] [--json]
+planctl-server archive list [--project <github-id>] [--provider <id>] [--machine <id>] [--state <active|complete>] [--limit <n>] [--json]
 planctl-server archive inspect <archiveId> [--json]
 planctl-server archive export <archiveId> --output </absolute/path.jsonl>
 ```
 
-`list` returns newest-first bounded metadata rows; its default text view includes archive ID, project, provider/session, machine, revision time and sizes. `inspect` shows one revision plus the ordered revision history for its session. Both commands support stable JSON for scripts and never read or print raw session content.
+`list` returns newest-sync-first bounded generation rows. Its default text view includes archive ID, project, provider/session, machine, generation, state, latest offset, chunk count and last synchronization time. `inspect` shows one generation and its ordered chunk metadata. Both commands support stable JSON for scripts and never read or print raw session content.
 
-`export` is an explicit local-server operation. It resolves the digest-derived object from trusted metadata, streams gunzip while rechecking the raw SHA-256 and byte count, and atomically creates a new mode-`0600` JSONL file at the required absolute output path. It refuses an existing destination, a missing object or any integrity mismatch. No unauthenticated or machine-authenticated HTTP read route is added in this Delivery.
-
-### Machine flow
-
-1. Reuse explicit Codex/Claude roots, JSONL tail reading and Git worktree discovery; provider adapters expose session identity, working directory, time range and terminal evidence without changing the observer snapshot payload.
-2. Resolve `cwd` through the deepest discovered worktree and require canonical `github.com/owner/repository` identity from `remote.origin.url` or an explicit canonical repository mapping.
-3. Once terminal evidence is older than `settle_seconds`, snapshot the whole file, enforce the local uncompressed limit, compute the raw digest and write deterministic gzip to the private spool.
-4. Persist an archive outbox row before upload. Unlike the coalescing telemetry outbox, archive revisions are immutable and may not replace one another.
-5. Upload one due item with the existing connect/request timeouts and deterministic bounded backoff. Verify the full acknowledgement before deleting its outbox row and spool object.
-6. Preserve queued revisions across daemon restart and server outage. A file that changes after spooling can later produce another revision but cannot mutate the queued revision.
+`export` resolves ordered chunk objects from trusted metadata, streams gunzip while rechecking every raw chunk SHA-256, offsets and final byte count, and atomically creates a new mode-`0600` JSONL file at the required absolute output path. It refuses an existing destination, a missing object, a gap or any integrity mismatch. No unauthenticated or machine-authenticated HTTP read route is added in this Delivery.
 
 ### Acceptance stories
 
-1. Given a completed Codex JSONL inside a GitHub worktree, one collector scan after the settle boundary queues and uploads an exact gzip archive whose server metadata names the authenticated machine, provider, session and canonical GitHub project.
-2. Given a completed Claude JSONL followed by normal stop-hook bookkeeping, the settled revision includes those final lines and is archived once.
-3. Given a response lost after the server commits, the persisted machine outbox retries; the server reports `replayed`, object and metadata cardinality stay one, and the machine clears the item.
-4. Given a completed session that later resumes and completes again, the second raw digest creates a second ordered revision under the same machine/provider/session identity.
-5. Given an unlinked directory, non-GitHub remote, unsupported provider, running session, malformed/truncated tail, oversize payload, invalid gzip or digest mismatch, no archive row/object is committed and a bounded non-payload error is reported.
-6. Given raw prompts containing a secret marker, that marker exists only inside the private spool/server object and never in snapshot JSON, SQLite metadata, logs, HTTP errors or Telegram messages.
-7. Given stored revisions across projects and providers, the server operator can filter and inspect their metadata as text or JSON, then export one selected revision to a new private file whose decompressed bytes and digest exactly match the source.
-8. Given archive upload disabled or unavailable, existing progress snapshots, stale detection, task execution and heartbeats continue unchanged.
+1. On the first enabled scan, existing active and completed Codex/Claude sessions inside GitHub worktrees are queued from offset zero and appear on the server with canonical project, state and latest byte offset.
+2. On a later scheduled scan whose file device, inode, size and mtime are unchanged, the synchronizer performs no content open/hash/gzip, outbox write or HTTP request.
+3. When an active session appends complete records plus a partial tail, only new complete bytes are uploaded; a later scan uploads the remainder after its newline arrives and advances the same generation.
+4. Given a response lost after the server commits a chunk, the persisted outbox retries; the server reports `replayed`, chunk/object cardinality stays one, and the machine advances its acknowledged offset.
+5. Given a source truncation, replacement or acknowledged-prefix mutation, the next upload starts a new generation at zero while the previous generation remains exportable.
+6. Given terminal evidence and then later resumed activity, server state changes `active → complete → active` only alongside committed raw chunks and preserves their ordered history.
+7. Given synchronized generations across projects and providers, the server operator can filter their metadata as text or JSON and export one generation to a private file whose reconstructed bytes exactly match the uploaded JSONL prefix.
+8. Given an unlinked directory, non-GitHub remote, unsupported provider, malformed record, oversize chunk, invalid gzip, offset gap or digest mismatch, no invalid chunk/manifest update is committed and a bounded non-payload error is reported.
+9. Given raw prompts containing a secret marker, that marker exists only inside private spool/chunk/export files and never in snapshot JSON, SQLite metadata, logs, HTTP errors or Telegram messages.
+10. Given synchronization disabled or the archive server unavailable, existing progress snapshots, stale detection, task execution and heartbeats continue unchanged while queued archive chunks remain durable.
 
 ### Invariants
 
 - **ARC-001 — authenticated ownership:** every archive URL machine ID, bearer subject and stored machine ID are identical.
-- **ARC-002 — exact project identity:** an archived revision has one validated canonical GitHub project; no path/name fallback exists.
-- **ARC-003 — immutable content:** `(machine, provider, session, sha256)` identifies immutable raw bytes, and retries are idempotent.
-- **ARC-004 — bounded streaming:** both compressed and uncompressed limits are enforced while streaming; the server never buffers the complete archive.
-- **ARC-005 — durable offline delivery:** every spooled revision has a durable outbox row until a matching server acknowledgement arrives.
-- **ARC-006 — privacy boundary:** raw session bytes enter only the private spool and archive object store, never telemetry, metadata, diagnostics or notifications.
-- **ARC-007 — explicit completion:** only provider-supported terminal evidence plus the settle boundary creates a candidate; inactivity alone is not completion.
-- **ARC-008 — observer independence:** archive failures degrade archive health but never block local Planctl commands or ordinary telemetry delivery.
-- **ARC-009 — explicit local reads:** metadata inspection is bounded and content-free; raw bytes leave the object store only through an explicit integrity-checked export to a new mode-`0600` file.
+- **ARC-002 — exact project identity:** each generation has one validated canonical GitHub project; no path/name fallback exists.
+- **ARC-003 — monotonic generations:** chunks append contiguously within a generation; truncation or prefix mutation starts a new generation and never rewrites history.
+- **ARC-004 — no-op unchanged state:** an unchanged filesystem version causes no content read, hash, spool write, outbox write or network request.
+- **ARC-005 — bounded streaming:** compressed and uncompressed limits are enforced while streaming; neither side buffers a complete session.
+- **ARC-006 — durable offline delivery:** every spooled chunk has a durable non-coalescing outbox row until a matching acknowledgement arrives.
+- **ARC-007 — idempotent content:** `(machine, provider, session, generation, offsets, sha256)` identifies immutable bytes, and retries are exact replays.
+- **ARC-008 — privacy boundary:** raw session bytes enter only private source/spool/chunk/export files, never telemetry, metadata, diagnostics or notifications.
+- **ARC-009 — observer independence:** archive failures degrade archive health but never block local Planctl commands or ordinary telemetry delivery.
+- **ARC-010 — explicit local reads:** metadata inspection is bounded and content-free; raw bytes leave object storage only through integrity-checked export to a new mode-`0600` file.
 
 ### Success measures
 
-- Deterministic integration coverage proves Codex, Claude, replay-after-lost-ack, resumed revision, rejection and privacy stories through the public collector/client/controller/store calls.
-- Replaying the same revision 100 times leaves one metadata row and one content object.
-- The configured maximum-size fixture is processed through bounded streams without a full-body archive buffer in application code.
-- Text/JSON list and inspect fixtures return stable filtered metadata, while export reproduces exact raw bytes and refuses overwrite or corruption.
+- Deterministic integration coverage proves initial sync, unchanged no-op, partial-tail append, Codex/Claude state, replay-after-lost-ack, generation reset, rejection, privacy and export through public scheduler/client/controller/store calls.
+- A fixture of 1,000 unchanged tracked sessions performs zero content reads and zero upload requests during its no-op scan.
+- Replaying the same chunk 100 times leaves one chunk row, one content object and one manifest offset transition.
+- Maximum-size chunks are processed through bounded streams without a full-body archive/session buffer in application code.
+- Text/JSON list and inspect output is stable and filtered; export reconstructs exact ordered bytes and refuses overwrite, gaps or corruption.
 - The complete `agent:verify:pr` gate passes once on the final local SHA; CI verifies the published SHA.
 
 ### Constraints and reuse
 
-- Extend `MachineAuthGuard`, `ServerClient`, `MachineStore`, `ServerStore`, strict TOML decoding, JSONL readers and Git worktree identity. A second credential system, HTTP wrapper, SQLite layer or repository resolver is forbidden.
-- Keep raw archives out of `MachineSnapshot`; the existing privacy-safe observer protocol remains small and bounded.
+- Extend `MachineAuthGuard`, `ServerClient`, `MachineStore`, `ServerStore`, strict TOML decoding, JSONL tail readers and Git worktree identity. A second credential system, HTTP wrapper, SQLite layer or repository resolver is forbidden.
+- Use the existing Nest scheduler but keep archive synchronization separate from the coalescing telemetry collector/outbox so raw upload work cannot delay heartbeats.
+- Keep raw bytes and archive cursor state out of `MachineSnapshot`; the privacy-safe observer protocol remains small and bounded.
 - Archive paths are derived only from trusted digests. Client-controlled IDs are metadata, never filesystem paths.
-- Extend the existing `planctl-server` command surface and `ServerStore` for local inspection; do not add a public read endpoint or a second bearer-token family.
-- PR #7 (`fix/planctl-env-secrets`) should merge before implementation; this Delivery extends the resulting ConfigModule-based runtime rather than reintroducing token files.
+- Extend the existing `planctl-server` command surface and `ServerStore` for local inspection; do not add a public read endpoint or second bearer-token family.
+- PR #7 (`fix/planctl-env-secrets`) should merge before implementation; this Delivery extends the resulting ConfigModule runtime rather than reintroducing token files.
 - This repository currently has no `staging` branch, so the plan worktree and draft PR use its sole integration branch, `main`.
 
 ### Non-goals
