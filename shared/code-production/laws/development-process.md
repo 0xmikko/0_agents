@@ -151,6 +151,30 @@ review reuses unchanged receipts instead of buying the same suite again.
 A green test is evidence only after the same test was observed RED against the
 incomplete behavior.
 
+## Review rework
+
+A REAL review finding means the approved result is not implemented yet; it is
+not automatically new scope. When the fix preserves the locked outcome and
+stays inside the PR Delivery's declared write union, the agent:
+
+1. batches the round's REAL findings;
+2. demonstrates each bug with a targeted RED test;
+3. fixes them in one `fix(review): ...` rework commit;
+4. records the rework commit and review round in the Delivery handoff;
+5. refreshes the invalidated exact-head Delivery gate once and re-runs review.
+
+Git is the rework receipt; the scorecard counts these commits without mutating
+the approved Stage graph. This rework commit is not a new planned Stage and
+needs no owner Amendment.
+Review-round ceilings limit style, wording and speculative suggestion loops;
+they never license deferring a REAL correctness, security, data-loss, test or
+public-API defect. Continue the fix/gate/re-review loop until `APPROVED`.
+
+An Amendment is required only when the proposed response changes a locked
+outcome or acceptance contract, or needs a path outside the Delivery's declared
+write union. Unattended work follows the reversible decision protocol instead
+of waiting.
+
 ## Failure and unattended behavior
 
 - Hook or test failure: fix the cause and rerun the failed scope.

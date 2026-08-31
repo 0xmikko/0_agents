@@ -190,9 +190,15 @@ Stage 3: <description>
 1. Run full verification one more time (backend + frontend + agent) — this is the single full-suite gate for the whole plan.
 2. Run `/review-implementation` — self-review gate, SINGLE PASS
    - Round 1: fix blocking items only (missing tests, wrong behavior, security, data loss, public-API break)
-   - If still REJECT: one more round, same filter
+   - If still REJECT: batch every REAL finding, add targeted RED tests, fix them
+     in one `fix(review): ...` rework commit, refresh the exact-head gate and
+     re-run review
    - Wording/naming/doc-phrasing comments are OUT OF SCOPE — ignore them or file as follow-up
-   - Do NOT loop past round 2
+   - Round 2 caps only NIT/style loops. REAL findings have no round cap: continue
+     until APPROVED
+   - A REAL fix inside the approved result and Delivery write union is not a new
+     Stage and needs no Amendment; amend only a changed contract or expanded
+     write union
 3. **Publish.** `git push` the branch. A finished branch that lives only on this
    disk is indistinguishable from lost work — nobody can see it, review it, or
    recover it.

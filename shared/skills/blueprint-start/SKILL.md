@@ -59,8 +59,16 @@ Deviation, commit it and continue. Time overrun alone is not a reason to stop.
 
 1. Run bun run agent:install, then .githooks/pre-push once. Do not compose
    framework commands or invoke another package manager directly.
-2. Push the exact green head. The push reuses its local receipt; CI independently
+2. Run review-implementation. If it reports REAL findings inside the approved
+   result and Delivery write union, batch them: targeted RED tests, fixes and one
+   `fix(review): ...` rework commit. Do not add a Stage or request an Amendment.
+   Refresh the invalidated exact-head gate once, then re-review. A round ceiling
+   drops NIT/style loops only; continue REAL fixes until APPROVED.
+3. Amend only when a response changes the locked outcome/acceptance contract or
+   expands the Delivery write union. Unattended work uses the reversible decision
+   protocol and continues.
+4. Push the exact green head. The push reuses its local receipt; CI independently
    verifies the published SHA.
-3. Fix a real CI failure locally with its exact command before one new push.
+5. Fix a real CI failure locally with its exact command before one new push.
    When green, mark the PR ready.
-4. Return the PR as a Markdown URL plus the plan mdurl. The owner merges.
+6. Return the PR as a Markdown URL plus the plan mdurl. The owner merges.

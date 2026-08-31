@@ -27,11 +27,14 @@ the fix-and-re-review loop.
   that, but report it explicitly when the caller asks for a single round.
 - **Blindly forwarding Codex / cop findings:** triage them first; do not
   treat every finding as REAL.
+- **Deferring a REAL bug at the round ceiling:** a round number never turns a
+  correctness defect into follow-up work. Report NEEDS_WORK until it is fixed.
 
-## Stop conditions (hard)
+## Blocking classes and round policy
 
-- **Max 2 review rounds (caller's outer loop).** After round 2, remaining
-  comments are filed as follow-up issues, not fixed inline.
+- **Round 2 caps only NIT/style loops (caller's outer loop).** REAL findings
+  have no numeric ceiling: the caller fixes them, refreshes the exact-head gate
+  and calls this skill again until APPROVED.
 - **Wording-only suggestions are OUT OF SCOPE.** Naming, doc phrasing,
   log message text, comment tone — drop them; do not surface.
 - Only these comment classes can block APPROVAL when triaged as REAL:

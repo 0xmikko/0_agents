@@ -25,7 +25,9 @@ implementation_anchors:
 6. **HARD STOP 2:** owner approves implementation; run `planctl approve-plan`. Direct plan editing ends.
 7. Execute exactly one active PR Delivery. Parallelize only explicitly disjoint Stages.
 8. Before RED, call `planctl start-task`; then RED → code → GREEN → micro-review → one work commit → `complete-task`.
-9. Integration Stage merges commits, runs affected full gates once and makes the existing PR ready.
+9. Integration Stage merges commits and runs affected full gates. Review-fix
+   rework continues automatically until no REAL finding remains, then the
+   existing PR becomes ready.
 10. Hand over a green mergeable PR, Markdown GitHub URL, `mdurl`, actual metrics and zero temp roots. Owner merges.
 
 ## Hierarchy
@@ -119,6 +121,17 @@ Forecast aggregate work, longest dependency path and external waits separately. 
 | final review | reuse unchanged exact-head receipts |
 
 A green test counts only after it failed for the expected reason against incomplete behavior.
+
+## Review rework
+
+- A REAL finding inside the locked result and Delivery write union is unfinished
+  implementation, not an Amendment and not a new Stage.
+- Batch the round's REAL findings: targeted RED → fix → one `fix(review): ...`
+  commit → refresh the exact-head gate once → re-review.
+- A round cap drops NIT/style loops only. Never defer a REAL correctness defect
+  because the counter reached two; continue until `APPROVED`.
+- Amend only a changed outcome/acceptance contract or an expanded Delivery write
+  union. At night use the reversible decision protocol and continue.
 
 ## Plan writer
 

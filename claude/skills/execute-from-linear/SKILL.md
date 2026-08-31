@@ -119,7 +119,10 @@ Once the last stage commit is pushed:
 
 1. Invoke `/review-implementation` (cops + Codex review).
 2. **APPROVED:** proceed to Step 5.
-3. **NEEDS_WORK with REAL findings:** fix each, separate commit `audit-fix REAL #N: <summary>`, push after each. Re-run `/review-implementation`. Cap: 2 review rounds. After round 2, surface remaining findings in a Linear comment and STOP — operator decides.
+3. **NEEDS_WORK with REAL findings:** batch the round, add targeted RED tests,
+   fix it in one `fix(review): <summary>` rework commit, refresh the exact-head
+   gate and re-run `/review-implementation`. Round 2 caps NIT/style loops only;
+   continue REAL fixes until APPROVED.
 4. **NEEDS_HUMAN_DECISION:** comment the ASK_USER findings; STOP. Don't guess.
 
 ## Step 6: Plan footer + hand off to `verify-and-ship`
@@ -172,8 +175,10 @@ The human reviewer takes it from there. When they merge, content-os `LinearSyncS
 - **NEVER skip RED.** Every stage starts with a failing test.
 - **NEVER batch stages into one commit.** One commit per stage; commit messages must match the plan exactly.
 - **NEVER skip the per-stage push.** PR conversation depends on per-stage CI.
-- **NEVER skip `/review-implementation`.** ≤2 rounds, but at least one is mandatory.
-- **NEVER mark the PR ready before review APPROVED.** Round 2 NEEDS_WORK → leave draft, hand off.
+- **NEVER skip `/review-implementation`.** At least one round is mandatory;
+  REAL findings keep the loop open until APPROVED.
+- **NEVER mark the PR ready before review APPROVED.** REAL findings remain
+  inline work regardless of the review-round number.
 - **NEVER reimplement `verify-and-ship`.** Use Cyrus's existing skill.
 - **NEVER merge the PR.** Human-only.
 - **NEVER mark the Linear issue Done.** Side-effect of merge.

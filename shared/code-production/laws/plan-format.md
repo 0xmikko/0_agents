@@ -152,6 +152,14 @@ Each Task predicts active minutes and credits. A Delivery reports aggregate
 active work, longest dependency path and external waits separately. Actuals
 append later and never rewrite the forecast.
 
+A REAL implementation-review finding does not add a Stage to an approved plan.
+If its fix preserves the locked contract and stays inside the Delivery's
+declared write union, it lands as a `fix(review): ...` rework commit and is
+counted from Git in the Delivery handoff and scorecard. The approved plan does
+not change: a new Stage would falsely rewrite the forecast after the work was
+discovered. A changed outcome, acceptance contract or write union is an
+Amendment; unattended execution uses the reversible decision protocol.
+
 Before approval, the planner traces each acceptance story across service and
 module boundaries. Every public contract that must change appears in the
 owning file's Task writes. An implementation that necessarily needs an
