@@ -86,6 +86,13 @@ Delivery JSON uses the canonical plan-update DeliveryInput contract. IDs are
 D1, D2, ...; a Delivery is one PR. Reusing an ID replaces its draft metadata
 and preserves its existing Stage blocks.
 
+"predictedExternalWaitMinutes" is the external wait forecast: minutes the
+Delivery expects to wait on others — owner review rounds, CI runs, external
+services — kept apart from active work. The active-work total and the longest
+dependency path are derived from the Stages and rendered as one "Forecast:"
+line under the Stage graph, recomputed on every put-stage, frozen by
+approve-plan and compared against the Stage Results afterwards.
+
 "description" is the pull request text as of the merge, in plain language:
 what changed for people, what changed in the code, how it was proven, what is
 not in this PR. Paragraphs separated by one blank line (\\n\\n in JSON). It
@@ -100,6 +107,7 @@ Complete delivery.json (copy this shape):
   "gate": ["backend"],
   "active": true,
   "stageGraph": "D1-S1 -> D1-S2",
+  "predictedExternalWaitMinutes": 45,
   "description": "What changed for people. A Stage that would write a file another running Stage owns is refused before it starts, so two agents never edit one file at once.\\n\\nWhat changed in the code. src/scheduler/parse-lanes.ts compares exact Stage writes before assignment.\\n\\nHow it was proven. test/scheduler/parse-lanes.test.ts feeds two ready Stages sharing src/shared.ts and sees the second refused.\\n\\nNot in this PR. Overlap detection across Deliveries."
 }
 `,

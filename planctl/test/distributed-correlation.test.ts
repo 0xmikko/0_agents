@@ -44,6 +44,7 @@ function approvedPlan(): string {
     gate: ["bun test"],
     active: true,
     stageGraph: "D1-S1",
+    predictedExternalWaitMinutes: 0,
     description: "What changed for people. Correlation fixture.",
   }).body;
   body = putStage(body, {

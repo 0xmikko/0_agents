@@ -47,6 +47,12 @@ lives in [development-process.md](development-process.md).
 
    Stage graph: `D1-S1 -> D1-S2`.
 
+   Forecast: <active minutes and credits summed over the Stages> across <n>
+   Stages; longest dependency path <minutes along `depends`>; external waits
+   <`predictedExternalWaitMinutes`: owner reviews, CI runs, other people>.
+   Derived by planctl on every put-stage, frozen by approve-plan, compared
+   with the Stage Results in the scorecard.
+
    What changed for people. <The Delivery `description`: the pull request
    text as of the merge — what changed for people, what changed in the code,
    how it was proven, what is not in this PR. Paragraphs. A Delivery without

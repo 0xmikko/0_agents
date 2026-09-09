@@ -60,6 +60,7 @@ function partiallyCompletePlan(): string {
     gate: ["scripts"],
     active: true,
     stageGraph: "D1-S1 -> (D1-S2 || D1-S3)",
+    predictedExternalWaitMinutes: 0,
     description: "What changed for people. Progress fixture.",
   }).body;
   body = putStage(body, stage("D1-S1", [task("PROG_001", 20, 2), task("PROG_002", 40, 4)], [], [])).body;

@@ -67,6 +67,7 @@ function delivery(active = true): DeliveryInput {
     gate: ["scripts"],
     active,
     stageGraph: "D1-S1 -> (D1-S2 || D1-S3) -> D1-S4",
+    predictedExternalWaitMinutes: 15,
     description: "What changed for people. The writer says what it wrote.\n\nWhat changed in the code. One writer, four Stages.\n\nHow it was proven. The fixture suite.",
   };
 }
@@ -395,6 +396,33 @@ describe("Delivery and Stage descriptions", () => {
       })).toThrow(/description/);
       expect(() => putDelivery(locked, { ...delivery(), description: `What changed for people. Fine.\n\n${bad}` })).toThrow(/description/);
     }
+  });
+
+  // @test-id: tst_scripts_planupdate_desc_006
+  // @covers: planctl/src/core/plan-update.ts::putDelivery external wait contract
+  it("tst_scripts_planupdate_desc_006 a Delivery without an external wait forecast is refused and told what to give", () => {
+    const locked = lockPlanSpec(draft(), "spec").body;
+    const { predictedExternalWaitMinutes: _omit, ...bare } = delivery();
+    expect(() => putDelivery(locked, bare as unknown as DeliveryInput)).toThrow(/external wait/);
+    expect(() => putDelivery(locked, { ...delivery(), predictedExternalWaitMinutes: -1 })).toThrow(/external wait/);
+  });
+
+  // @test-id: tst_scripts_planupdate_desc_007
+  // @covers: planctl/src/core/plan-update.ts::deliveryForecastLine
+  it("tst_scripts_planupdate_desc_007 the Delivery forecast is derived from its Stages and follows every Stage change", () => {
+    let body = putDelivery(lockPlanSpec(draft(), "spec").body, delivery()).body;
+    expect(body).toContain("Forecast: 0 active min / 0 credits across 0 Stages; longest dependency path 0 active min; external waits 15 min.");
+    body = putStage(body, stage("D1-S1", ["scripts/base.ts"])).body;
+    body = putStage(body, stage("D1-S2", ["scripts/a.ts"], ["D1-S3"])).body;
+    body = putStage(body, stage("D1-S3", ["scripts/b.ts"], ["D1-S2"])).body;
+    body = putStage(body, { ...stage("D1-S4", ["scripts/c.ts"]), depends: ["D1-S2", "D1-S3"] }).body;
+    // four Stages of 10 min / 2 credits; S1 -> (S2 || S3) -> S4 is three deep
+    expect(body).toContain("Forecast: 40 active min / 8 credits across 4 Stages; longest dependency path 30 active min; external waits 15 min.");
+    const grown = putStage(body, { ...stage("D1-S4", ["scripts/c.ts"]), depends: ["D1-S2", "D1-S3"], predictedActiveMinutes: 20, predictedCredits: 4, tasks: [{ ...stage("D1-S4", ["scripts/c.ts"]).tasks[0]!, predictedActiveMinutes: 18, predictedCredits: 3 }] }).body;
+    expect(grown).toContain("Forecast: 50 active min / 10 credits across 4 Stages; longest dependency path 40 active min; external waits 15 min.");
+    expect(grown.match(/^Forecast: /gm)?.length).toBe(1);
+    const approved = approvePlan(grown, "approve").body;
+    expect(approved).toContain("Forecast: 50 active min / 10 credits across 4 Stages; longest dependency path 40 active min; external waits 15 min.");
   });
 });
 

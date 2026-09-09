@@ -14,6 +14,7 @@ const DELIVERY: DeliveryInput = {
   gate: ["scripts"],
   active: true,
   stageGraph: "D1-S1",
+  predictedExternalWaitMinutes: 0,
   description: "What changed for people. CLI fixture.",
 };
 
@@ -116,6 +117,7 @@ describe("planctl", () => {
     expect(deliveryHelp.status).toBe(0);
     expect(deliveryHelp.stdout).toContain('"description"');
     expect(deliveryHelp.stdout).toContain("pull request text");
+    expect(deliveryHelp.stdout).toContain('"predictedExternalWaitMinutes"');
   });
 
   /*
