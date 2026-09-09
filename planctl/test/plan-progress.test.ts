@@ -43,6 +43,7 @@ function stage(
     predictedCredits: tasks.reduce((sum, entry) => sum + entry.predictedCredits, 0),
     verifyActiveMinutes: 0,
     verifyCredits: 0,
+    description: "What this Stage solves. Progress fixture.",
     tasks,
     criteria: ["`true` exits 0 — progress is deterministic", "Commit"],
   };
@@ -59,6 +60,7 @@ function partiallyCompletePlan(): string {
     gate: ["scripts"],
     active: true,
     stageGraph: "D1-S1 -> (D1-S2 || D1-S3)",
+    description: "What changed for people. Progress fixture.",
   }).body;
   body = putStage(body, stage("D1-S1", [task("PROG_001", 20, 2), task("PROG_002", 40, 4)], [], [])).body;
   body = putStage(body, stage("D1-S2", [task("PROG_003", 30, 3)], ["D1-S1"], ["D1-S3"])).body;

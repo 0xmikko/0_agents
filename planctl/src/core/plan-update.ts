@@ -29,6 +29,10 @@ export interface DeliveryInput {
   readonly gate: readonly string[];
   readonly active: boolean;
   readonly stageGraph: string;
+  /** The pull request text as of the merge: what changed for people, what
+   * changed in the code, how it was proven, what is not in this PR.
+   * Paragraphs separated by one blank line; rendered under the Stage graph. */
+  readonly description: string;
 }
 
 export interface TaskInput {
@@ -57,6 +61,10 @@ export interface StageInput {
    * must equal tasks + verification, so estimates stay derived. */
   readonly verifyActiveMinutes: number;
   readonly verifyCredits: number;
+  /** What this Stage solves and why now, what is built and where, how it is
+   * proven, and the commit message (subject, then body). Paragraphs separated
+   * by one blank line; rendered between the forecast and the Tasks. */
+  readonly description: string;
   readonly tasks: readonly TaskInput[];
   readonly criteria: readonly string[];
 }
@@ -81,6 +89,8 @@ export interface ParsedStageInput {
   readonly predictedCredits: number;
   readonly verifyActiveMinutes: number;
   readonly verifyCredits: number;
+  /** Empty only for a plan rendered before descriptions existed. */
+  readonly description: string;
   readonly tasks: readonly ParsedTaskInput[];
   readonly criteria: readonly string[];
 }
@@ -158,6 +168,7 @@ export interface TaskExecutionBrief extends TaskInput {
   readonly owner: string;
   readonly profile: "fast" | "strong";
   readonly tempRoot: string;
+  readonly stageDescription: string;
 }
 
 interface JournalEvent {
@@ -200,6 +211,29 @@ function assertSafeInline(value: string, name: string): void {
   if (value.includes("\n") || value.includes("-->")) {
     throw new Error(`${name} must be one safe line`);
   }
+}
+
+export const DELIVERY_DESCRIPTION_HINT =
+  "the pull request text as of the merge — what changed for people, what changed in the code, how it was proven, what is not in this PR; paragraphs separated by one blank line";
+export const STAGE_DESCRIPTION_HINT =
+  "what this Stage solves and why now, what is built and where, how it is proven, and the commit message (subject, then body); paragraphs separated by one blank line";
+
+/** Prose that renders inside a protocol region: paragraphs, never anything
+ * the parsers would read as structure. A heading would end a section, a
+ * checkbox line would become an item, a plan marker would open a region. */
+function assertSafeProse(value: unknown, name: string, hint: string): void {
+  if (typeof value !== "string" || value.trim() === "") throw new Error(`${name} is required: ${hint}`);
+  if (value.includes("-->")) throw new Error(`${name} must not contain "-->"`);
+  for (const line of value.split("\n")) {
+    if (/^\s*#/.test(line)) throw new Error(`${name} must not contain a heading line: ${line.trim()}`);
+    if (/^\s*- \[[ x]\]/.test(line)) throw new Error(`${name} must not contain a checkbox item: ${line.trim()}`);
+    if (line.includes("<!-- plan:")) throw new Error(`${name} must not contain a plan marker`);
+  }
+}
+
+/** The rendered paragraphs: trimmed, one blank line between paragraphs. */
+function proseLines(value: string): readonly string[] {
+  return value.trim().replace(/\n{3,}/g, "\n\n").split("\n");
 }
 
 function region(body: string, start: string, end: string): { readonly from: number; readonly to: number; readonly text: string } {
@@ -403,6 +437,7 @@ function renderDelivery(input: DeliveryInput): string {
   assertSafeInline(input.title, "Delivery title");
   assertSafeInline(input.branch, "Delivery branch");
   assertSafeInline(input.stageGraph, "Stage graph");
+  assertSafeProse(input.description, "Delivery description", DELIVERY_DESCRIPTION_HINT);
   assertUnique(input.depends, "Delivery dependencies");
   const meta = JSON.stringify({ active: input.active, depends: input.depends });
   return [
@@ -413,6 +448,8 @@ function renderDelivery(input: DeliveryInput): string {
     `Branch: \`${input.branch}\`; Depends: ${input.depends.length === 0 ? "none" : input.depends.join(", ")}; Gate: ${input.gate.join(", ")}.`,
     "",
     `Stage graph: \`${input.stageGraph}\`.`,
+    "",
+    ...proseLines(input.description),
     "",
     deliveryEnd(input.id),
   ].join("\n");
@@ -432,6 +469,7 @@ function renderStage(input: StageInput): string {
   }
   for (const path of input.writes) assertSafeInline(path, "Stage write");
   assertSafeInline(input.tempRoot, "Stage tempRoot");
+  assertSafeProse(input.description, "Stage description", STAGE_DESCRIPTION_HINT);
   assertStageContract(input);
   const meta = JSON.stringify({
     deliveryId: input.deliveryId,
@@ -470,6 +508,8 @@ function renderStage(input: StageInput): string {
     `Temp root: \`${input.tempRoot}\` (must be absent at handoff).`,
     `Predict: ${input.predictedActiveMinutes} active min / ${input.predictedCredits} credits.`,
     `Of which verification: ${input.verifyActiveMinutes} active min / ${input.verifyCredits} credits.`,
+    "",
+    ...proseLines(input.description),
     "",
     "##### Tasks",
     "",
@@ -583,6 +623,9 @@ export function stageInputs(body: string): readonly ParsedStageInput[] {
     });
     const taskMatches = [...modernTasks, ...legacyTasks].sort((left, right) => left.index - right.index);
     const criteriaBlock = block.match(/##### Acceptance criteria\n\n([\s\S]*?)\n\n##### Results/);
+    // The prose between the forecast lines and the Tasks. A plan rendered
+    // before descriptions existed has nothing there and reads as "".
+    const descriptionBlock = block.match(/\nOf which verification: [^\n]+\n\n([\s\S]*?)\n\n##### Tasks\n/);
     inputs.push({
       id,
       deliveryId: typeof meta.deliveryId === "string" ? meta.deliveryId : "",
@@ -605,6 +648,7 @@ export function stageInputs(body: string): readonly ParsedStageInput[] {
         ? meta.verifyCredits
         : Math.max(0, Number(capture(match, 4, "Stage credits"))
           - taskMatches.reduce((sum, task) => sum + task.input.predictedCredits, 0)),
+      description: descriptionBlock === null ? "" : capture(descriptionBlock, 1, "Stage description").trim(),
       tasks: taskMatches.map((task) => ({
         ...task.input,
         completed: task.completed,
@@ -759,6 +803,7 @@ export function taskExecutionBrief(body: string, taskId: string): TaskExecutionB
     owner: stage.owner,
     profile: stage.profile,
     tempRoot: stage.tempRoot,
+    stageDescription: stage.description,
   };
 }
 
@@ -1237,6 +1282,7 @@ function deliveryFrom(value: unknown): DeliveryInput {
     id: requiredString(record, "id"), title: requiredString(record, "title"), branch: requiredString(record, "branch"),
     depends: stringArray(record.depends, "depends"), gate: stringArray(record.gate, "gate"), active: record.active,
     stageGraph: requiredString(record, "stageGraph"),
+    description: typeof record.description === "string" ? record.description : "",
   };
 }
 
@@ -1267,6 +1313,7 @@ function stageFrom(value: unknown): StageInput {
     tempRoot: requiredString(record, "tempRoot"),
     predictedActiveMinutes: requiredNumber(record, "predictedActiveMinutes"), predictedCredits: requiredNumber(record, "predictedCredits"),
     verifyActiveMinutes: requiredNumber(record, "verifyActiveMinutes"), verifyCredits: requiredNumber(record, "verifyCredits"),
+    description: typeof record.description === "string" ? record.description : "",
     tasks: tasksFrom(record.tasks), criteria: stringArray(record.criteria, "criteria"),
   };
 }

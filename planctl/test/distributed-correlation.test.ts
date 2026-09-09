@@ -44,6 +44,7 @@ function approvedPlan(): string {
     gate: ["bun test"],
     active: true,
     stageGraph: "D1-S1",
+    description: "What changed for people. Correlation fixture.",
   }).body;
   body = putStage(body, {
     id: "D1-S1",
@@ -59,6 +60,7 @@ function approvedPlan(): string {
     predictedCredits: 2,
     verifyActiveMinutes: 0,
     verifyCredits: 0,
+    description: "What this Stage solves. Correlation fixture.",
     tasks: [{
       id: "CORR_001",
       story: "bind the real CLI receipt from src/example.ts to the observed Codex session",

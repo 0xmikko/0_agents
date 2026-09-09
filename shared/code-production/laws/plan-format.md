@@ -43,6 +43,15 @@ lives in [development-process.md](development-process.md).
    ```markdown
    ### PR Delivery D1 — <one coherent PR result>
 
+   Branch: `feat/scheduler-overlap`; Depends: none; Gate: backend.
+
+   Stage graph: `D1-S1 -> D1-S2`.
+
+   What changed for people. <The Delivery `description`: the pull request
+   text as of the merge — what changed for people, what changed in the code,
+   how it was proven, what is not in this PR. Paragraphs. A Delivery without
+   it is refused.>
+
    #### Stage D1-S1 — Reject overlapping scheduler work
 
    Owner: agent-1; Profile: fast; Depends: none; Parallel with: none.
@@ -50,6 +59,11 @@ lives in [development-process.md](development-process.md).
    Temp root: `.tmp/code-production/scheduler-overlap/D1-S1` (must be absent at handoff).
    Predict: 12 active min / 3 credits.
    Of which verification: 2 active min / 1 credits.
+
+   What this Stage solves. <The Stage `description`, rendered here from the
+   Stage JSON: what this stage solves and why now, what is built and where,
+   how it is proven, and the commit message — subject, then body. Paragraphs;
+   meaning over volume. A Stage without it is refused; start-task prints it.>
 
    ##### Tasks
 

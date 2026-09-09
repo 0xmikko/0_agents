@@ -14,6 +14,7 @@ const DELIVERY: DeliveryInput = {
   gate: ["scripts"],
   active: true,
   stageGraph: "D1-S1",
+  description: "What changed for people. CLI fixture.",
 };
 
 const STAGE: StageInput = {
@@ -30,6 +31,7 @@ const STAGE: StageInput = {
   predictedCredits: 3,
   verifyActiveMinutes: 3,
   verifyCredits: 1,
+  description: "What this Stage solves. CLI fixture.",
   tasks: [{
     id: "PLANCTL_001",
     story: "extend the canonical writer facade exposed by scripts/example.ts",
@@ -108,6 +110,12 @@ describe("planctl", () => {
     expect(stage.stdout).toContain("Bad Task (rejected)");
     expect(stage.stdout).toContain("Good Task");
     expect(stage.stdout).toContain("Add or replace");
+    expect(stage.stdout).toContain('"description"');
+    expect(stage.stdout).toContain("what this Stage solves");
+    const deliveryHelp = run(import.meta.dir, "put-delivery", "--help");
+    expect(deliveryHelp.status).toBe(0);
+    expect(deliveryHelp.stdout).toContain('"description"');
+    expect(deliveryHelp.stdout).toContain("pull request text");
   });
 
   /*
