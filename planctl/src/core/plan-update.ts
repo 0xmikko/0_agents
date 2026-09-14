@@ -1319,8 +1319,23 @@ function mutatePlanFile(planArg: string, operation: string, transform: (body: st
   writeFileSync(path, `${JSON.stringify(journal, null, 2)}\n`);
 }
 
+/** Is a merge in progress in this worktree? */
+function merging(root: string): boolean {
+  return spawnSync("git", ["-C", root, "rev-parse", "-q", "--verify", "MERGE_HEAD"], {
+    encoding: "utf8",
+  }).status === 0;
+}
+
 export function verifyStagedPlan(planArg: string): void {
   const root = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
+  // A MERGE authored none of these bytes here. The journal proves that a
+  // locked plan reached its staged shape through planctl in THIS worktree,
+  // and a plan arriving from another branch never did — demanding one made
+  // every merge that carried an approved plan uncommittable, which is a gate
+  // refusing honest work. `plan-gate --freeze` is the authority for a merge:
+  // it reads git's own auto-merged tree and refuses a hand edit that a
+  // resolution smuggled in. This stands aside and lets it answer.
+  if (merging(root)) return;
   const plan = resolve(root, planArg).slice(root.length + 1);
   const journal = readJournal(journalPath(root));
   if (journal === null) throw new Error("locked plan mutation has no journal");

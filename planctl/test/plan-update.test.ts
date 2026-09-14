@@ -197,6 +197,62 @@ describe("plan-update", () => {
     }
   });
 
+  // @test-id: tst_scripts_planupdate_004
+  // @scenario: scn_codeprod_002
+  // @covers: planctl/src/core/plan-update.ts::verifyStagedPlan
+  // @deterministic: yes
+  // @invariant: a merge that carries an approved plan is committable — the
+  // journal proves local authorship, and a merge authored nothing here.
+  it("tst_scripts_planupdate_004 verify-staged stands aside during a merge", () => {
+    const root = mkdtempSync(join(tmpdir(), "portable-plan-update-merge-"));
+    const plan = join(root, "plan.md");
+    const writer = join(import.meta.dir, "../src/core/plan-update.ts");
+    const git = (...args: readonly string[]): string =>
+      execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+    try {
+      git("init", "-q", "-b", "main");
+      git("config", "user.email", "t@t");
+      git("config", "user.name", "t");
+      // A plan that is locked on both branches, and a second file each side
+      // changes so the merge is a real one.
+      writeFileSync(plan, lockPlanSpec(draft(), "spec").body);
+      writeFileSync(join(root, "other.txt"), "base\n");
+      git("add", "plan.md", "other.txt");
+      git("commit", "-qm", "base");
+
+      git("checkout", "-q", "-b", "side");
+      writeFileSync(join(root, "other.txt"), "side\n");
+      writeFileSync(plan, lockPlanSpec(draft(), "spec").body.replace("# Fixture plan", "# Fixture plan on the side"));
+      git("add", "plan.md", "other.txt");
+      git("commit", "-qm", "side");
+
+      git("checkout", "-q", "main");
+      writeFileSync(join(root, "mine.txt"), "mine\n");
+      git("add", "mine.txt");
+      git("commit", "-qm", "mine");
+
+      // The merge brings a locked plan this worktree never mutated, so there
+      // is no journal and there cannot be one.
+      const merge = spawnSync("git", ["-C", root, "merge", "--no-commit", "--no-ff", "side"], { encoding: "utf8" });
+      expect(merge.status).toBe(0);
+      expect(existsSync(git("rev-parse", "--path-format=absolute", "--git-path", "plan-update-journal.json"))).toBe(false);
+
+      const staged = spawnSync("bun", [writer, "plan.md", "verify-staged"], { cwd: root, encoding: "utf8" });
+      expect(staged.stderr).not.toContain("no journal");
+      expect(staged.status).toBe(0);
+
+      // Outside a merge the rule is unchanged: no journal, no commit.
+      git("merge", "--abort");
+      writeFileSync(plan, `${readFileSync(plan, "utf8")}\n`);
+      git("add", "plan.md");
+      const refused = spawnSync("bun", [writer, "plan.md", "verify-staged"], { cwd: root, encoding: "utf8" });
+      expect(refused.status).toBe(1);
+      expect(refused.stderr).toContain("locked plan mutation has no journal");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   // @test-id: tst_scripts_planupdate_003
   // @scenario: scn_codeprod_002
   // @covers: planctl/src/core/plan-update.ts::recordStageResult
