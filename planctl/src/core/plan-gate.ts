@@ -117,6 +117,9 @@ export interface PlanItem {
   /** Index of the box's LAST line, so a receipt lands at the item's end. */
   lastLine: number;
   closed: boolean;
+  /** The stamped commit, read from the checkbox line or the item's end —
+   * the two places a receipt can terminate. Undefined when none is stamped. */
+  receipt: string | undefined;
   hasReceipt: boolean;
 }
 
@@ -161,7 +164,8 @@ function collectItems(lines: string[], stage: number | null): PlanItem[] {
     if (!closedMatch && !OPEN.test(line)) continue;
 
     const closedText = closedMatch?.[1];
-    let text = (closedText ?? line.replace(OPEN, "")).trim();
+    const story = (closedText ?? line.replace(OPEN, "")).trim();
+    let text = story;
     let last = index;
     while (last + 1 < lines.length) {
       const continuation = lines[last + 1];
@@ -169,6 +173,13 @@ function collectItems(lines: string[], stage: number | null): PlanItem[] {
       last += 1;
       text += ` ${continuation.trim()}`;
     }
+    // A receipt terminates a LINE of the item, and which line depends on what
+    // the item is. Wrapped prose runs its sentence past the wrap, so the
+    // receipt ends the last line. A Task carries Writes/Predict/How/RED under
+    // its story, and a SHA appended after a RED command would be neither a
+    // receipt nor a runnable command — there it ends the checkbox line, which
+    // is also the only place the implementation lock strips a receipt from.
+    const receipt = (RECEIPT.exec(story) ?? RECEIPT.exec(text))?.[1];
     items.push({
       ordinal: items.length + 1,
       section,
@@ -176,7 +187,8 @@ function collectItems(lines: string[], stage: number | null): PlanItem[] {
       line: index,
       lastLine: last,
       closed: Boolean(closedMatch),
-      hasReceipt: RECEIPT.test(text),
+      receipt,
+      hasReceipt: receipt !== undefined,
     });
   }
   return items;
@@ -247,10 +259,9 @@ export function gatePlan(
     }
     report.closedBoxes += 1;
 
-    const receipt = item.text.match(RECEIPT);
-    if (!receipt) {
+    if (item.receipt === undefined) {
       report.violations.push({ kind: "missing-receipt", line: number, text: sourceLine.trim() });
-    } else if (receipt[1] === undefined || !shaKnownAndAncestor(options.root, receipt[1])) {
+    } else if (!shaKnownAndAncestor(options.root, item.receipt)) {
       report.violations.push({ kind: "unknown-receipt", line: number, text: sourceLine.trim() });
     }
 

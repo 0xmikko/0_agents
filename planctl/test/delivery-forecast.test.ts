@@ -43,6 +43,7 @@ function stage(
     predictedCredits: taskInput.predictedCredits,
     verifyActiveMinutes: 0,
     verifyCredits: 0,
+    description: "What this Stage solves. Forecast fixture.",
     tasks: [taskInput],
     criteria: ["`true` exits 0 — forecast is deterministic", "Commit"],
   };
@@ -59,6 +60,8 @@ function forecastPlan(): string {
     gate: ["scripts"],
     active: true,
     stageGraph: "D1-S1 -> (D1-S2 || D1-S3) -> D1-S4",
+    predictedExternalWaitMinutes: 0,
+    description: "What changed for people. Forecast fixture.",
   }).body;
   body = putStage(body, stage("D1-S1", task("ETA_001", 20), [], [])).body;
   body = putStage(body, stage("D1-S2", task("ETA_002", 30), ["D1-S1"], ["D1-S3"])).body;

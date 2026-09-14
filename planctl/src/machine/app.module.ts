@@ -184,7 +184,9 @@ function reportedPlans(taskRuns: readonly TaskRun[], worktrees: readonly GitWork
     const planId = `${location.repositoryId}:${location.plan}`;
     try {
       const body = readFileSync(resolve(location.worktree, location.plan), "utf8");
-      if (!/^Status: APPROVED$/m.test(body)) continue;
+      // `\s*` and no end anchor: the header lines carry a markdown hard
+      // break (two trailing spaces) so a viewer shows them one per line.
+      if (!/^Status:\s*APPROVED\b/m.test(body)) continue;
       const violations = protocolLockViolations(body);
       if (violations.length > 0) throw new Error(violations.join("; "));
       const candidate: ReportedPlanProgress = {

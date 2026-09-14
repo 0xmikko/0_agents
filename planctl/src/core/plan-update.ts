@@ -29,6 +29,14 @@ export interface DeliveryInput {
   readonly gate: readonly string[];
   readonly active: boolean;
   readonly stageGraph: string;
+  /** Minutes this Delivery expects to spend waiting on others — owner review
+   * rounds, CI runs, external services — kept apart from active work. The
+   * active-work and critical-path forecasts are derived from the Stages. */
+  readonly predictedExternalWaitMinutes: number;
+  /** The pull request text as of the merge: what changed for people, what
+   * changed in the code, how it was proven, what is not in this PR.
+   * Paragraphs separated by one blank line; rendered under the Stage graph. */
+  readonly description: string;
 }
 
 export interface TaskInput {
@@ -37,7 +45,8 @@ export interface TaskInput {
   readonly writes: readonly string[];
   readonly predictedActiveMinutes: number;
   readonly predictedCredits: number;
-  readonly how: string;
+  /** One line, or an ordered list of steps rendered as a numbered sub-list. */
+  readonly how: string | readonly string[];
   readonly red: string;
 }
 
@@ -57,6 +66,10 @@ export interface StageInput {
    * must equal tasks + verification, so estimates stay derived. */
   readonly verifyActiveMinutes: number;
   readonly verifyCredits: number;
+  /** What this Stage solves and why now, what is built and where, how it is
+   * proven, and the commit message (subject, then body). Paragraphs separated
+   * by one blank line; rendered between the forecast and the Tasks. */
+  readonly description: string;
   readonly tasks: readonly TaskInput[];
   readonly criteria: readonly string[];
 }
@@ -81,6 +94,8 @@ export interface ParsedStageInput {
   readonly predictedCredits: number;
   readonly verifyActiveMinutes: number;
   readonly verifyCredits: number;
+  /** Empty only for a plan rendered before descriptions existed. */
+  readonly description: string;
   readonly tasks: readonly ParsedTaskInput[];
   readonly criteria: readonly string[];
 }
@@ -88,6 +103,7 @@ export interface ParsedStageInput {
 export interface DeliveryMeta {
   readonly id: string;
   readonly active: boolean;
+  readonly predictedExternalWaitMinutes: number;
 }
 
 export interface StageResultReceipt {
@@ -158,6 +174,7 @@ export interface TaskExecutionBrief extends TaskInput {
   readonly owner: string;
   readonly profile: "fast" | "strong";
   readonly tempRoot: string;
+  readonly stageDescription: string;
 }
 
 interface JournalEvent {
@@ -202,6 +219,31 @@ function assertSafeInline(value: string, name: string): void {
   }
 }
 
+export const DELIVERY_DESCRIPTION_HINT =
+  "the pull request text as of the merge — what changed for people, what changed in the code, how it was proven, what is not in this PR; paragraphs separated by one blank line";
+export const DELIVERY_WAIT_HINT =
+  "the external wait forecast — minutes the Delivery expects to wait on others (owner review rounds, CI runs, external services), kept apart from active work; the active-work total and the longest dependency path are derived from the Stages";
+export const STAGE_DESCRIPTION_HINT =
+  "what this Stage solves and why now, what is built and where, how it is proven, and the commit message (subject, then body); paragraphs separated by one blank line";
+
+/** Prose that renders inside a protocol region: paragraphs, never anything
+ * the parsers would read as structure. A heading would end a section, a
+ * checkbox line would become an item, a plan marker would open a region. */
+function assertSafeProse(value: unknown, name: string, hint: string): void {
+  if (typeof value !== "string" || value.trim() === "") throw new Error(`${name} is required: ${hint}`);
+  if (value.includes("-->")) throw new Error(`${name} must not contain "-->"`);
+  for (const line of value.split("\n")) {
+    if (/^\s*#/.test(line)) throw new Error(`${name} must not contain a heading line: ${line.trim()}`);
+    if (/^\s*- \[[ x]\]/.test(line)) throw new Error(`${name} must not contain a checkbox item: ${line.trim()}`);
+    if (line.includes("<!-- plan:")) throw new Error(`${name} must not contain a plan marker`);
+  }
+}
+
+/** The rendered paragraphs: trimmed, one blank line between paragraphs. */
+function proseLines(value: string): readonly string[] {
+  return value.trim().replace(/\n{3,}/g, "\n\n").split("\n");
+}
+
 function region(body: string, start: string, end: string): { readonly from: number; readonly to: number; readonly text: string } {
   const from = body.indexOf(start);
   const to = body.indexOf(end);
@@ -216,10 +258,15 @@ function replaceRegion(body: string, start: string, end: string, replacement: st
   return `${body.slice(0, current.from)}${replacement}${body.slice(current.to)}`;
 }
 
+/** Markdown joins adjacent lines into one paragraph; the five header lines end with a hard break so a viewer shows them one per line. Idempotent. */
+function hardBreakHeader(body: string): string {
+  return body.replace(/^((?:Status|Spec lock|Implementation lock|Active Delivery|Unattended decisions):[^\n]*?)[ ]*$/gm, "$1  ");
+}
+
 function replaceHeader(body: string, name: string, value: string): string {
   const expression = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:.*$`, "m");
   if (!expression.test(body)) throw new Error(`plan is missing ${name}: header`);
-  return body.replace(expression, `${name}: ${value}`);
+  return body.replace(expression, `${name}: ${value}  `);
 }
 
 function planState(body: string): PlanState {
@@ -240,11 +287,11 @@ export function createDraftPlan(title: string): string {
   return [
     `# ${title}`,
     "",
-    "Status: SPEC_DRAFT",
-    "Spec lock: unlocked",
-    "Implementation lock: unlocked",
-    "Active Delivery: none",
-    "Unattended decisions: allowed",
+    "Status: SPEC_DRAFT  ",
+    "Spec lock: unlocked  ",
+    "Implementation lock: unlocked  ",
+    "Active Delivery: none  ",
+    "Unattended decisions: allowed  ",
     "",
     SPEC_START,
     "## The Goal",
@@ -291,6 +338,15 @@ function assertUnique(values: readonly string[], name: string): void {
   if (new Set(values).size !== values.length) throw new Error(`${name} contains duplicates`);
 }
 
+function parseHow(raw: string): string | readonly string[] {
+  if (!raw.includes("\n")) return raw.trim();
+  return raw.split("\n").map((line) => line.replace(/^\s+\d+\. /, "").trim()).filter((line) => line.length > 0);
+}
+
+export function howSteps(how: string | readonly string[]): readonly string[] {
+  return typeof how === "string" ? [how] : [...how];
+}
+
 function assertTaskContract(task: TaskInput, stageWrites: readonly string[]): void {
   if (!TASK_ID.test(task.id)) throw new Error(`invalid Task ID ${task.id}`);
   assertSafeInline(task.story, "Task story");
@@ -299,7 +355,9 @@ function assertTaskContract(task: TaskInput, stageWrites: readonly string[]): vo
     || /^(?:refactor|fix|improve|optimi[sz]e|update|cleanup|clean up)\b/i.test(task.story.trim())) {
     throw new Error(`Task ${task.id} story must state a concrete observable outcome, not a vague activity`);
   }
-  assertSafeInline(task.how, "Task how");
+  const steps = howSteps(task.how);
+  if (steps.length === 0) throw new Error(`Task ${task.id} how must have at least one step`);
+  for (const step of steps) assertSafeInline(step, "Task how");
   assertSafeInline(task.red, "Task RED");
   if (task.red.includes("`")
     || !/^bun run agent:test:(?:backend|frontend|e2e)\s+--\s+\S+/.test(task.red)) {
@@ -397,14 +455,71 @@ function resultsEnd(id: string): string {
   return `<!-- plan:results:${id}:end -->`;
 }
 
-function renderDelivery(input: DeliveryInput): string {
+interface ForecastStage {
+  readonly id: string;
+  readonly deliveryId: string;
+  readonly depends: readonly string[];
+  readonly predictedActiveMinutes: number;
+  readonly predictedCredits: number;
+}
+
+/** The longest chain of Stage forecasts along `depends`: the least calendar
+ * time the Delivery can take with unlimited agents. */
+function longestDependencyPath(stages: readonly ForecastStage[]): number {
+  const byId = new Map(stages.map((stage) => [stage.id, stage]));
+  const memo = new Map<string, number>();
+  const visit = (id: string, trail: Set<string>): number => {
+    const known = memo.get(id);
+    if (known !== undefined) return known;
+    if (trail.has(id)) throw new Error(`Stage dependency cycle reaches ${id}`);
+    const stage = byId.get(id);
+    if (stage === undefined) return 0;
+    trail.add(id);
+    const upstream = stage.depends.reduce((best, dependency) => Math.max(best, visit(dependency, trail)), 0);
+    trail.delete(id);
+    const total = upstream + stage.predictedActiveMinutes;
+    memo.set(id, total);
+    return total;
+  };
+  return stages.reduce((best, stage) => Math.max(best, visit(stage.id, new Set())), 0);
+}
+
+/** One line under the Stage graph, recomputed whenever a Stage of the
+ * Delivery changes, frozen by approval, compared against Results later. */
+function deliveryForecastLine(waitMinutes: number, stages: readonly ForecastStage[]): string {
+  const minutes = stages.reduce((sum, stage) => sum + stage.predictedActiveMinutes, 0);
+  const credits = stages.reduce((sum, stage) => sum + stage.predictedCredits, 0);
+  return `Forecast: ${minutes} active min / ${credits} credits across ${stages.length} Stages; ` +
+    `longest dependency path ${longestDependencyPath(stages)} active min; external waits ${waitMinutes} min.`;
+}
+
+function refreshDeliveryForecast(body: string, deliveryId: string): string {
+  const delivery = region(body, deliveryStart(deliveryId), deliveryEnd(deliveryId));
+  const meta = deliveryMetas(body).find((candidate) => candidate.id === deliveryId);
+  if (meta === undefined) throw new Error(`unknown Delivery ${deliveryId}`);
+  const stages = stageInputs(body).filter((stage) => stage.deliveryId === deliveryId);
+  const line = deliveryForecastLine(meta.predictedExternalWaitMinutes, stages);
+  const changed = delivery.text.replace(/^Forecast: [^\n]*$/m, line);
+  return `${body.slice(0, delivery.from)}${changed}${body.slice(delivery.to)}`;
+}
+
+function assertExternalWait(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`Delivery predictedExternalWaitMinutes is required: ${DELIVERY_WAIT_HINT}`);
+  }
+  return value;
+}
+
+function renderDelivery(input: DeliveryInput, stages: readonly ForecastStage[]): string {
   assertSafeInline(input.id, "Delivery ID");
   if (!DELIVERY_ID.test(input.id)) throw new Error(`invalid Delivery ID ${input.id}`);
   assertSafeInline(input.title, "Delivery title");
   assertSafeInline(input.branch, "Delivery branch");
   assertSafeInline(input.stageGraph, "Stage graph");
+  assertSafeProse(input.description, "Delivery description", DELIVERY_DESCRIPTION_HINT);
+  const waitMinutes = assertExternalWait(input.predictedExternalWaitMinutes);
   assertUnique(input.depends, "Delivery dependencies");
-  const meta = JSON.stringify({ active: input.active, depends: input.depends });
+  const meta = JSON.stringify({ active: input.active, depends: input.depends, predictedExternalWaitMinutes: waitMinutes });
   return [
     deliveryStart(input.id),
     `<!-- plan:delivery-meta:${meta} -->`,
@@ -413,6 +528,10 @@ function renderDelivery(input: DeliveryInput): string {
     `Branch: \`${input.branch}\`; Depends: ${input.depends.length === 0 ? "none" : input.depends.join(", ")}; Gate: ${input.gate.join(", ")}.`,
     "",
     `Stage graph: \`${input.stageGraph}\`.`,
+    "",
+    deliveryForecastLine(waitMinutes, stages.filter((stage) => stage.deliveryId === input.id)),
+    "",
+    ...proseLines(input.description),
     "",
     deliveryEnd(input.id),
   ].join("\n");
@@ -432,6 +551,7 @@ function renderStage(input: StageInput): string {
   }
   for (const path of input.writes) assertSafeInline(path, "Stage write");
   assertSafeInline(input.tempRoot, "Stage tempRoot");
+  assertSafeProse(input.description, "Stage description", STAGE_DESCRIPTION_HINT);
   assertStageContract(input);
   const meta = JSON.stringify({
     deliveryId: input.deliveryId,
@@ -464,12 +584,14 @@ function renderStage(input: StageInput): string {
     `<!-- plan:stage-meta:${meta} -->`,
     `#### Stage ${input.id} — ${input.title}`,
     "",
-    `Owner: ${input.owner}; Profile: ${input.profile}; Depends: ${input.depends.length === 0 ? "none" : input.depends.join(", ")}; ` +
+    `- Owner: ${input.owner}; Profile: ${input.profile}; Depends: ${input.depends.length === 0 ? "none" : input.depends.join(", ")}; ` +
       `Parallel with: ${input.parallelWith.length === 0 ? "none" : input.parallelWith.join(", ")}.`,
-    `Writes: ${input.writes.map((path) => `\`${path}\``).join(", ")}.`,
-    `Temp root: \`${input.tempRoot}\` (must be absent at handoff).`,
-    `Predict: ${input.predictedActiveMinutes} active min / ${input.predictedCredits} credits.`,
-    `Of which verification: ${input.verifyActiveMinutes} active min / ${input.verifyCredits} credits.`,
+    `- Writes: ${input.writes.map((path) => `\`${path}\``).join(", ")}.`,
+    `- Temp root: \`${input.tempRoot}\` (must be absent at handoff).`,
+    `- Predict: ${input.predictedActiveMinutes} active min / ${input.predictedCredits} credits.`,
+    `- Of which verification: ${input.verifyActiveMinutes} active min / ${input.verifyCredits} credits.`,
+    "",
+    ...proseLines(input.description),
     "",
     "##### Tasks",
     "",
@@ -526,7 +648,7 @@ export function stageInputs(body: string): readonly ParsedStageInput[] {
     const id = capture(match, 1, "Stage ID");
     const meta = parseMetaObject(`<!-- plan:stage-meta:${capture(match, 2, "Stage metadata")} -->`, "<!-- plan:stage-meta:");
     const heading = block.match(/^#### Stage [^\n]+ — (.+)$/m);
-    const ownerLine = block.match(/^Owner: ([^;]+); Profile: (fast|strong);/m);
+    const ownerLine = block.match(/^(?:- )?Owner: ([^;]+); Profile: (fast|strong);/m);
     if (heading === null || ownerLine === null) throw new Error(`Stage ${match[1]} has incomplete rendered metadata`);
     // Current format: story line + hidden task-meta comment. Legacy format
     // (visible Writes/Predict/How/RED lines) still parses so committed plans
@@ -576,13 +698,16 @@ export function stageInputs(body: string): readonly ParsedStageInput[] {
         writes: renderedPaths(capture(task, 4, "Task writes"), `Task ${capture(task, 2, "Task ID")} writes`),
         predictedActiveMinutes: Number(capture(task, 5, "Task active minutes")),
         predictedCredits: Number(capture(task, 6, "Task credits")),
-        how: capture(task, 7, "Task how"),
+        how: parseHow(capture(task, 7, "Task how")),
         red: capture(task, 8, "Task RED"),
         },
       };
     });
     const taskMatches = [...modernTasks, ...legacyTasks].sort((left, right) => left.index - right.index);
     const criteriaBlock = block.match(/##### Acceptance criteria\n\n([\s\S]*?)\n\n##### Results/);
+    // The prose between the forecast lines and the Tasks. A plan rendered
+    // before descriptions existed has nothing there and reads as "".
+    const descriptionBlock = block.match(/\n(?:- )?Of which verification: [^\n]+\n\n([\s\S]*?)\n\n##### Tasks\n/);
     inputs.push({
       id,
       deliveryId: typeof meta.deliveryId === "string" ? meta.deliveryId : "",
@@ -605,6 +730,7 @@ export function stageInputs(body: string): readonly ParsedStageInput[] {
         ? meta.verifyCredits
         : Math.max(0, Number(capture(match, 4, "Stage credits"))
           - taskMatches.reduce((sum, task) => sum + task.input.predictedCredits, 0)),
+      description: descriptionBlock === null ? "" : capture(descriptionBlock, 1, "Stage description").trim(),
       tasks: taskMatches.map((task) => ({
         ...task.input,
         completed: task.completed,
@@ -677,7 +803,9 @@ export function deliveryMetas(body: string): readonly DeliveryMeta[] {
     const id = capture(match, 1, "Delivery ID");
     const meta = parseMetaObject(`<!-- plan:delivery-meta:${capture(match, 2, "Delivery metadata")} -->`, "<!-- plan:delivery-meta:");
     if (typeof meta.active !== "boolean") throw new Error(`Delivery ${id} lacks active metadata`);
-    values.push({ id, active: meta.active });
+    // A plan rendered before the forecast existed carries no wait: it reads as 0.
+    const wait = typeof meta.predictedExternalWaitMinutes === "number" ? meta.predictedExternalWaitMinutes : 0;
+    values.push({ id, active: meta.active, predictedExternalWaitMinutes: wait });
   }
   return values;
 }
@@ -759,6 +887,7 @@ export function taskExecutionBrief(body: string, taskId: string): TaskExecutionB
     owner: stage.owner,
     profile: stage.profile,
     tempRoot: stage.tempRoot,
+    stageDescription: stage.description,
   };
 }
 
@@ -784,7 +913,7 @@ export function putDelivery(body: string, input: DeliveryInput): MutationResult 
     const stages = firstStage === -1
       ? ""
       : delivery.text.slice(firstStage, delivery.text.lastIndexOf(deliveryEnd(input.id))).trim();
-    const rendered = renderDelivery(input);
+    const rendered = renderDelivery(input, stageInputs(body));
     const beforeEnd = rendered.slice(0, rendered.lastIndexOf(deliveryEnd(input.id))).trimEnd();
     const replacement = `${beforeEnd}${stages === "" ? "" : `\n\n${stages}`}\n${deliveryEnd(input.id)}`;
     let next = `${body.slice(0, delivery.from)}${replacement}${body.slice(delivery.to)}`;
@@ -796,7 +925,7 @@ export function putDelivery(body: string, input: DeliveryInput): MutationResult 
   }
   const implementation = region(body, IMPLEMENTATION_START, IMPLEMENTATION_END);
   const beforeEnd = implementation.text.slice(0, implementation.text.lastIndexOf(IMPLEMENTATION_END)).trimEnd();
-  const replacement = `${beforeEnd}\n\n${renderDelivery(input)}\n${IMPLEMENTATION_END}`;
+  const replacement = `${beforeEnd}\n\n${renderDelivery(input, stageInputs(body))}\n${IMPLEMENTATION_END}`;
   let next = replaceRegion(body, IMPLEMENTATION_START, IMPLEMENTATION_END, replacement);
   next = replaceHeader(next, "Active Delivery", input.active ? input.id : current.find((delivery) => delivery.active)?.id ?? "none");
   next = appendExecution(next, `put-delivery ${input.id}`);
@@ -815,6 +944,7 @@ export function putStage(body: string, input: StageInput): MutationResult {
   if (body.includes(stageStart(input.id))) {
     const current = region(body, stageStart(input.id), stageEnd(input.id));
     let next = `${body.slice(0, current.from)}${renderStage(input)}${body.slice(current.to)}`;
+    next = refreshDeliveryForecast(next, input.deliveryId);
     next = appendExecution(next, `replace-stage ${input.id}`);
     return { body: next };
   }
@@ -822,6 +952,7 @@ export function putStage(body: string, input: StageInput): MutationResult {
   const beforeEnd = delivery.text.slice(0, delivery.text.lastIndexOf(deliveryEnd(input.deliveryId))).trimEnd();
   const replacement = `${beforeEnd}\n\n${renderStage(input)}\n${deliveryEnd(input.deliveryId)}`;
   let next = replaceRegion(body, deliveryStart(input.deliveryId), deliveryEnd(input.deliveryId), replacement);
+  next = refreshDeliveryForecast(next, input.deliveryId);
   next = appendExecution(next, `put-stage ${input.id}`);
   return { body: next };
 }
@@ -837,8 +968,13 @@ export function dropImplementationRecord(body: string, id: string): MutationResu
 }
 
 export function removeDraftStage(body: string, id: string): MutationResult {
-  if (!STAGE_ID.test(id)) throw new Error(`invalid Stage ID ${id}`);
-  return dropImplementationRecord(body, id);
+  const match = id.match(STAGE_ID);
+  if (match === null) throw new Error(`invalid Stage ID ${id}`);
+  const dropped = dropImplementationRecord(body, id);
+  const deliveryId = capture(match, 1, "Delivery ID");
+  return dropped.body.includes(deliveryStart(deliveryId))
+    ? { ...dropped, body: refreshDeliveryForecast(dropped.body, deliveryId) }
+    : dropped;
 }
 
 export function moveImplementationRecord(body: string, id: string, beforeId: string): MutationResult {
@@ -858,8 +994,12 @@ export function approvePlan(body: string, ownerWord: string): MutationResult {
   requireState(body, "SPEC_LOCKED");
   assertSafeInline(ownerWord, "owner word");
   validateImplementation(body);
-  const implementationHash = protocolImplementationHash(body);
-  let next = replaceHeader(body, "Status", "APPROVED");
+  // The forecast lines are the prediction the approval freezes: recomputed
+  // once more here so no Stage change can leave a Delivery line behind.
+  let next = body;
+  for (const delivery of deliveryMetas(body)) next = refreshDeliveryForecast(next, delivery.id);
+  const implementationHash = protocolImplementationHash(next);
+  next = replaceHeader(next, "Status", "APPROVED");
   next = replaceHeader(next, "Implementation lock", `sha256:${implementationHash} owner:${ownerWord}`);
   next = appendExecution(next, `approve sha256:${implementationHash} owner:${ownerWord}`);
   return { body: next, implementationHash };
@@ -1162,7 +1302,7 @@ function mutatePlanFile(planArg: string, operation: string, transform: (body: st
     initialHash = existing.initialHash;
     events = existing.events;
   }
-  const result = transform(body);
+  const result = { ...transform(body), body: hardBreakHeader(transform(body).body) };
   const afterHash = digest(result.body);
   if (afterHash === currentHash) throw new Error(`${operation} produced no change`);
   writeFileSync(absolute, result.body);
@@ -1179,8 +1319,23 @@ function mutatePlanFile(planArg: string, operation: string, transform: (body: st
   writeFileSync(path, `${JSON.stringify(journal, null, 2)}\n`);
 }
 
+/** Is a merge in progress in this worktree? */
+function merging(root: string): boolean {
+  return spawnSync("git", ["-C", root, "rev-parse", "-q", "--verify", "MERGE_HEAD"], {
+    encoding: "utf8",
+  }).status === 0;
+}
+
 export function verifyStagedPlan(planArg: string): void {
   const root = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
+  // A MERGE authored none of these bytes here. The journal proves that a
+  // locked plan reached its staged shape through planctl in THIS worktree,
+  // and a plan arriving from another branch never did — demanding one made
+  // every merge that carried an approved plan uncommittable, which is a gate
+  // refusing honest work. `plan-gate --freeze` is the authority for a merge:
+  // it reads git's own auto-merged tree and refuses a hand edit that a
+  // resolution smuggled in. This stands aside and lets it answer.
+  if (merging(root)) return;
   const plan = resolve(root, planArg).slice(root.length + 1);
   const journal = readJournal(journalPath(root));
   if (journal === null) throw new Error("locked plan mutation has no journal");
@@ -1237,6 +1392,8 @@ function deliveryFrom(value: unknown): DeliveryInput {
     id: requiredString(record, "id"), title: requiredString(record, "title"), branch: requiredString(record, "branch"),
     depends: stringArray(record.depends, "depends"), gate: stringArray(record.gate, "gate"), active: record.active,
     stageGraph: requiredString(record, "stageGraph"),
+    predictedExternalWaitMinutes: typeof record.predictedExternalWaitMinutes === "number" ? record.predictedExternalWaitMinutes : Number.NaN,
+    description: typeof record.description === "string" ? record.description : "",
   };
 }
 
@@ -1250,7 +1407,7 @@ function tasksFrom(value: unknown): readonly TaskInput[] {
       writes: stringArray(task.writes, "Task writes"),
       predictedActiveMinutes: requiredNumber(task, "predictedActiveMinutes"),
       predictedCredits: requiredNumber(task, "predictedCredits"),
-      how: requiredString(task, "how"),
+      how: typeof task.how === "string" ? task.how : stringArray(task.how, "how"),
       red: requiredString(task, "red"),
     };
   });
@@ -1267,6 +1424,7 @@ function stageFrom(value: unknown): StageInput {
     tempRoot: requiredString(record, "tempRoot"),
     predictedActiveMinutes: requiredNumber(record, "predictedActiveMinutes"), predictedCredits: requiredNumber(record, "predictedCredits"),
     verifyActiveMinutes: requiredNumber(record, "verifyActiveMinutes"), verifyCredits: requiredNumber(record, "verifyCredits"),
+    description: typeof record.description === "string" ? record.description : "",
     tasks: tasksFrom(record.tasks), criteria: stringArray(record.criteria, "criteria"),
   };
 }

@@ -85,11 +85,42 @@ Locks the exact SPEC bytes. Run only after explicit owner approval.
 Delivery JSON uses the canonical plan-update DeliveryInput contract. IDs are
 D1, D2, ...; a Delivery is one PR. Reusing an ID replaces its draft metadata
 and preserves its existing Stage blocks.
+
+"predictedExternalWaitMinutes" is the external wait forecast: minutes the
+Delivery expects to wait on others — owner review rounds, CI runs, external
+services — kept apart from active work. The active-work total and the longest
+dependency path are derived from the Stages and rendered as one "Forecast:"
+line under the Stage graph, recomputed on every put-stage, frozen by
+approve-plan and compared against the Stage Results afterwards.
+
+"description" is the pull request text as of the merge, in plain language:
+what changed for people, what changed in the code, how it was proven, what is
+not in this PR. Paragraphs separated by one blank line (\\n\\n in JSON). It
+renders under the Stage graph. A Delivery without it is refused.
+
+Complete delivery.json (copy this shape):
+{
+  "id": "D1",
+  "title": "Reject overlapping scheduler work",
+  "branch": "feat/scheduler-overlap",
+  "depends": [],
+  "gate": ["backend"],
+  "active": true,
+  "stageGraph": "D1-S1 -> D1-S2",
+  "predictedExternalWaitMinutes": 45,
+  "description": "What changed for people. A Stage that would write a file another running Stage owns is refused before it starts, so two agents never edit one file at once.\\n\\nWhat changed in the code. src/scheduler/parse-lanes.ts compares exact Stage writes before assignment.\\n\\nHow it was proven. test/scheduler/parse-lanes.test.ts feeds two ready Stages sharing src/shared.ts and sees the second refused.\\n\\nNot in this PR. Overlap detection across Deliveries."
+}
 `,
   "put-stage": `Usage: planctl put-stage <plan.md> --from <stage.json>
 
 Add or replace a Stage while the plan is SPEC_LOCKED. Stage JSON is structured
 input; planctl renders the Markdown. APPROVED plans remain immutable.
+
+"description" is the Stage in plain language: what this Stage solves and why
+now, what is built and where, how it is proven, and the commit message
+(subject, then body). Paragraphs separated by one blank line (\\n\\n in
+JSON). It renders between the forecast and the Tasks and is shown by
+start-task. A Stage without it is refused.
 
 Good Task in a complete stage.json (copy this shape):
 {
@@ -106,6 +137,7 @@ Good Task in a complete stage.json (copy this shape):
   "verifyActiveMinutes": 2,
   "verifyCredits": 1,
   "predictedCredits": 3,
+  "description": "What this Stage solves. Two ready Stages that both write src/shared.ts are assigned together today, and the second silently overwrites the first.\\n\\nWhat is built. src/scheduler/parse-lanes.ts compares exact Stage writes before assignment and refuses the second; test/scheduler/parse-lanes.test.ts carries the refusal case.\\n\\nHow it is proven. tst_scheduler_005 feeds two overlapping Stages and expects the refusal by name.\\n\\nCommit. fix(scheduler): refuse overlapping Stage writes — parse-lanes compares exact write sets before assignment; the overlap case is covered.",
   "tasks": [{
     "id": "PLANCTL_001",
     "story": "Reject overlapping Stage writes in src/scheduler/parse-lanes.ts and cover the refusal in test/scheduler/parse-lanes.test.ts.",
@@ -351,6 +383,7 @@ function printTaskStart(brief: TaskExecutionBrief, run: TaskRun): void {
     `Source: ${run.plan}`,
     `Distributed correlation: ${distributed}`,
     `Delivery / Stage: ${brief.deliveryId} / ${brief.stageId} — ${brief.stageTitle}`,
+    `Stage description: ${brief.stageDescription}`,
     `Owner / Profile: ${brief.owner} / ${brief.profile}`,
     `Started: ${run.startedAt}`,
     `Base: ${run.baseHead}`,

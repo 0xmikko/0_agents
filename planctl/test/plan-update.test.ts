@@ -12,6 +12,7 @@ import {
   putDelivery,
   putStage,
   recordStageResult,
+  stageInputs,
   stageResultCommitPaths,
   type DeliveryInput,
   type StageInput,
@@ -66,6 +67,8 @@ function delivery(active = true): DeliveryInput {
     gate: ["scripts"],
     active,
     stageGraph: "D1-S1 -> (D1-S2 || D1-S3) -> D1-S4",
+    predictedExternalWaitMinutes: 15,
+    description: "What changed for people. The writer says what it wrote.\n\nWhat changed in the code. One writer, four Stages.\n\nHow it was proven. The fixture suite.",
   };
 }
 
@@ -84,6 +87,7 @@ function stage(id: string, writes: readonly string[], parallelWith: readonly str
     predictedCredits: 2,
     verifyActiveMinutes: 2,
     verifyCredits: 1,
+    description: `What this Stage solves. ${id} produces one observable behavior.\n\nWhat is built. ${writes[0]} implements it.\n\nHow it is proven. The fixture suite.\n\nCommit. feat(fixture): ${id}`,
     tasks: [{
       id: `${id}-T1`,
       story: `produce one observable ${id} behavior in ${writes[0]}`,
@@ -188,6 +192,62 @@ describe("plan-update", () => {
       execFileSync("bun", [writer, "plan.md", "clear-spent", "--commit", "HEAD"], { cwd: root });
       const journal = git("rev-parse", "--path-format=absolute", "--git-path", "plan-update-journal.json");
       expect(existsSync(journal)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // @test-id: tst_scripts_planupdate_004
+  // @scenario: scn_codeprod_002
+  // @covers: planctl/src/core/plan-update.ts::verifyStagedPlan
+  // @deterministic: yes
+  // @invariant: a merge that carries an approved plan is committable — the
+  // journal proves local authorship, and a merge authored nothing here.
+  it("tst_scripts_planupdate_004 verify-staged stands aside during a merge", () => {
+    const root = mkdtempSync(join(tmpdir(), "portable-plan-update-merge-"));
+    const plan = join(root, "plan.md");
+    const writer = join(import.meta.dir, "../src/core/plan-update.ts");
+    const git = (...args: readonly string[]): string =>
+      execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+    try {
+      git("init", "-q", "-b", "main");
+      git("config", "user.email", "t@t");
+      git("config", "user.name", "t");
+      // A plan that is locked on both branches, and a second file each side
+      // changes so the merge is a real one.
+      writeFileSync(plan, lockPlanSpec(draft(), "spec").body);
+      writeFileSync(join(root, "other.txt"), "base\n");
+      git("add", "plan.md", "other.txt");
+      git("commit", "-qm", "base");
+
+      git("checkout", "-q", "-b", "side");
+      writeFileSync(join(root, "other.txt"), "side\n");
+      writeFileSync(plan, lockPlanSpec(draft(), "spec").body.replace("# Fixture plan", "# Fixture plan on the side"));
+      git("add", "plan.md", "other.txt");
+      git("commit", "-qm", "side");
+
+      git("checkout", "-q", "main");
+      writeFileSync(join(root, "mine.txt"), "mine\n");
+      git("add", "mine.txt");
+      git("commit", "-qm", "mine");
+
+      // The merge brings a locked plan this worktree never mutated, so there
+      // is no journal and there cannot be one.
+      const merge = spawnSync("git", ["-C", root, "merge", "--no-commit", "--no-ff", "side"], { encoding: "utf8" });
+      expect(merge.status).toBe(0);
+      expect(existsSync(git("rev-parse", "--path-format=absolute", "--git-path", "plan-update-journal.json"))).toBe(false);
+
+      const staged = spawnSync("bun", [writer, "plan.md", "verify-staged"], { cwd: root, encoding: "utf8" });
+      expect(staged.stderr).not.toContain("no journal");
+      expect(staged.status).toBe(0);
+
+      // Outside a merge the rule is unchanged: no journal, no commit.
+      git("merge", "--abort");
+      writeFileSync(plan, `${readFileSync(plan, "utf8")}\n`);
+      git("add", "plan.md");
+      const refused = spawnSync("bun", [writer, "plan.md", "verify-staged"], { cwd: root, encoding: "utf8" });
+      expect(refused.status).toBe(1);
+      expect(refused.stderr).toContain("locked plan mutation has no journal");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -326,6 +386,99 @@ describe("plan-update", () => {
         story: "extend the parser and refuse overlap across both touched modules",
       }],
     })).toThrow(/story must name every write path/i);
+  });
+});
+
+describe("Delivery and Stage descriptions", () => {
+  // @test-id: tst_scripts_planupdate_desc_001
+  // @covers: planctl/src/core/plan-update.ts::putDelivery description contract
+  it("tst_scripts_planupdate_desc_001 a Delivery without a description is refused and told what to write", () => {
+    const locked = lockPlanSpec(draft(), "spec").body;
+    const { description: _omit, ...bare } = delivery();
+    expect(() => putDelivery(locked, bare as unknown as DeliveryInput)).toThrow(/pull request text/);
+    expect(() => putDelivery(locked, { ...delivery(), description: "   " })).toThrow(/pull request text/);
+  });
+
+  // @test-id: tst_scripts_planupdate_desc_002
+  // @covers: planctl/src/core/plan-update.ts::renderDelivery
+  it("tst_scripts_planupdate_desc_002 the Delivery description renders under the Stage graph and survives a Stage put and a replace", () => {
+    let body = putDelivery(lockPlanSpec(draft(), "spec").body, delivery()).body;
+    body = putStage(body, stage("D1-S1", ["scripts/base.ts"])).body;
+    const block = body.slice(body.indexOf("### PR Delivery D1"), body.indexOf("<!-- plan:stage:D1-S1:start -->"));
+    expect(block).toContain("What changed for people. The writer says what it wrote.");
+    expect(block).toContain("How it was proven. The fixture suite.");
+    expect(block.indexOf("Stage graph:")).toBeLessThan(block.indexOf("What changed for people"));
+    const replaced = putDelivery(body, { ...delivery(), description: "What changed for people. Second text." }).body;
+    expect(replaced).toContain("What changed for people. Second text.");
+    expect(replaced).not.toContain("The writer says what it wrote.");
+    expect(replaced).toContain("<!-- plan:stage:D1-S1:start -->");
+  });
+
+  // @test-id: tst_scripts_planupdate_desc_003
+  // @covers: planctl/src/core/plan-update.ts::putStage description contract
+  it("tst_scripts_planupdate_desc_003 a Stage without a description is refused and told what to write", () => {
+    const locked = putDelivery(lockPlanSpec(draft(), "spec").body, delivery()).body;
+    const { description: _omit, ...bare } = stage("D1-S1", ["scripts/base.ts"]);
+    expect(() => putStage(locked, bare as unknown as StageInput)).toThrow(/what this Stage solves/);
+  });
+
+  // @test-id: tst_scripts_planupdate_desc_004
+  // @covers: planctl/src/core/plan-update.ts::renderStage, stageInputs
+  it("tst_scripts_planupdate_desc_004 the Stage description renders between the forecast and the Tasks and parses back", () => {
+    let body = putDelivery(lockPlanSpec(draft(), "spec").body, delivery()).body;
+    body = putStage(body, stage("D1-S1", ["scripts/base.ts"])).body;
+    const block = body.slice(body.indexOf("<!-- plan:stage:D1-S1:start -->"), body.indexOf("<!-- plan:stage:D1-S1:end -->"));
+    const at = block.indexOf("What this Stage solves. D1-S1 produces one observable behavior.");
+    expect(at).toBeGreaterThan(block.indexOf("Of which verification:"));
+    expect(at).toBeLessThan(block.indexOf("##### Tasks"));
+    expect(block).toContain("Commit. feat(fixture): D1-S1");
+    expect(stageInputs(body)[0]?.description).toBe(stage("D1-S1", ["scripts/base.ts"]).description);
+    const replaced = putStage(body, {
+      ...stage("D1-S1", ["scripts/base.ts"]),
+      description: "What this Stage solves. Replaced.\n\nCommit. feat(fixture): replaced",
+    }).body;
+    expect(stageInputs(replaced)[0]?.description).toBe("What this Stage solves. Replaced.\n\nCommit. feat(fixture): replaced");
+    expect(replaced).not.toContain("produces one observable behavior");
+  });
+
+  // @test-id: tst_scripts_planupdate_desc_005
+  // @covers: planctl/src/core/plan-update.ts::assertSafeProse
+  it("tst_scripts_planupdate_desc_005 a description that would read as a heading, an item or a marker is refused", () => {
+    const locked = putDelivery(lockPlanSpec(draft(), "spec").body, delivery()).body;
+    for (const bad of ["## A heading", "- [ ] an item", "- [x] a done item", "<!-- plan:stage:D9-S9:start -->", "text that ends a comment -->"]) {
+      expect(() => putStage(locked, {
+        ...stage("D1-S1", ["scripts/base.ts"]),
+        description: `What this Stage solves. Fine.\n\n${bad}`,
+      })).toThrow(/description/);
+      expect(() => putDelivery(locked, { ...delivery(), description: `What changed for people. Fine.\n\n${bad}` })).toThrow(/description/);
+    }
+  });
+
+  // @test-id: tst_scripts_planupdate_desc_006
+  // @covers: planctl/src/core/plan-update.ts::putDelivery external wait contract
+  it("tst_scripts_planupdate_desc_006 a Delivery without an external wait forecast is refused and told what to give", () => {
+    const locked = lockPlanSpec(draft(), "spec").body;
+    const { predictedExternalWaitMinutes: _omit, ...bare } = delivery();
+    expect(() => putDelivery(locked, bare as unknown as DeliveryInput)).toThrow(/external wait/);
+    expect(() => putDelivery(locked, { ...delivery(), predictedExternalWaitMinutes: -1 })).toThrow(/external wait/);
+  });
+
+  // @test-id: tst_scripts_planupdate_desc_007
+  // @covers: planctl/src/core/plan-update.ts::deliveryForecastLine
+  it("tst_scripts_planupdate_desc_007 the Delivery forecast is derived from its Stages and follows every Stage change", () => {
+    let body = putDelivery(lockPlanSpec(draft(), "spec").body, delivery()).body;
+    expect(body).toContain("Forecast: 0 active min / 0 credits across 0 Stages; longest dependency path 0 active min; external waits 15 min.");
+    body = putStage(body, stage("D1-S1", ["scripts/base.ts"])).body;
+    body = putStage(body, stage("D1-S2", ["scripts/a.ts"], ["D1-S3"])).body;
+    body = putStage(body, stage("D1-S3", ["scripts/b.ts"], ["D1-S2"])).body;
+    body = putStage(body, { ...stage("D1-S4", ["scripts/c.ts"]), depends: ["D1-S2", "D1-S3"] }).body;
+    // four Stages of 10 min / 2 credits; S1 -> (S2 || S3) -> S4 is three deep
+    expect(body).toContain("Forecast: 40 active min / 8 credits across 4 Stages; longest dependency path 30 active min; external waits 15 min.");
+    const grown = putStage(body, { ...stage("D1-S4", ["scripts/c.ts"]), depends: ["D1-S2", "D1-S3"], predictedActiveMinutes: 20, predictedCredits: 4, tasks: [{ ...stage("D1-S4", ["scripts/c.ts"]).tasks[0]!, predictedActiveMinutes: 18, predictedCredits: 3 }] }).body;
+    expect(grown).toContain("Forecast: 50 active min / 10 credits across 4 Stages; longest dependency path 40 active min; external waits 15 min.");
+    expect(grown.match(/^Forecast: /gm)?.length).toBe(1);
+    const approved = approvePlan(grown, "approve").body;
+    expect(approved).toContain("Forecast: 50 active min / 10 credits across 4 Stages; longest dependency path 40 active min; external waits 15 min.");
   });
 });
 
