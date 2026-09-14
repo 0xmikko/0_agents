@@ -45,7 +45,8 @@ export interface TaskInput {
   readonly writes: readonly string[];
   readonly predictedActiveMinutes: number;
   readonly predictedCredits: number;
-  readonly how: string;
+  /** One line, or an ordered list of steps rendered as a numbered sub-list. */
+  readonly how: string | readonly string[];
   readonly red: string;
 }
 
@@ -257,10 +258,15 @@ function replaceRegion(body: string, start: string, end: string, replacement: st
   return `${body.slice(0, current.from)}${replacement}${body.slice(current.to)}`;
 }
 
+/** Markdown joins adjacent lines into one paragraph; the five header lines end with a hard break so a viewer shows them one per line. Idempotent. */
+function hardBreakHeader(body: string): string {
+  return body.replace(/^((?:Status|Spec lock|Implementation lock|Active Delivery|Unattended decisions):[^\n]*?)[ ]*$/gm, "$1  ");
+}
+
 function replaceHeader(body: string, name: string, value: string): string {
   const expression = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:.*$`, "m");
   if (!expression.test(body)) throw new Error(`plan is missing ${name}: header`);
-  return body.replace(expression, `${name}: ${value}`);
+  return body.replace(expression, `${name}: ${value}  `);
 }
 
 function planState(body: string): PlanState {
@@ -281,11 +287,11 @@ export function createDraftPlan(title: string): string {
   return [
     `# ${title}`,
     "",
-    "Status: SPEC_DRAFT",
-    "Spec lock: unlocked",
-    "Implementation lock: unlocked",
-    "Active Delivery: none",
-    "Unattended decisions: allowed",
+    "Status: SPEC_DRAFT  ",
+    "Spec lock: unlocked  ",
+    "Implementation lock: unlocked  ",
+    "Active Delivery: none  ",
+    "Unattended decisions: allowed  ",
     "",
     SPEC_START,
     "## The Goal",
@@ -332,6 +338,15 @@ function assertUnique(values: readonly string[], name: string): void {
   if (new Set(values).size !== values.length) throw new Error(`${name} contains duplicates`);
 }
 
+function parseHow(raw: string): string | readonly string[] {
+  if (!raw.includes("\n")) return raw.trim();
+  return raw.split("\n").map((line) => line.replace(/^\s+\d+\. /, "").trim()).filter((line) => line.length > 0);
+}
+
+export function howSteps(how: string | readonly string[]): readonly string[] {
+  return typeof how === "string" ? [how] : [...how];
+}
+
 function assertTaskContract(task: TaskInput, stageWrites: readonly string[]): void {
   if (!TASK_ID.test(task.id)) throw new Error(`invalid Task ID ${task.id}`);
   assertSafeInline(task.story, "Task story");
@@ -340,7 +355,9 @@ function assertTaskContract(task: TaskInput, stageWrites: readonly string[]): vo
     || /^(?:refactor|fix|improve|optimi[sz]e|update|cleanup|clean up)\b/i.test(task.story.trim())) {
     throw new Error(`Task ${task.id} story must state a concrete observable outcome, not a vague activity`);
   }
-  assertSafeInline(task.how, "Task how");
+  const steps = howSteps(task.how);
+  if (steps.length === 0) throw new Error(`Task ${task.id} how must have at least one step`);
+  for (const step of steps) assertSafeInline(step, "Task how");
   assertSafeInline(task.red, "Task RED");
   if (task.red.includes("`")
     || !/^bun run agent:test:(?:backend|frontend|e2e)\s+--\s+\S+/.test(task.red)) {
@@ -567,12 +584,12 @@ function renderStage(input: StageInput): string {
     `<!-- plan:stage-meta:${meta} -->`,
     `#### Stage ${input.id} — ${input.title}`,
     "",
-    `Owner: ${input.owner}; Profile: ${input.profile}; Depends: ${input.depends.length === 0 ? "none" : input.depends.join(", ")}; ` +
+    `- Owner: ${input.owner}; Profile: ${input.profile}; Depends: ${input.depends.length === 0 ? "none" : input.depends.join(", ")}; ` +
       `Parallel with: ${input.parallelWith.length === 0 ? "none" : input.parallelWith.join(", ")}.`,
-    `Writes: ${input.writes.map((path) => `\`${path}\``).join(", ")}.`,
-    `Temp root: \`${input.tempRoot}\` (must be absent at handoff).`,
-    `Predict: ${input.predictedActiveMinutes} active min / ${input.predictedCredits} credits.`,
-    `Of which verification: ${input.verifyActiveMinutes} active min / ${input.verifyCredits} credits.`,
+    `- Writes: ${input.writes.map((path) => `\`${path}\``).join(", ")}.`,
+    `- Temp root: \`${input.tempRoot}\` (must be absent at handoff).`,
+    `- Predict: ${input.predictedActiveMinutes} active min / ${input.predictedCredits} credits.`,
+    `- Of which verification: ${input.verifyActiveMinutes} active min / ${input.verifyCredits} credits.`,
     "",
     ...proseLines(input.description),
     "",
@@ -631,7 +648,7 @@ export function stageInputs(body: string): readonly ParsedStageInput[] {
     const id = capture(match, 1, "Stage ID");
     const meta = parseMetaObject(`<!-- plan:stage-meta:${capture(match, 2, "Stage metadata")} -->`, "<!-- plan:stage-meta:");
     const heading = block.match(/^#### Stage [^\n]+ — (.+)$/m);
-    const ownerLine = block.match(/^Owner: ([^;]+); Profile: (fast|strong);/m);
+    const ownerLine = block.match(/^(?:- )?Owner: ([^;]+); Profile: (fast|strong);/m);
     if (heading === null || ownerLine === null) throw new Error(`Stage ${match[1]} has incomplete rendered metadata`);
     // Current format: story line + hidden task-meta comment. Legacy format
     // (visible Writes/Predict/How/RED lines) still parses so committed plans
@@ -681,7 +698,7 @@ export function stageInputs(body: string): readonly ParsedStageInput[] {
         writes: renderedPaths(capture(task, 4, "Task writes"), `Task ${capture(task, 2, "Task ID")} writes`),
         predictedActiveMinutes: Number(capture(task, 5, "Task active minutes")),
         predictedCredits: Number(capture(task, 6, "Task credits")),
-        how: capture(task, 7, "Task how"),
+        how: parseHow(capture(task, 7, "Task how")),
         red: capture(task, 8, "Task RED"),
         },
       };
@@ -690,7 +707,7 @@ export function stageInputs(body: string): readonly ParsedStageInput[] {
     const criteriaBlock = block.match(/##### Acceptance criteria\n\n([\s\S]*?)\n\n##### Results/);
     // The prose between the forecast lines and the Tasks. A plan rendered
     // before descriptions existed has nothing there and reads as "".
-    const descriptionBlock = block.match(/\nOf which verification: [^\n]+\n\n([\s\S]*?)\n\n##### Tasks\n/);
+    const descriptionBlock = block.match(/\n(?:- )?Of which verification: [^\n]+\n\n([\s\S]*?)\n\n##### Tasks\n/);
     inputs.push({
       id,
       deliveryId: typeof meta.deliveryId === "string" ? meta.deliveryId : "",
@@ -1285,7 +1302,7 @@ function mutatePlanFile(planArg: string, operation: string, transform: (body: st
     initialHash = existing.initialHash;
     events = existing.events;
   }
-  const result = transform(body);
+  const result = { ...transform(body), body: hardBreakHeader(transform(body).body) };
   const afterHash = digest(result.body);
   if (afterHash === currentHash) throw new Error(`${operation} produced no change`);
   writeFileSync(absolute, result.body);
@@ -1375,7 +1392,7 @@ function tasksFrom(value: unknown): readonly TaskInput[] {
       writes: stringArray(task.writes, "Task writes"),
       predictedActiveMinutes: requiredNumber(task, "predictedActiveMinutes"),
       predictedCredits: requiredNumber(task, "predictedCredits"),
-      how: requiredString(task, "how"),
+      how: typeof task.how === "string" ? task.how : stringArray(task.how, "how"),
       red: requiredString(task, "red"),
     };
   });
