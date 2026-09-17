@@ -90,9 +90,9 @@ Of which verification: 2 active min / 1 credits.
 
 The Stage block carries routing, writes, temp root and the derived forecast
 once. A generated Task is two source lines: a story of at most 200 characters
-with `(N min)`, then hidden metadata. It owns at most four writes, and the story
-names every one by full path or basename. `start-task` reveals writes, credits,
-How and RED. Stage total must equal Task totals plus the explicit verification
+(with `(N min)` when minutes were given), then hidden metadata. Its writes are
+files, directories or globs and are the contract; the story need not repeat
+them. `start-task` reveals writes, credits, How and RED. Stage total must equal Task totals plus the explicit verification
 share.
 
 Before approval, trace each acceptance story through public calls. If a story

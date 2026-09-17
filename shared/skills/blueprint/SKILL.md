@@ -39,13 +39,16 @@ once on the published CI SHA.”
 2. Give each Stage a result-oriented title, never branch history. Supply its
    owner/profile, dependencies, parallel set, writes and temp root in the
    `put-stage` JSON; `planctl` renders that compact Stage block once.
-3. A Task story names one concrete change and every write path (full path or
-   basename), fits 200 characters and owns at most four writes. Split
-   independent changes. Never point to “the new files”, “the rename map”, “as
-   discussed”, chat history or a colleague's branch.
-4. Supply exact writes, one RED command, predicted active minutes/credits and
-   How in the Task JSON. The rendered Task is the story with `(N min)` plus one
-   hidden metadata line; `start-task` reveals the full contract. RED uses:
+3. A Task story names one concrete change in at most 200 characters. Its
+   writes are the contract: files, directories (`scripts/dev/`) or globs
+   (`test/**/*.test.ts`), as many as the change needs. Never point to “the new
+   files”, “the rename map”, “as discussed”, chat history or a colleague's
+   branch.
+4. Supply the writes, one RED command and How in the Task JSON; minutes and
+   credits are optional and default to zero. The rendered Task is the story
+   plus one hidden metadata line; `start-task` reveals the full contract.
+   Files a Stage commit touches beyond its writes are recorded in its result
+   row, never refused. RED uses:
 
        bun run agent:test:<backend|frontend|e2e> -- <exact-target>
 
