@@ -64,6 +64,7 @@ Plus: read the project `CLAUDE.md`; load a language guide only for files of that
 | 14 | Read each acceptance command in the future tense against the tree the plan builds; a command that only this machine can pass is prose with its number. | 2 files + 4 memories | law, memory |
 | 15 | A plan judged by a model-run metric first publishes the band of the unchanged product and counts an effect only when every block clears it. | 3 memories | memory |
 | 16 | Forbidden, as today: opening with the problem, DEC lists, tests asserting layout or a deleted file, inventory pins, self-declared approval, boxes mirroring CI or PR state. | 2 files (kept) | law |
+| 16a | A box is a command with its exit code or the Commit box, nothing else. What a machine cannot check is not a box: it goes to the pre-approval screen under "not verified". | 0 files; agent-delegation closed 2026-09-17 with 24 prose boxes planctl can never tick | plans |
 | 17 | The pre-approval screen is the last block and the one the owner reads: file tree, acceptance stories in plain words, what is not verified and why. | 2 files (kept) | law |
 
 **How a plan is executed — `blueprint-start` + `development-process.md`**
@@ -87,6 +88,7 @@ Plus: read the project `CLAUDE.md`; load a language guide only for files of that
 | 27 | A push buys a CI matrix: push when someone needs the new state. The pre-push hook is the gate, run once, and writes the receipt; do not run `agent:verify:pr` yourself first. A plan document is pushed on the owner's word. The agent flips ready, the owner merges. Never push to staging or main. | 12 files for "never push", 0 for "when to push" + 9 memories | memory |
 | 28 | Everything on GitHub is English and product-framed and links only to GitHub URLs; documents for the owner go through `mdurl`, never cloud artifacts. | 0 files + 4 memories | memory |
 | 29 | Handoff is `[PR #N — title](url)`, the plan `mdurl`, the head SHA, what is not verified. After the merge: `end-work`, retro, ledger. | 4 files | law |
+| 29a | A retro names one experiment. `end-work` writes it into the register at the end of the process law with a date; the next `end-work` refuses to close a Delivery while the previous experiment has no status (accepted or declined, on the owner's word). A partial close says so in the ledger: merged, N boxes open under Deviations. | 0 files; 9 experiments since 08-25, none with a status | retro H, plans |
 
 **Verification and tests — `development-process.md` §Verification**
 
@@ -136,6 +138,7 @@ Measured on 0_agents `7cbc4a5` and magnis-app `dc396a3ee` (2026-09-17).
 | Owner "да" answers for writes-list edits in one plan | 25 |
 | Deviations lines that are planctl bookkeeping, not decisions | ≈ 60 % of 377 |
 | Skills last substantively changed | 2026-08-30 |
+| agent-delegation `end-work` on 2026-09-17 (PR #254 merged) | 49 open boxes: 24 prose boxes no machine closes, the rest behind `complete-task` refusing paths beyond the writes; retro experiment 9 of 9 without an owner status; worktree kept |
 
 The three registers and register M are committed under `docs/research/instruction-registers/` with this plan.
 
@@ -150,8 +153,10 @@ What already works and stays: the push hook, the draft-without-matrix rule, the 
 5. `language-by-file`: a language guide is named only in a rule that routes by file extension.
 6. `free-tier`: a Task with five writes, a story naming none of them and a commit touching one more file is accepted and recorded (PR #12, tests 015–018).
 7. `three-tiers-stated`: the process law names the three tiers and the owner's word appears only in the third.
+8. `boxes-are-commands`: `plan-gate` refuses a plan whose acceptance box is neither `` `cmd` exits N `` nor `Commit`.
+9. `retro-has-a-status`: `end-work` refuses closure while the previous Delivery's experiment line has no status.
 
-Invariants 1–5 are one script, `shared/code-production/instruction-audit.ts`, run by `agent:verify:docs` in 0_agents and red today.
+Invariants 1–5 are one script, `shared/code-production/instruction-audit.ts`, run by `agent:verify:docs` in 0_agents and red today. Invariants 8 and 9 are two checks in `plan-gate` and `end-work`, red today.
 
 ## Not in this plan
 
