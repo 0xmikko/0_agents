@@ -91,10 +91,11 @@ lives in [development-process.md](development-process.md).
    credits, How and RED. `planctl start-task` prints that hidden contract to the
    executor. Legacy five-line Tasks remain readable but are never generated.
 
-   A Task story is one concrete change, no more than 200 characters, and owns
-   at most four write paths. Every write appears in the story as its full path
-   or unambiguous basename. Split independent actions instead of hiding them in
-   a rename map or branch history.
+   A Task story is one concrete change, no more than 200 characters. Its
+   writes are files, directories (`dir/`) or globs and are the contract the
+   commit is checked against: files touched beyond them are named in the
+   result row, not refused. Split independent actions instead of hiding them
+   in a rename map or branch history.
 
    ```markdown
    Bad:  D1-S2-T1 — Finish the colleague's half-landed Verify rewire in the named files.

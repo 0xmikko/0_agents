@@ -66,11 +66,11 @@ The owner view is a review interface, not an execution log.
   total forecast and verification share. It has no free-form execution story.
   The title never says “finish the colleague's branch”, “half-landed” or
   “remaining work”.
-- A Task story names one concrete change and every declared write, using the
-  full path or its basename. The story is at most 200 characters;
-  its rendered line ends with the predicted active minutes.
-- A Task owns at most four write paths. Split it when it crosses that limit or
-  when its story joins independent changes.
+- A Task story names one concrete change in at most 200 characters; its
+  rendered line ends with the predicted active minutes when minutes were given.
+- A Task's writes are files, directories or globs, as many as the change
+  needs; a commit that touches files beyond them is recorded, not refused.
+  Split a Task only when its story joins independent changes.
 - A Task stands alone. “Existing”, “new”, “named files”, “the map above” and
   similar pointers are invalid unless the same sentence resolves them to an
   exact symbol or path.
