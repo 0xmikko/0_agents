@@ -631,4 +631,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - amend implementation owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов sha256:a17ff5039101eaaa273846fd4a9f443b2033e31a47f5ab84899c8abf6b9d24d3
 
 - amend implementation owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов sha256:c621f700ae52eacfdf2fc699a99f5c70078fb497ddd3bc22e17ec17cbc8af318
+
+- deviation D1-S1: on the owner's word the audit's stop list became the process vocabulary (shared/code-production/vocabulary.md: term, what it names, not); commit 559002d changes the audit after the Stage closed; the Stage's own decisions still await the owner's explicit word
 <!-- plan:execution:end -->
