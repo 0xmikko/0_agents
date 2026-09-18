@@ -11,7 +11,9 @@ import {
   lockPlanSpec,
   putDelivery,
   putStage,
+  recordStageApproval,
   recordStageResult,
+  stageApproved,
   stageInputs,
   stageResultCommitPaths,
   type DeliveryInput,
@@ -367,25 +369,146 @@ describe("plan-update", () => {
       expect(() => putStage(locked, candidate)).toThrow(refusal);
     }
   });
+});
 
-  // @test-id: tst_scripts_planupdate_007
-  // @scenario: scn_plan_control_004
-  // @covers: scripts/plan-update.ts::putStage Task execution scope validation
+describe("free tier: writes are the contract, not a fence", () => {
+  // @test-id: tst_scripts_planupdate_015
+  // @covers: planctl/src/core/plan-update.ts::putStage assertTaskContract
   // @deterministic: yes
-  // @invariant: a Task story names every exact file instead of referring to unnamed code.
-  it("tst_scripts_planupdate_007 refuses a Task story that points to unnamed files", () => {
-    const locked = putDelivery(lockPlanSpec(draft(), "spec").body, delivery()).body;
-    const candidate = stage("D1-S1", ["scripts/base.ts", "test/base.test.ts"]);
+  // @invariant: a Task lists its writes; the story need not repeat them and
+  // there is no cap on how many files one change touches.
+  it("tst_scripts_planupdate_015 accepts five writes and a story that names none of them", () => {
+    let body = lockPlanSpec(draft(), "spec").body;
+    body = putDelivery(body, delivery()).body;
+    const writes = ["scripts/a.ts", "scripts/b.ts", "scripts/c.ts", "scripts/d.ts", "scripts/e.ts"];
+    const accepted = putStage(body, {
+      ...stage("D1-S1", writes),
+      tasks: [{
+        id: "D1-S1-T1",
+        story: "Expose one callable entrypoint and refuse overlapping lanes at assignment.",
+        writes,
+        predictedActiveMinutes: 8,
+        predictedCredits: 1,
+        how: "one export statement per file",
+        red: "bun run agent:test:backend -- test/plan-update.test.ts",
+      }],
+    }).body;
+    const parsed = stageInputs(accepted).find((entry) => entry.id === "D1-S1");
+    expect(parsed?.tasks[0]?.writes).toEqual(writes);
+  });
+
+  // @test-id: tst_scripts_planupdate_016
+  // @covers: planctl/src/core/plan-update.ts::putStage write coverage
+  // @deterministic: yes
+  // @invariant: a write may be a directory or a glob; a Task write is accepted
+  // when one Stage write covers it and refused otherwise.
+  it("tst_scripts_planupdate_016 a directory or glob write covers the files beneath it", () => {
+    let body = lockPlanSpec(draft(), "spec").body;
+    body = putDelivery(body, delivery()).body;
+    const candidate = stage("D1-S1", ["scripts/dev/", "test/**/*.test.ts"]);
     const task = candidate.tasks[0];
     if (task === undefined) throw new Error("candidate Stage must have one Task");
-
-    expect(() => putStage(locked, {
+    const accepted = putStage(body, {
       ...candidate,
-      tasks: [{
-        ...task,
-        story: "extend the parser and refuse overlap across both touched modules",
-      }],
-    })).toThrow(/story must name every write path/i);
+      tasks: [{ ...task, writes: ["scripts/dev/dev.ts", "test/dev/dev.test.ts"] }],
+    }).body;
+    expect(stageInputs(accepted).find((entry) => entry.id === "D1-S1")?.writes).toEqual(["scripts/dev/", "test/**/*.test.ts"]);
+    expect(() => putStage(body, {
+      ...candidate,
+      tasks: [{ ...task, writes: ["scripts/db/postgres.ts"] }],
+    })).toThrow(/outside Stage writes/i);
+    // a directory write also collides with a parallel Stage's file beneath it
+    const first = putStage(body, { ...candidate, parallelWith: ["D1-S2"] }).body;
+    expect(() => putStage(first, {
+      ...stage("D1-S2", ["scripts/dev/workspace.ts"], ["D1-S1"]),
+    })).toThrow(/parallel write overlap/i);
+  });
+
+  // @test-id: tst_scripts_planupdate_017
+  // @covers: planctl/src/core/plan-update.ts::recordStageResult
+  // @deterministic: yes
+  // @invariant: a commit that touches files beyond the declared writes is
+  // recorded with those files named in its result row, never refused; the
+  // receipt must still describe the commit it names.
+  it("tst_scripts_planupdate_017 records files beyond the writes instead of refusing the result", () => {
+    const receipt: StageResultReceipt = {
+      version: 1,
+      plan: "docs/plans/fixture.md",
+      deliveryId: "D1",
+      stageId: "D1-S1",
+      taskIds: ["D1-S1-T1"],
+      commit: "b".repeat(40),
+      startedAt: "2026-09-17T09:00:00Z",
+      endedAt: "2026-09-17T09:10:00Z",
+      activeMinutes: 10,
+      elapsedMinutes: 10,
+      usage: { kind: "unavailable", reason: "runner omitted usage" },
+      paths: ["scripts/base.ts", "test/base.test.ts", "scripts/helper.ts"],
+      tests: [{ id: "tst_scripts_planupdate_017", command: "bun test" }],
+      result: "writer foundation works",
+      deviations: [],
+      tempRoots: [{ path: ".tmp/code-production/fixture/D1-S1", state: "absent" }],
+    };
+    const accepted = recordStageResult(approvedWithStages(), receipt, {
+      commitIsAncestor: () => true,
+      commitPaths: () => [...receipt.paths, receipt.plan],
+      pathExists: () => false,
+    }).body;
+    const row = accepted.split("\n").find((line) => line.startsWith(`| D1-S1-T1 | ${receipt.commit}`));
+    expect(row).toContain("beyond writes: scripts/helper.ts, test/base.test.ts");
+    expect(protocolLockViolations(accepted)).toEqual([]);
+
+    expect(() => recordStageResult(approvedWithStages(), receipt, {
+      commitIsAncestor: () => true,
+      commitPaths: () => ["scripts/base.ts", receipt.plan],
+      pathExists: () => false,
+    })).toThrow(/paths differ from commit/i);
+  });
+
+  // @test-id: tst_scripts_planupdate_018
+  // @covers: planctl/src/core/plan-update.ts::putStage predictions
+  // @deterministic: yes
+  // @invariant: minutes and credits are optional — zero is accepted and a
+  // zero-minute story renders without a time suffix.
+  it("tst_scripts_planupdate_018 accepts zero predictions and renders no time suffix", () => {
+    let body = lockPlanSpec(draft(), "spec").body;
+    body = putDelivery(body, delivery()).body;
+    const candidate = stage("D1-S1", ["scripts/base.ts"]);
+    const task = candidate.tasks[0];
+    if (task === undefined) throw new Error("candidate Stage must have one Task");
+    const rendered = putStage(body, {
+      ...candidate,
+      predictedActiveMinutes: 0,
+      predictedCredits: 0,
+      verifyActiveMinutes: 0,
+      verifyCredits: 0,
+      tasks: [{ ...task, predictedActiveMinutes: 0, predictedCredits: 0 }],
+    }).body;
+    expect(rendered).toContain("- [ ] D1-S1-T1 — produce one observable D1-S1 behavior in scripts/base.ts\n");
+    expect(rendered).not.toContain("(0 min)");
+    expect(stageInputs(rendered).find((entry) => entry.id === "D1-S1")?.predictedActiveMinutes).toBe(0);
+  });
+});
+
+describe("the owner's word on a Stage", () => {
+  // @test-id: tst_scripts_planupdate_019
+  // @covers: planctl/src/core/plan-update.ts::recordStageApproval, stageApproved
+  // @deterministic: yes
+  // @invariant: a Stage is approved by the owner only through a journaled
+  // line that carries the owner's word; the check reads that line and nothing
+  // else, so a criterion can require it.
+  it("tst_scripts_planupdate_019 approve-stage journals the owner's word and stage-approved reads only that", () => {
+    const body = approvedWithStages();
+    expect(stageApproved(body, "D1-S1")).toBe(false);
+    const approved = recordStageApproval(body, "D1-S1", "да").body;
+    expect(approved).toContain("approve-stage D1-S1 owner:да");
+    expect(stageApproved(approved, "D1-S1")).toBe(true);
+    expect(stageApproved(approved, "D1-S2")).toBe(false);
+    expect(() => recordStageApproval(body, "D1-S9", "да")).toThrow(/unknown Stage/);
+    expect(() => recordStageApproval(body, "D1-S1", "")).toThrow(/owner word/);
+    // an unjournaled mention elsewhere in the plan is not an approval
+    const forged = body.replace("## Execution log", "## Execution log\n\nThe owner said approve-stage D1-S2 owner:да in chat.");
+    expect(stageApproved(forged, "D1-S2")).toBe(false);
   });
 });
 
@@ -526,29 +649,6 @@ describe("two-line task contract", () => {
       }],
     });
     expect(replaced.body).toContain("Expose the base contract");
-  });
-
-  // @test-id: tst_scripts_planupdate_009
-  // @scenario: scn_codeprod_001
-  // @covers: scripts/plan-update.ts::putStage
-  // @deterministic: yes
-  // @invariant: the story itself names every write path (full path or its
-  // basename); the old how-must-name-paths rule is gone.
-  it("tst_scripts_planupdate_009 requires paths in the story, not in how", () => {
-    let body = lockPlanSpec(draft(), "spec").body;
-    body = putDelivery(body, delivery()).body;
-    expect(() => putStage(body, {
-      ...stage("D1-S1", ["scripts/base.ts"]),
-      tasks: [{
-        id: "D1-S1-T1",
-        story: "Expose the base contract as one callable entrypoint somewhere sensible.",
-        writes: ["scripts/base.ts"],
-        predictedActiveMinutes: 8,
-        predictedCredits: 1,
-        how: "touch scripts/base.ts",
-        red: "bun run agent:test:backend -- test/plan-update.test.ts",
-      }],
-    })).toThrow(/story must name/i);
   });
 
   // @test-id: tst_scripts_planupdate_010

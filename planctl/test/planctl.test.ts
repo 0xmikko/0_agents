@@ -167,7 +167,7 @@ describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_003
    * @scenario: scn_plan_control_003
-   * @covers: planctl/src/cli/main.ts::complete-task,add-deviation,close-stage
+   * @covers: planctl/src/cli/main.ts::complete-task,add-deviation,approve-stage,stage-approved,close-stage
    * @deterministic: yes
    * @fixtures: temporary approved plan and Stage receipt
    * Test environment: isolated local Git repository
@@ -222,9 +222,17 @@ describe("planctl", () => {
       expect(malformed.stderr).toContain("usage kind must be credits or unavailable");
       writeFileSync(receiptPath, `${JSON.stringify(receipt)}\n`);
 
+      // the owner's word on the Stage is a journaled command, and the check
+      // fails before it and passes after it
+      const unapproved = run(fixture.root, "stage-approved", fixture.plan, "--stage", "D1-S1");
+      expect(unapproved.status).toBe(1);
+      expect(unapproved.stdout).toContain("no owner approval line");
+
       for (const result of [
         run(fixture.root, "complete-task", fixture.plan, "--from", receiptPath),
         run(fixture.root, "add-deviation", fixture.plan, "--stage", "D1-S1", "--reason", "No product suite needed."),
+        run(fixture.root, "approve-stage", fixture.plan, "--stage", "D1-S1", "--owner-word", "да"),
+        run(fixture.root, "stage-approved", fixture.plan, "--stage", "D1-S1"),
         run(fixture.root, "close-stage", fixture.plan, "--stage", "D1-S1"),
         run(fixture.root, "verify", fixture.plan),
         run(fixture.root, "verify-staged", fixture.plan),
@@ -236,6 +244,7 @@ describe("planctl", () => {
       expect(completed).toContain("- [x] PLANCTL_001 — extend the canonical writer facade exposed by scripts/example.ts");
       expect(completed).toContain("Canonical writer updated the addressed Task.");
       expect(completed).toContain("deviation D1-S1: No product suite needed.");
+      expect(completed).toContain("approve-stage D1-S1 owner:да");
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }

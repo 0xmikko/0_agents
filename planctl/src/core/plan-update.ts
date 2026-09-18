@@ -369,23 +369,13 @@ function assertTaskContract(task: TaskInput, stageWrites: readonly string[]): vo
   assertUnique(task.writes, `Task ${task.id} writes`);
   for (const path of task.writes) {
     assertSafeInline(path, `Task ${task.id} write`);
-    if (!stageWrites.includes(path)) throw new Error(`Task ${task.id} write ${path} is outside Stage writes`);
+    if (!coveredByWrites(stageWrites, path)) throw new Error(`Task ${task.id} write ${path} is outside Stage writes`);
   }
   const format = "format" in task ? task.format : "modern";
   if (format !== "legacy") {
-    // @invariant: compact Tasks carry their whole change in the visible story.
-    // Legacy five-line Tasks keep their original contract so active approved
-    // plans remain amendable after adopting this renderer.
-    const storyNames = (path: string): boolean => {
-      const base = path.split("/").pop() ?? path;
-      return task.story.includes(path) || task.story.includes(base);
-    };
-    const unnamedWrites = task.writes.filter((path) => !storyNames(path));
-    if (unnamedWrites.length > 0) {
-      throw new Error(
-        `Task ${task.id} story must name every write path (full path or basename): ${unnamedWrites.join(", ")}`,
-      );
-    }
+    // @invariant: the writes list is the contract; the story says what changes
+    // for the reader and stays short. Legacy five-line Tasks keep their
+    // original contract so active approved plans remain amendable.
     if (task.story.trim().length > 200) {
       throw new Error(`Task ${task.id} story must fit two lines (max 200 characters)`);
     }
@@ -394,13 +384,28 @@ function assertTaskContract(task: TaskInput, stageWrites: readonly string[]): vo
         `Task ${task.id} story has an unresolved reference — name the exact paths and symbols instead`,
       );
     }
-    if (task.writes.length > 4) {
-      throw new Error(`Task ${task.id} declares too many writes — one task is one change (max 4 files)`);
-    }
   }
-  if (task.predictedActiveMinutes <= 0 || task.predictedCredits < 0) {
-    throw new Error(`Task ${task.id} predictions must be non-negative and active minutes must be positive`);
+  if (task.predictedActiveMinutes < 0 || task.predictedCredits < 0) {
+    throw new Error(`Task ${task.id} predictions must be non-negative`);
   }
+}
+
+/** A write names a file, a directory (`dir/`) or a glob (`*` within one
+ * segment, `**` across segments); `path` is covered when one write matches. */
+export function coveredByWrites(writes: readonly string[], path: string): boolean {
+  return writes.some((write) => {
+    if (write === path) return true;
+    if (write.endsWith("/")) return path.startsWith(write);
+    if (!write.includes("*")) return false;
+    const pattern = write
+      .split("**").map((part) => part.split("*").map(escapeRegExp).join("[^/]*"))
+      .join(".*");
+    return new RegExp(`^${pattern}$`).test(path);
+  });
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function assertStageContract(input: StageInput): void {
@@ -546,8 +551,8 @@ function renderStage(input: StageInput): string {
   assertUnique(input.parallelWith, "Stage parallel set");
   assertUnique(input.writes, "Stage writes");
   assertUnique(input.tasks.map((task) => task.id), "Task IDs");
-  if (input.predictedActiveMinutes <= 0 || input.predictedCredits < 0) {
-    throw new Error("Stage predictions must be non-negative and active minutes must be positive");
+  if (input.predictedActiveMinutes < 0 || input.predictedCredits < 0) {
+    throw new Error("Stage predictions must be non-negative");
   }
   for (const path of input.writes) assertSafeInline(path, "Stage write");
   assertSafeInline(input.tempRoot, "Stage tempRoot");
@@ -574,7 +579,7 @@ function renderStage(input: StageInput): string {
     });
     if (taskMeta.includes("-->")) throw new Error(`Task ${task.id} metadata must not contain "-->"`);
     return [
-      `- [ ] ${task.id} — ${task.story} (${task.predictedActiveMinutes} min)`,
+      `- [ ] ${task.id} — ${task.story}${task.predictedActiveMinutes > 0 ? ` (${task.predictedActiveMinutes} min)` : ""}`,
       `<!-- plan:task-meta:${taskMeta} -->`,
     ];
   });
@@ -813,7 +818,8 @@ export function deliveryMetas(body: string): readonly DeliveryMeta[] {
 function assertParallelWrites(candidate: StageInput, existing: readonly StageInput[]): void {
   for (const other of existing) {
     if (!candidate.parallelWith.includes(other.id) && !other.parallelWith.includes(candidate.id)) continue;
-    const overlap = candidate.writes.filter((path) => other.writes.includes(path));
+    const overlap = candidate.writes.filter((path) =>
+      coveredByWrites(other.writes, path) || other.writes.some((write) => coveredByWrites([path], write)));
     if (overlap.length > 0) {
       throw new Error(`parallel write overlap between ${candidate.id} and ${other.id}: ${overlap.join(", ")}`);
     }
@@ -1083,7 +1089,9 @@ export function recordStageResult(
     throw new Error(`Stage ${receipt.stageId} result names an unknown Task`);
   }
   const declaredPaths = [...new Set(addressedTasks.flatMap((task) => task?.writes ?? []))];
-  if (!equalSets(receipt.paths, declaredPaths)) throw new Error(`Stage ${receipt.stageId} result paths differ from addressed Task writes`);
+  // @invariant: the writes list is a contract the reader can check, not a
+  // fence: files the commit touched beyond it are named in the result row.
+  const beyondWrites = receipt.paths.filter((path) => !coveredByWrites(declaredPaths, path)).sort();
   const commitIsAncestor = options.commitIsAncestor ?? defaultCommitIsAncestor;
   if (!commitIsAncestor(receipt.commit)) throw new Error(`Stage result commit ${receipt.commit} is not ancestral to HEAD`);
   const commitPaths = options.commitPaths ?? defaultCommitPaths;
@@ -1106,9 +1114,12 @@ export function recordStageResult(
     changedBlock = changedBlock.replace(taskLine, `- [x] $1 — ${receipt.commit}`);
   }
   const usage = receipt.usage.kind === "credits" ? `${receipt.usage.credits} credits` : `unavailable: ${receipt.usage.reason}`;
+  const resultText = beyondWrites.length === 0
+    ? receipt.result
+    : `${receipt.result} — beyond writes: ${beyondWrites.join(", ")}`;
   const rows = receipt.taskIds.map((taskId) =>
     `| ${markdownCell(taskId)} | ${receipt.commit} | ${receipt.startedAt}–${receipt.endedAt} | ` +
-    `${receipt.activeMinutes} / ${receipt.elapsedMinutes} min | ${markdownCell(usage)} | ${markdownCell(receipt.result)} |`,
+    `${receipt.activeMinutes} / ${receipt.elapsedMinutes} min | ${markdownCell(usage)} | ${markdownCell(resultText)} |`,
   ).join("\n");
   const resultMarker = resultsEnd(receipt.stageId);
   changedBlock = changedBlock.replace(resultMarker, `${rows}\n${resultMarker}`);
@@ -1190,6 +1201,24 @@ export function recordDeviation(body: string, stageId: string, text: string): Mu
   if (!body.includes(stageStart(stageId))) throw new Error(`unknown Stage ${stageId}`);
   assertSafeInline(text, "deviation");
   return { body: appendExecution(body, `deviation ${stageId}: ${text}`) };
+}
+
+/** The owner's word on a Stage, as a journaled Execution-log line. A Stage
+ * criterion can require it through `stageApproved`, which reads only that
+ * line, so "the owner read this and said the word" is a machine check. */
+export function recordStageApproval(body: string, stageId: string, ownerWord: string): MutationResult {
+  requireState(body, "APPROVED");
+  if (!body.includes(stageStart(stageId))) throw new Error(`unknown Stage ${stageId}`);
+  assertNonEmpty(ownerWord, "owner word");
+  assertSafeInline(ownerWord, "owner word");
+  const date = new Date().toISOString().slice(0, 10);
+  return { body: appendExecution(body, `approve-stage ${stageId} owner:${ownerWord} — owner, ${date}`) };
+}
+
+export function stageApproved(body: string, stageId: string): boolean {
+  const execution = region(body, EXECUTION_START, EXECUTION_END).text;
+  const line = new RegExp(`^- approve-stage ${stageId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} owner:\\S`, "m");
+  return line.test(execution);
 }
 
 export function closePlanStage(
@@ -1522,7 +1551,7 @@ function requiredFlag(args: readonly string[], name: string): string {
 }
 
 function usage(): never {
-  console.error("usage: bun planctl/src/core/plan-update.ts <plan> <lock-spec|put-delivery|put-stage|remove-stage|drop|move|approve|record-result|close|deviate|amend|unattended-amend|verify-staged|clear-spent> [options]");
+  console.error("usage: bun planctl/src/core/plan-update.ts <plan> <lock-spec|put-delivery|put-stage|remove-stage|drop|move|approve|record-result|close|deviate|approve-stage|stage-approved|amend|unattended-amend|verify-staged|clear-spent> [options]");
   process.exit(64);
 }
 
@@ -1566,6 +1595,15 @@ if (import.meta.main && ["plan-update.ts", "plan-update.js"].includes(basename(i
       case "deviate":
         mutatePlanFile(plan, command, (body) => recordDeviation(body, requiredFlag(args, "--stage"), requiredFlag(args, "--reason")));
         break;
+      case "approve-stage":
+        mutatePlanFile(plan, command, (body) => recordStageApproval(body, requiredFlag(args, "--stage"), requiredFlag(args, "--owner-word")));
+        break;
+      case "stage-approved": {
+        const approved = stageApproved(readFileSync(plan, "utf8"), requiredFlag(args, "--stage"));
+        console.log(approved ? `Stage ${requiredFlag(args, "--stage")} approved by the owner` : `Stage ${requiredFlag(args, "--stage")} has no owner approval line`);
+        process.exitCode = approved ? 0 : 1;
+        break;
+      }
       case "amend": {
         const patch = patchFrom(readJson(requiredFlag(args, "--patch")));
         mutatePlanFile(plan, command, (body) => applyOwnerAmendment(body, requiredFlag(args, "--owner-word"), patch));
@@ -1586,7 +1624,7 @@ if (import.meta.main && ["plan-update.ts", "plan-update.js"].includes(basename(i
       default:
         usage();
     }
-    if (command !== "verify-staged" && command !== "clear-spent") {
+    if (command !== "verify-staged" && command !== "clear-spent" && command !== "stage-approved") {
       console.log(`plan-update: ${command} staged with a bound mutation journal`);
     }
   } catch (error) {
