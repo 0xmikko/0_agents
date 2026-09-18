@@ -1203,6 +1203,24 @@ export function recordDeviation(body: string, stageId: string, text: string): Mu
   return { body: appendExecution(body, `deviation ${stageId}: ${text}`) };
 }
 
+/** The owner's word on a Stage, as a journaled Execution-log line. A Stage
+ * criterion can require it through `stageApproved`, which reads only that
+ * line, so "the owner read this and said the word" is a machine check. */
+export function recordStageApproval(body: string, stageId: string, ownerWord: string): MutationResult {
+  requireState(body, "APPROVED");
+  if (!body.includes(stageStart(stageId))) throw new Error(`unknown Stage ${stageId}`);
+  assertNonEmpty(ownerWord, "owner word");
+  assertSafeInline(ownerWord, "owner word");
+  const date = new Date().toISOString().slice(0, 10);
+  return { body: appendExecution(body, `approve-stage ${stageId} owner:${ownerWord} — owner, ${date}`) };
+}
+
+export function stageApproved(body: string, stageId: string): boolean {
+  const execution = region(body, EXECUTION_START, EXECUTION_END).text;
+  const line = new RegExp(`^- approve-stage ${stageId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} owner:\\S`, "m");
+  return line.test(execution);
+}
+
 export function closePlanStage(
   body: string,
   stageId: string,
@@ -1533,7 +1551,7 @@ function requiredFlag(args: readonly string[], name: string): string {
 }
 
 function usage(): never {
-  console.error("usage: bun planctl/src/core/plan-update.ts <plan> <lock-spec|put-delivery|put-stage|remove-stage|drop|move|approve|record-result|close|deviate|amend|unattended-amend|verify-staged|clear-spent> [options]");
+  console.error("usage: bun planctl/src/core/plan-update.ts <plan> <lock-spec|put-delivery|put-stage|remove-stage|drop|move|approve|record-result|close|deviate|approve-stage|stage-approved|amend|unattended-amend|verify-staged|clear-spent> [options]");
   process.exit(64);
 }
 
@@ -1577,6 +1595,15 @@ if (import.meta.main && ["plan-update.ts", "plan-update.js"].includes(basename(i
       case "deviate":
         mutatePlanFile(plan, command, (body) => recordDeviation(body, requiredFlag(args, "--stage"), requiredFlag(args, "--reason")));
         break;
+      case "approve-stage":
+        mutatePlanFile(plan, command, (body) => recordStageApproval(body, requiredFlag(args, "--stage"), requiredFlag(args, "--owner-word")));
+        break;
+      case "stage-approved": {
+        const approved = stageApproved(readFileSync(plan, "utf8"), requiredFlag(args, "--stage"));
+        console.log(approved ? `Stage ${requiredFlag(args, "--stage")} approved by the owner` : `Stage ${requiredFlag(args, "--stage")} has no owner approval line`);
+        process.exitCode = approved ? 0 : 1;
+        break;
+      }
       case "amend": {
         const patch = patchFrom(readJson(requiredFlag(args, "--patch")));
         mutatePlanFile(plan, command, (body) => applyOwnerAmendment(body, requiredFlag(args, "--owner-word"), patch));
@@ -1597,7 +1624,7 @@ if (import.meta.main && ["plan-update.ts", "plan-update.js"].includes(basename(i
       default:
         usage();
     }
-    if (command !== "verify-staged" && command !== "clear-spent") {
+    if (command !== "verify-staged" && command !== "clear-spent" && command !== "stage-approved") {
       console.log(`plan-update: ${command} staged with a bound mutation journal`);
     }
   } catch (error) {

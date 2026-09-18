@@ -56,6 +56,8 @@ Execution:
   resume-task        Clear a structured owner-response wait
   complete-task      Import a validated Stage result and close its Task(s)
   add-deviation      Append one scoped execution deviation
+  approve-stage      Journal the owner's word on one Stage
+  stage-approved     Exit 0 only if the owner's word on that Stage is journaled
   close-stage        Prove and close a Stage's acceptance criteria
   amend              Apply an explicit owner amendment
 
@@ -221,6 +223,16 @@ Copy this stage-result.json shape after the work commit:
 
 Appends a scoped deviation without changing approved Task meaning.
 `,
+  "approve-stage": `Usage: planctl approve-stage <plan.md> --stage <D1-S1> --owner-word <word>
+
+Appends the owner's word on that Stage to the Execution log. Run it only with
+the owner's actual word, after the owner read what the Stage produced.
+`,
+  "stage-approved": `Usage: planctl stage-approved <plan.md> --stage <D1-S1>
+
+Exits 0 when the Execution log carries an approve-stage line for that Stage,
+1 otherwise. A Stage criterion can require it: \`planctl stage-approved <plan> --stage <id>\` exits 0.
+`,
   "close-stage": `Usage: planctl close-stage <plan.md> --stage <D1-S1>
 
 Re-runs machinable criteria and closes only those proven on the current HEAD.
@@ -266,6 +278,8 @@ const ENGINE_COMMANDS: Readonly<Record<string, string>> = {
   "approve-plan": "approve",
   "complete-task": "record-result",
   "add-deviation": "deviate",
+  "approve-stage": "approve-stage",
+  "stage-approved": "stage-approved",
   "close-stage": "close",
   amend: "amend",
   "verify-staged": "verify-staged",

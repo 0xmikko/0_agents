@@ -11,7 +11,9 @@ import {
   lockPlanSpec,
   putDelivery,
   putStage,
+  recordStageApproval,
   recordStageResult,
+  stageApproved,
   stageInputs,
   stageResultCommitPaths,
   type DeliveryInput,
@@ -485,6 +487,28 @@ describe("free tier: writes are the contract, not a fence", () => {
     expect(rendered).toContain("- [ ] D1-S1-T1 — produce one observable D1-S1 behavior in scripts/base.ts\n");
     expect(rendered).not.toContain("(0 min)");
     expect(stageInputs(rendered).find((entry) => entry.id === "D1-S1")?.predictedActiveMinutes).toBe(0);
+  });
+});
+
+describe("the owner's word on a Stage", () => {
+  // @test-id: tst_scripts_planupdate_019
+  // @covers: planctl/src/core/plan-update.ts::recordStageApproval, stageApproved
+  // @deterministic: yes
+  // @invariant: a Stage is approved by the owner only through a journaled
+  // line that carries the owner's word; the check reads that line and nothing
+  // else, so a criterion can require it.
+  it("tst_scripts_planupdate_019 approve-stage journals the owner's word and stage-approved reads only that", () => {
+    const body = approvedWithStages();
+    expect(stageApproved(body, "D1-S1")).toBe(false);
+    const approved = recordStageApproval(body, "D1-S1", "да").body;
+    expect(approved).toContain("approve-stage D1-S1 owner:да");
+    expect(stageApproved(approved, "D1-S1")).toBe(true);
+    expect(stageApproved(approved, "D1-S2")).toBe(false);
+    expect(() => recordStageApproval(body, "D1-S9", "да")).toThrow(/unknown Stage/);
+    expect(() => recordStageApproval(body, "D1-S1", "")).toThrow(/owner word/);
+    // an unjournaled mention elsewhere in the plan is not an approval
+    const forged = body.replace("## Execution log", "## Execution log\n\nThe owner said approve-stage D1-S2 owner:да in chat.");
+    expect(stageApproved(forged, "D1-S2")).toBe(false);
   });
 });
 
