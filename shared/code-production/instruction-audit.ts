@@ -9,7 +9,7 @@
  *
  *   bun shared/code-production/instruction-audit.ts [root]
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export interface Finding {
@@ -166,12 +166,23 @@ function everySkill(root: string): string[] {
     .map((name) => `shared/skills/${name}/SKILL.md`);
 }
 
+/** Two paths that resolve to one file (a symbolic link) are one home. */
+function distinctFiles(root: string, files: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return files.filter((file) => {
+    const real = realpathSync(join(root, file));
+    if (seen.has(real)) return false;
+    seen.add(real);
+    return true;
+  });
+}
+
 export function audit(root: string): Finding[] {
-  const counted = THE_SET.filter((file) => existsSync(join(root, file)));
-  const judged = [...new Set([...counted, ...everySkill(root)])];
+  const counted = distinctFiles(root, THE_SET.filter((file) => existsSync(join(root, file))));
+  const judged = distinctFiles(root, [...new Set([...counted, ...everySkill(root)])]);
   const all = judged.flatMap((file) => lines(root, file));
   const countedLines = counted.flatMap((file) => lines(root, file));
-  const skills = ["blueprint", "blueprint-start", "end-work", "bug", "review-implementation", "cleanup-worktrees", "mdurl", "dictate", "nvim"]
+  const skills = ["blueprint", "blueprint-start", "end-work", "bug", "rename", "review-implementation", "cleanup-worktrees", "mdurl", "dictate", "nvim"]
     .filter((name) => existsSync(join(root, "shared/skills", name)) || existsSync(join(root, "claude/skills", name)));
   return [
     ...size(countedLines),

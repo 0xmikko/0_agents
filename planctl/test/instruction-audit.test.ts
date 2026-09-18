@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -149,5 +149,31 @@ describe("instruction audit", () => {
     } finally {
       rmSync(utility, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the global screen", () => {
+  const root = join(import.meta.dir, "../..");
+  // @test-id: tst_audit_screen_001
+  // @covers: claude/CLAUDE.md, codex/AGENTS.md
+  // @deterministic: yes
+  // @invariant: the always-on screen is one short page, byte-identical for
+  // Claude and Codex, with exactly one IMPORTANT line and the numbered
+  // mistakes list, naming no skill but the two modes and no banned word.
+  it("tst_audit_screen_001 one page, identical for Claude and Codex, one IMPORTANT, the mistakes list, no dead skill", () => {
+    const claude = readFileSync(join(root, "claude/CLAUDE.md"), "utf8");
+    const codex = readFileSync(join(root, "codex/AGENTS.md"), "utf8");
+    expect(codex).toBe(claude);
+    const lines = claude.split("\n").filter((line) => line.trim() !== "");
+    expect(lines.length).toBeLessThanOrEqual(30);
+    expect(claude.match(/IMPORTANT/g)?.length).toBe(1);
+    expect(claude).toMatch(/Mistakes this model keeps making/);
+    expect(claude.match(/^- /gm)?.length).toBe(5);
+    for (const skill of ["/start-work", "/end-work", "/test-protocol", "/fix-ci-cd", "/execute", "/finish-plan"]) {
+      expect(claude).not.toContain(skill);
+    }
+    expect(claude).toContain("/blueprint");
+    expect(claude).toContain("/blueprint-start");
+    expect(audit(root).filter((finding) => finding.file === "claude/CLAUDE.md")).toEqual([]);
   });
 });
