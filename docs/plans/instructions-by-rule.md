@@ -33,10 +33,10 @@ Today: 85 lines that repeat the skills, and a Codex file of 21 lines with none o
 Where you are and what you can do now is printed at session start by planctl. If it is
 missing, run `bun .agents/code-production/runtime/planctl.ts focus` before anything else.
 
-IMPORTANT: the vocabulary does not grow. Every entity, field, status and command has one
-name, the one the code and the SDK already use. Before writing a name, find it. A name
-that exists nowhere is declared in the plan's table "new names: why the existing one is
-not enough" or it does not appear. No synonyms, no task codes, no `file.ts:123` in prose.
+IMPORTANT: little code that is understood and explained beats much code. One name per
+thing, the name the repository already uses: find it before you write one. A word that
+exists nowhere in the repository is declared with its reason or does not appear. No
+synonyms, no task codes, no `file.ts:123` in prose.
 
 DRY and SOLID, here: one mechanism per job, extend it, never copy it; one class per file,
 one reason to change; depend on interfaces the caller owns; a function does one thing and
@@ -90,7 +90,7 @@ Today: 323 lines globally and three Magnis-specialised copies, all carrying Rust
 
 Today: about 3 400 lines; thirteen skills are from the cargo era and contradict the process (full suite per Stage, rebase and force-push, "proceed without an approved plan", a fourth plan format, Cyrus dispatch). Done: nine stay, `blueprint`, `blueprint-start`, `end-work`, `bug`, `review-implementation`, `cleanup-worktrees`, `mdurl`, `dictate`, `nvim`, each of the four process skills under 60 lines; sixteen go: `start-work`, `test-protocol`, `completion-note`, `verify-app`, `verify-frontend`, `fast-precommit`, `fix-ci-cd`, `quick-fix`, `plan`, `review-plan`, `execute`, `finish-plan`, `git`, `dispatch-to-linear`, `execute-from-linear`, `launch-e2e`. The owner's business skills are untouched. What the four process skills say:
 
-`blueprint`: the plan is born in its own worktree from fresh `origin/staging`, with the list of open PRs into staging touching its files; the SPEC has a fixed skeleton (below); names come from the project's vocabulary page or its SDK, a new one is declared in a table and the pre-approval screen prints the count; every new or changed type is TypeScript, hand-written interfaces one field per line, zod decoding into them, never a sentence or "as in the SDK"; the Goal is the owner's currencies with today's number and the target, never "measure X"; sizes are counted, SPEC ≤ 250 lines, Delivery ≤ 8 Stages, Stage ≤ 40 lines reading as its commit message, Task ≤ 200 characters, more work is the next Delivery; no minutes, no credits; review only on the owner's word, at most three rounds, fixing only what the plan cannot run without; the linter and the judge have passed before the owner is asked.
+`blueprint`: the plan is born in its own worktree from fresh `origin/staging`, with the list of open PRs into staging touching its files; the SPEC has a fixed skeleton (below); names come from the repository, or from the project's vocabulary page where one exists; a new one is declared in a table with its reason and the pre-approval screen prints the count; every new or changed type is TypeScript, hand-written interfaces one field per line, zod decoding into them, never a sentence or "as in the SDK"; the Goal is the owner's currencies with today's number and the target, never "measure X"; sizes are counted, SPEC ≤ 250 lines, Delivery ≤ 8 Stages, Stage ≤ 40 lines reading as its commit message, Task ≤ 200 characters, more work is the next Delivery; no minutes, no credits; review only on the owner's word, at most three rounds, fixing only what the plan cannot run without; the linter and the judge have passed before the owner is asked.
 
 `blueprint-start`: start and before the gate, merge `origin/staging`, install root and backend, build the SDK, dry-run the compiler, grep raw SQL for renamed columns, `uniq -d` migration numbers, re-pin docs in the same commit that moves an anchor; the browser lane once at the start for its baseline; per Stage `start-task`, red, green, the Stage's one to three files, the three reviewers on the diff, one commit, `complete-task`, next Stage; the three tiers (below); the complete gate once through the pre-push hook, a push when someone needs the new state, the agent flips ready, the owner merges.
 
