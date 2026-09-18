@@ -21,38 +21,47 @@ Code quality has no stage of its own. It is what execution produces when the fou
 
 ## What it becomes
 
-### The screen every agent reads first
+### The screen every agent reads first, and the line the machine prints
 
-What belongs on an always-on screen is settled: commands the model cannot guess, style that differs from defaults, repository etiquette, environment quirks, and the mistakes this model keeps making here; not what it can read from the code, not explanations. A rule that must hold every time goes to a hook; knowledge needed only sometimes goes to a skill; for every remaining line the test is "would removing it cause a mistake?" ([Anthropic, Claude Code best practices](https://code.claude.com/docs/en/best-practices); Boris Cherny, YC Startup School, July 2026: delete everything, then bring back one instruction at a time when the model actually struggles).
+What belongs on an always-on screen is settled: what the model cannot infer from the code and what it keeps getting wrong here; not the process, which the owner invokes by name, and not what a hook enforces anyway ([Anthropic, Claude Code best practices](https://code.claude.com/docs/en/best-practices); Boris Cherny, YC Startup School, July 2026: delete everything, bring back one instruction at a time when the model actually struggles).
 
-Today the global entry is 85 lines that repeat the skills, and the Codex entry has none of it. Both become this one screen. There are two modes and nothing else: planning with `/blueprint`, working by an approved plan with `/blueprint-start`. `/end-work` is not on the screen because the owner invokes it after a merge. The git rules that hooks already enforce are not on the screen either; the hook is the rule.
+The process is not on the screen because the screen cannot know where the agent is. What the agent needs at the start of a session is its position and its options: which plan, which Stage, which Task is started, what it may do next and what it may do without the owner. That is state, and a machine prints it. Claude Code adds a hook's stdout to the model's context at session start, after a resume and after a compaction, and on every prompt ([hooks reference](https://code.claude.com/docs/en/hooks)). planctl already has `focus`. So the managed `.claude/settings.json` gets one hook: at `SessionStart` (startup, resume, compact) it runs `planctl focus --brief` and prints about ten lines; at `UserPromptSubmit` it prints one line. A session without a plan on its branch gets one line too: "no plan here; planning is /blueprint, a small fix is a commit and a PR".
+
+```text
+Plan docs/plans/unified-launch.md — APPROVED, implementation locked.
+You are in Stage D1-S6 "package.json is the whole launch surface", Task UL_011 started 21:44Z.
+Done: S1–S5. Waiting on you: S7, S8 (they depend on S6).
+Now you can:
+  RED for UL_011:   bun run agent:test:backend -- ../scripts/tests/launch-surface.test.ts
+  after the commit: planctl complete-task docs/plans/unified-launch.md --from stage-result.json
+  a shortfall:      planctl add-deviation … --stage D1-S6 --reason "…"   (record it, do not stop)
+  commands green:   planctl close-stage … --stage D1-S6
+Without the owner: add a test, add a file the compiler names, touch one more file in this commit.
+Owner's word only: the goal, the target tree, the meaning of a criterion.
+```
+
+In a `SPEC_DRAFT` plan the brief says "you are planning; the SPEC is yours to edit; next: `set-spec`, then `lock-spec` on the owner's word; the judge runs before the owner sees it". The brief is generated from the plan's own state, so it is never stale, and the same lines return after a compaction, which is where sessions lose their place today.
+
+With the process printed by the machine, the screen holds only what the model gets wrong. This is the new `claude/CLAUDE.md`:
 
 ```markdown
 # Working here
 
-Two modes. Planning: `/blueprint` writes `docs/plans/<slug>.md` in its own worktree and
-the owner approves twice, the SPEC and then the Stages. Working by an approved plan:
-`/blueprint-start`. There is no third mode.
+Where you are and what you can do now is printed at session start by planctl. If it is
+missing, run `bun .agents/code-production/runtime/planctl.ts focus` before anything else.
 
 IMPORTANT: the vocabulary does not grow. Every entity, field, status and command has one
 name, the one the code and the SDK already use. Before writing a name, find it. A name
 that exists nowhere is declared in the plan's table "new names: why the existing one is
 not enough" or it does not appear. No synonyms, no task codes, no `file.ts:123` in prose.
 
-Code is DRY and SOLID, and here that means: one mechanism per job, extend it, never copy
-it; one class per file, one reason to change; depend on interfaces the caller owns; a
-function does one thing and is named for it. A second copy of anything is a defect, and
-the reviewers reject it.
+DRY and SOLID, here: one mechanism per job, extend it, never copy it; one class per file,
+one reason to change; depend on interfaces the caller owns; a function does one thing and
+is named for it. A second copy of anything is a defect and the reviewers reject it.
 
-The plan belongs to planctl after the first lock: `init`, `set-spec`, `lock-spec`,
-`put-stage`, `approve-plan`, `start-task`, `complete-task`, `close-stage`,
-`add-deviation`; `amend` only with the owner's word. Never edit a locked plan by hand;
-the pre-commit hook refuses it. In a consumer repository planctl is
-`bun .agents/code-production/runtime/planctl.ts`, nothing else.
-
-Verify only with the project's `agent:*` scripts: `bun run agent:test:<lane> -- <file>`
-in the loop, the Stage's one to three files before its commit, the full gate once per
-Delivery through the pre-push hook. Never compose framework commands.
+Not more engineering than the test needs. No abstraction, generic, interface, option or
+new file for a case that does not exist yet: two users or none. The simplest change that
+makes the red test green, then stop.
 
 Mistakes this model keeps making here, so do not:
 - Claims from structure. Check the artifact: run it, open it, `git show origin/staging:<path>`.
@@ -60,13 +69,14 @@ Mistakes this model keeps making here, so do not:
 - Tests green from birth. Red first; prove a green-from-birth test by mutating the source.
 - Stopping at a tool refusal. Record one line and continue; a stop ends with "waiting for: X".
 
+Verify only with the project's `agent:*` scripts; never compose framework commands.
 Language guide by file: `.ts`/`.tsx` → typescript.md, `.rs` → rust.md.
 Never edit workflows, infrastructure, `.claude/`, secrets, CLAUDE.md or AGENTS.md unless
 the task names the file. Never kill or reuse a process you did not start.
 The owner is on a Claude subscription: no API key, ever.
 ```
 
-`codex/AGENTS.md` is the same screen with `~/.codex/lang/` paths. That is the whole always-on set: about 35 lines, under 800 tokens. One line carries IMPORTANT, the vocabulary, because it is the most frequent correction (81 in four weeks) and the guidance is to emphasize one line, not ten.
+`codex/AGENTS.md` is the same screen with `~/.codex/lang/` paths (Codex gets the brief from the same command, run by its own session hook). Under 30 lines, under 700 tokens; one line carries IMPORTANT, the vocabulary, because it is the most frequent correction (81 in four weeks) and the guidance is to emphasize one line, not ten.
 
 ### Planning
 
@@ -88,7 +98,7 @@ Review of a plan runs only on the owner's word, at most three rounds, and fixes 
 
 Today the agent stops at machine refusals and asks the owner: a commit touched one file beyond the writes, a Task had five writes, a docs anchor moved, a Stage depended on an open Stage. The owner answers "да" 25 times and "продолжай" 12 times, and 60 % of the Deviations log is bookkeeping.
 
-It changes to three tiers, written in the process law. Free, the agent just does it and planctl records the difference in the result row: add a test, add a file the compiler names, touch a file beyond the writes in the same commit, close a Stage whose commands are green. Recorded, one Deviations line and on: a new file outside the target tree, a deleted test, a criterion that became unreachable. The owner's word, and only here: the goal and its measure, removing a promised file from the tree, the meaning of an acceptance criterion, scope beyond the Delivery. PR #12 already makes planctl behave this way.
+It changes to two things. First, the machine tells the agent where it is: the session-start hook prints the brief above, so no session begins by re-reading the plan and no session loses its place after a compaction; the owner never explains again which Stage is open. Second, three tiers, written in the process law and printed in the brief. Free, the agent just does it and planctl records the difference in the result row: add a test, add a file the compiler names, touch a file beyond the writes in the same commit, close a Stage whose commands are green. Recorded, one Deviations line and on: a new file outside the target tree, a deleted test, a criterion that became unreachable. The owner's word, and only here: the goal and its measure, removing a promised file from the tree, the meaning of an acceptance criterion, scope beyond the Delivery. PR #12 already makes planctl behave this way.
 
 A box in a plan is a command with its exit code or the Commit box, nothing else. What a machine cannot check is not a box; it goes to the "not verified" list the owner sees before approval. So no plan ends with 24 boxes nobody can tick.
 
@@ -106,7 +116,7 @@ It changes to this. The retro reports the three numbers above for the Delivery: 
 
 ### The files
 
-What stays in 0_agents: `claude/CLAUDE.md` and `codex/AGENTS.md` (the screen above); `shared/lang/typescript.md` and `rust.md`, style only; two laws, `development-process.md` (lifecycle, sizes, cadence, the three tiers, git, verification once, unattended, handoff, the retro register) and `plan-format.md` (the skeleton, one template, what approval freezes, the linter's rules); the `agent:*` package contract; four process skills, `blueprint`, `blueprint-start`, `end-work`, `bug`; the utilities `cleanup-worktrees`, `mdurl`, `dictate`, `nvim` and the review driver `review-implementation`; the three cops; the owner's business skills untouched. New: `instruction-audit.ts` (the audit) and `plan-judge.md` with `plan-judge.ts` (the rubric and the call).
+What stays in 0_agents: `claude/CLAUDE.md` and `codex/AGENTS.md` (the screen above); `shared/lang/typescript.md` and `rust.md`, style only; two laws, `development-process.md` (lifecycle, sizes, cadence, the three tiers, git, verification once, unattended, handoff, the retro register) and `plan-format.md` (the skeleton, one template, what approval freezes, the linter's rules); the `agent:*` package contract; four process skills, `blueprint`, `blueprint-start`, `end-work`, `bug`; the utilities `cleanup-worktrees`, `mdurl`, `dictate`, `nvim` and the review driver `review-implementation`; the three cops; the owner's business skills untouched. New: `instruction-audit.ts` (the audit), `plan-judge.md` with `plan-judge.ts` (the rubric and the call), `planctl focus --brief` and the managed hook template that runs it at session start and on each prompt.
 
 What goes: skills `start-work`, `test-protocol`, `completion-note`, `verify-app`, `verify-frontend`, `fast-precommit`, `fix-ci-cd`, `quick-fix`, `plan`, `review-plan`, `execute`, `finish-plan`, `git`, `dispatch-to-linear`, `execute-from-linear`, `launch-e2e`; laws `plan-protocol.md` and `git-workflow.md`. Every rule of theirs that survives is in the paragraphs above.
 
@@ -124,6 +134,7 @@ What already works and stays: the push hook, the draft-without-matrix rule, the 
 - `no-jargon`: the instruction files contain none of the banned words (lane, receipt as a noun for a test result, stand, farm, envelope, ceremony, doctrine, census, plane, currency).
 - `language-by-file`: a language guide is named only in a rule that routes by file extension.
 - `free-tier`: a Task with five writes, a story naming none of them and a commit touching one more file is accepted and recorded (PR #12).
+- `focus-at-start`: a session opened in a worktree with a plan gets the brief from the SessionStart hook, on startup, resume and after a compaction; `planctl focus --brief` prints the plan, the open Stage, the started Task, the next commands and the tiers in at most twelve lines, in under two seconds.
 - `three-tiers-stated`: the process law names the three tiers and the owner's word appears only in the third.
 - `boxes-are-commands`: plan-gate refuses a plan whose acceptance box is neither `` `cmd` exits N `` nor `Commit`.
 - `strict-skeleton`: plan-gate refuses a plan missing a block of the skeleton.
