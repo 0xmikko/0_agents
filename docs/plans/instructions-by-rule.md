@@ -277,7 +277,7 @@ Commit. docs(claude): the always-on screen holds only what the model cannot infe
 
 ##### Tasks
 
-- [ ] IBR_002 — Rewrite claude/CLAUDE.md and codex/AGENTS.md as the one screen from the SPEC; the screen test in instruction-audit.test.ts pins its shape.
+- [x] IBR_002 — Rewrite claude/CLAUDE.md and codex/AGENTS.md as the one screen from the SPEC; the screen test in instruction-audit.test.ts pins its shape. — 63fcca9532d5f021825d592ae3318c64ba8ee24b
 <!-- plan:task-meta:{"writes":["claude/CLAUDE.md","codex/AGENTS.md","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"copy the SPEC's screen; Codex variant swaps the lang paths; test asserts line count, one IMPORTANT, same mistakes list in both, no banned words","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_screen"} -->
 
 ##### Acceptance criteria
@@ -291,6 +291,7 @@ Commit. docs(claude): the always-on screen holds only what the model cannot infe
 <!-- plan:results:D1-S2:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| IBR_002 | 63fcca9532d5f021825d592ae3318c64ba8ee24b | 2026-09-18T18:53:19.353Z–2026-09-18T18:55:32.407Z | 2.22 / 2.22 min | unavailable: runner does not expose usage | The screen is 30 non-empty lines, byte-identical for Claude and Codex through a symbolic link, one IMPORTANT, five mistakes, names only /blueprint, /blueprint-start and /rename; the audit is clean on it. — beyond writes: claude/skills/rename, codex/skills/rename, shared/code-production/instruction-audit.ts, shared/skills/rename/SKILL.md |
 <!-- plan:results:D1-S2:end -->
 <!-- plan:stage:D1-S2:end -->
 
@@ -610,4 +611,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - approve-stage D1-S1 owner:давай оставшееся — owner, 2026-09-18
 
 - close D1-S1 closed commit:21fb6f892f20d5f1c4bc0899b3f5aa775482d642
+
+- record-result D1-S2 commit:63fcca9532d5f021825d592ae3318c64ba8ee24b
 <!-- plan:execution:end -->
