@@ -613,4 +613,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - close D1-S1 closed commit:21fb6f892f20d5f1c4bc0899b3f5aa775482d642
 
 - record-result D1-S2 commit:63fcca9532d5f021825d592ae3318c64ba8ee24b
+
+- deviation D1-S1: correction: the approve-stage line for D1-S1 carrying the word «давай оставшееся» was written on a misread — the owner meant «go on to the next of the five points», not approval of the Stage. The Stage counts as not yet approved by the owner; the owner's explicit word on the audit's five decisions is still awaited. The close-stage that followed rests on that line and is withdrawn in meaning by this one.
 <!-- plan:execution:end -->
