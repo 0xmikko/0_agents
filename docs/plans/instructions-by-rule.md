@@ -19,30 +19,13 @@ Retro. The number is process changes a retro produces. Today: nine experiments s
 
 Code quality has no stage of its own. It is what execution produces when the four code rules are always on and the three reviewers read the same law the author did. It shows as defects found at integration (seven in one Delivery today) and second copies of a mechanism merged (six plans today), both going to zero.
 
-## What it becomes
+## What is done, resource by resource
 
-### The screen every agent reads first, and the line the machine prints
+Measured on 0_agents `7cbc4a5` and magnis-app `dc396a3ee` (2026-09-17). Sixteen resources feed an agent today: about 6 100 lines of instructions, 16 000 lines of live documentation, 76 000 lines of plans and research. Each heading below is one resource: what is there, what is done with it, and in which plan.
 
-What belongs on an always-on screen is settled: what the model cannot infer from the code and what it keeps getting wrong here; not the process, which the owner invokes by name, and not what a hook enforces anyway ([Anthropic, Claude Code best practices](https://code.claude.com/docs/en/best-practices); Boris Cherny, YC Startup School, July 2026: delete everything, bring back one instruction at a time when the model actually struggles).
+### The global screen: `claude/CLAUDE.md` and `codex/AGENTS.md` (0_agents)
 
-The process is not on the screen because the screen cannot know where the agent is. What the agent needs at the start of a session is its position and its options: which plan, which Stage, which Task is started, what it may do next and what it may do without the owner. That is state, and a machine prints it. Claude Code adds a hook's stdout to the model's context at session start, after a resume and after a compaction, and on every prompt ([hooks reference](https://code.claude.com/docs/en/hooks)). planctl already has `focus`. So the managed `.claude/settings.json` gets one hook: at `SessionStart` (startup, resume, compact) it runs `planctl focus --brief` and prints about ten lines; at `UserPromptSubmit` it prints one line. A session without a plan on its branch gets one line too: "no plan here; planning is /blueprint, a small fix is a commit and a PR".
-
-```text
-Plan docs/plans/unified-launch.md — APPROVED, implementation locked.
-You are in Stage D1-S6 "package.json is the whole launch surface", Task UL_011 started 21:44Z.
-Done: S1–S5. Waiting on you: S7, S8 (they depend on S6).
-Now you can:
-  RED for UL_011:   bun run agent:test:backend -- ../scripts/tests/launch-surface.test.ts
-  after the commit: planctl complete-task docs/plans/unified-launch.md --from stage-result.json
-  a shortfall:      planctl add-deviation … --stage D1-S6 --reason "…"   (record it, do not stop)
-  commands green:   planctl close-stage … --stage D1-S6
-Without the owner: add a test, add a file the compiler names, touch one more file in this commit.
-Owner's word only: the goal, the target tree, the meaning of a criterion.
-```
-
-In a `SPEC_DRAFT` plan the brief says "you are planning; the SPEC is yours to edit; next: `set-spec`, then `lock-spec` on the owner's word; the judge runs before the owner sees it". The brief is generated from the plan's own state, so it is never stale, and the same lines return after a compaction, which is where sessions lose their place today.
-
-With the process printed by the machine, the screen holds only what the model gets wrong. This is the new `claude/CLAUDE.md`:
+Today: 85 lines that repeat the skills, and a Codex file of 21 lines with none of the rules. Done: both become one screen of under 30 lines holding only what the model cannot infer and keeps getting wrong. Anthropic's guidance and Boris Cherny's (delete everything, bring back one instruction at a time when the model actually struggles; a rule that must hold goes to a hook, knowledge needed sometimes goes to a skill; emphasize one line, not ten). The process is not on it, because the machine prints the agent's position (next heading). The screen:
 
 ```markdown
 # Working here
@@ -76,55 +59,98 @@ the task names the file. Never kill or reuse a process you did not start.
 The owner is on a Claude subscription: no API key, ever.
 ```
 
-`codex/AGENTS.md` is the same screen with `~/.codex/lang/` paths (Codex gets the brief from the same command, run by its own session hook). Under 30 lines, under 700 tokens; one line carries IMPORTANT, the vocabulary, because it is the most frequent correction (81 in four weeks) and the guidance is to emphasize one line, not ten.
+### The session brief: `planctl focus --brief` and the managed hook
 
-### Planning
+Today: an agent starts a session, re-reads the plan, loses its place after a compaction, and the owner explains which Stage is open. Done: Claude Code adds a hook's stdout to the model's context at session start, after a resume, after a compaction and on every prompt ([hooks reference](https://code.claude.com/docs/en/hooks)). `planctl focus` exists; it gets `--brief`, and the managed `.claude/settings.json` runs it at `SessionStart` (startup, resume, compact) and prints one line at `UserPromptSubmit`. About ten lines, generated from the plan's own state, never stale:
 
-Today a plan is written against four laws and three skills that disagree on the Task format, teach a "good goal" that is a measurement, require minutes and credits nobody measures, and check nothing about how the text reads. The owner reads 3 000-line plans and corrects form 151 times a month.
+```text
+Plan docs/plans/unified-launch.md — APPROVED, implementation locked.
+You are in Stage D1-S6 "package.json is the whole launch surface", Task UL_011 started 21:44Z.
+Done: S1–S5. Waiting on you: S7, S8 (they depend on S6).
+Now you can:
+  RED for UL_011:   bun run agent:test:backend -- ../scripts/tests/launch-surface.test.ts
+  after the commit: planctl complete-task docs/plans/unified-launch.md --from stage-result.json
+  a shortfall:      planctl add-deviation … --stage D1-S6 --reason "…"   (record it, do not stop)
+  commands green:   planctl close-stage … --stage D1-S6
+Without the owner: add a test, add a file the compiler names, touch one more file in this commit.
+Owner's word only: the goal, the target tree, the meaning of a criterion.
+```
 
-It changes to this. The plan has one fixed skeleton, and a linter refuses a plan that breaks it before anyone reads it: the Goal as the owner's currencies with today's number and the target; the target file tree; every new or changed type as TypeScript, hand-written interfaces one field per line, zod decoding into them, never a sentence or "as in the SDK"; a table of new names with the reason the existing one is not enough; the list of what is not verified and why. The linter also parses every mermaid block, refuses banned words, task codes and `file.ts:123` in prose, sentences over thirty words, and any minutes or credits.
+A `SPEC_DRAFT` plan gets "you are planning; the SPEC is yours to edit; next `set-spec`, then `lock-spec` on the owner's word; the judge runs before the owner sees it". A branch without a plan gets one line: "no plan here; planning is /blueprint, a small fix is a commit and a PR". Codex runs the same command from its own session hook.
 
-Sizes are counted, not hoped for: a SPEC is at most 250 lines, a Delivery at most eight Stages, a Stage description at most forty lines and reads as its future commit message, a Task story at most 200 characters. More work is the next Delivery, never a bigger plan. A Task's writes are files, directories or globs, as many as the change needs, and the story does not repeat them.
+### The language guides: `shared/lang/typescript.md`, `rust.md` (0_agents)
 
-The names in a plan come from the project's vocabulary: a page that says what the project is, its key ideas, the names of its entities anchored to the SDK, and how things are written, dates, ids, spelling on the wire. Magnis gets that page in the next plan. A plan may use those names or declare a new one in the table; the pre-approval screen prints how many it declared.
+Today: 179 lines, loaded by "the language of the task", so a TypeScript task reads the Rust guide. Done: kept for the other repositories that need them, trimmed to style, loaded only for files of that language, `.ts`/`.tsx` and `.rs`.
 
-Before the SPEC is locked, the agent merges fresh `origin/staging` and lists the open PRs into staging that touch the SPEC's files, so a Stage is not built on a mechanism staging already has.
+### The three reviewers: `claude/agents/*-cop.md` (0_agents) and the Magnis copies
 
-Before the owner is asked "Утверждаешь?", a cheap judge reads the plan: a fixed rubric of the questions a linter cannot answer, is the Goal a goal or a problem, does each Stage read as a commit, are the names existing ones, is the prose plain, answered by a small model through `claude -p --model haiku` on the owner's subscription, with a quote from the plan for every answer. Today that call takes 1.4 seconds. The verdict is stored by the SPEC's hash, so the same bytes are never judged twice; `lock-spec` refuses without a PASS, and an unavailable judge refuses the lock rather than skipping it. It is a gate, not a review round.
+Today: 323 lines globally and three Magnis-specialised copies, all carrying Rust and cargo sections for TypeScript code. Done: three reviewers stay, one metric each, coherence (reuse and layers), coverage (tests and edge cases), simplicity (no speculative abstraction, no file bloat), verdict REJECT by default, each under 80 lines with Rust removed. Codex is called only when asked or for diffs over 200 lines, at most two rounds; a real correctness finding at the cap is fixed, style is dropped. The Magnis copies stay project-level and are trimmed in the Magnis plan.
 
-Review of a plan runs only on the owner's word, at most three rounds, and fixes only what the plan cannot run without; the rest is listed as declined.
+### The skills (0_agents): 16 shared, 9 personal
 
-### Execution
+Today: about 3 400 lines; thirteen skills are from the cargo era and contradict the process (full suite per Stage, rebase and force-push, "proceed without an approved plan", a fourth plan format, Cyrus dispatch). Done: nine stay, `blueprint`, `blueprint-start`, `end-work`, `bug`, `review-implementation`, `cleanup-worktrees`, `mdurl`, `dictate`, `nvim`, each of the four process skills under 60 lines; sixteen go: `start-work`, `test-protocol`, `completion-note`, `verify-app`, `verify-frontend`, `fast-precommit`, `fix-ci-cd`, `quick-fix`, `plan`, `review-plan`, `execute`, `finish-plan`, `git`, `dispatch-to-linear`, `execute-from-linear`, `launch-e2e`. The owner's business skills are untouched. What the four process skills say:
 
-Today the agent stops at machine refusals and asks the owner: a commit touched one file beyond the writes, a Task had five writes, a docs anchor moved, a Stage depended on an open Stage. The owner answers "да" 25 times and "продолжай" 12 times, and 60 % of the Deviations log is bookkeeping.
+`blueprint`: the plan is born in its own worktree from fresh `origin/staging`, with the list of open PRs into staging touching its files; the SPEC has a fixed skeleton (below); names come from the project's vocabulary page or its SDK, a new one is declared in a table and the pre-approval screen prints the count; every new or changed type is TypeScript, hand-written interfaces one field per line, zod decoding into them, never a sentence or "as in the SDK"; the Goal is the owner's currencies with today's number and the target, never "measure X"; sizes are counted, SPEC ≤ 250 lines, Delivery ≤ 8 Stages, Stage ≤ 40 lines reading as its commit message, Task ≤ 200 characters, more work is the next Delivery; no minutes, no credits; review only on the owner's word, at most three rounds, fixing only what the plan cannot run without; the linter and the judge have passed before the owner is asked.
 
-It changes to two things. First, the machine tells the agent where it is: the session-start hook prints the brief above, so no session begins by re-reading the plan and no session loses its place after a compaction; the owner never explains again which Stage is open. Second, three tiers, written in the process law and printed in the brief. Free, the agent just does it and planctl records the difference in the result row: add a test, add a file the compiler names, touch a file beyond the writes in the same commit, close a Stage whose commands are green. Recorded, one Deviations line and on: a new file outside the target tree, a deleted test, a criterion that became unreachable. The owner's word, and only here: the goal and its measure, removing a promised file from the tree, the meaning of an acceptance criterion, scope beyond the Delivery. PR #12 already makes planctl behave this way.
+`blueprint-start`: start and before the gate, merge `origin/staging`, install root and backend, build the SDK, dry-run the compiler, grep raw SQL for renamed columns, `uniq -d` migration numbers, re-pin docs in the same commit that moves an anchor; the browser lane once at the start for its baseline; per Stage `start-task`, red, green, the Stage's one to three files, the three reviewers on the diff, one commit, `complete-task`, next Stage; the three tiers (below); the complete gate once through the pre-push hook, a push when someone needs the new state, the agent flips ready, the owner merges.
 
-A box in a plan is a command with its exit code or the Commit box, nothing else. What a machine cannot check is not a box; it goes to the "not verified" list the owner sees before approval. So no plan ends with 24 boxes nobody can tick.
+`end-work`: confirm the owner merged; print the three currency numbers for the Delivery (corrections about form and substance before approval; dumb questions, stops and gates during execution; the status of the previous experiment); write one new experiment into the register with a date; refuse to close while the previous experiment has no status; the ledger row in one fixed form, merged, N boxes open under Deviations, the experiment line; remove the worktree and only its registered temp roots.
 
-The complete gate runs once per Delivery, through the pre-push hook, which writes the receipt; nobody runs `agent:verify:pr` by hand to see. A push buys a CI matrix and happens when someone needs the new state. The browser lane runs once at the start of a Delivery for its baseline, not at the end. After merging staging the agent walks one checklist: install root and backend, build the SDK, dry-run the compiler, grep raw SQL for renamed columns, `uniq -d` the migration numbers, re-pin docs in the same commit that moves an anchor; the Magnis pre-push also runs the checks that today exist only in CI.
+`bug`: reproduce with a red test, fix, run that file and the Stage's files, never the full suite by hand; the escape hatch for a three-line typo stays and announces itself.
 
-The author and the reviewers read one law. Today Codex reviews by an `AGENTS.md` that has none of the six rules, and the three cops carry Rust sections for TypeScript code. The three cops stay, one metric each, coherence, coverage, simplicity, verdict REJECT by default, trimmed to what applies. Codex is called when asked or for diffs over 200 lines, at most two rounds; a real correctness finding at the cap is fixed, style is dropped.
+### The process laws (0_agents): four files become two
 
-Nothing contradictory and nothing dead remains: sixteen skills of the cargo and Cyrus era go, two of the four laws fold into the other two, the language guides load by file extension, and an audit script refuses a dead reference, a duplicate sentence, a banned word or more than 900 lines in the loaded set. Twenty-two lessons that today live in 93 memory files are written once where the agent reads them, and the memory directory shrinks to ten files.
+Today: 792 lines in four files that disagree on the Task format, require Predict minutes and credits, mention a scorecard that does not exist, and carry 85 lines of commit archaeology. Done: `development-process.md` (under 100 lines) holds the lifecycle with its two owner approvals, the sizes, the Stage cadence, the three tiers, git in one paragraph (worktree per branch from `origin/staging`, merge commits only, never rewrite, one commit per Stage, no wip, never push to staging or main, `git -C <abs>`), verification once per Delivery, the unattended rule, the handoff, and the retro register at its end. `plan-format.md` (under 80 lines) holds the skeleton, one Task template, what approval freezes, the linter's rules, the forbidden list. `plan-protocol.md` and `git-workflow.md` are deleted; every rule of theirs that survives is in those two.
 
-### Retro
+The three tiers, as the law states them. Free, the agent does it and planctl records the difference in the result row: add a test, add a file the compiler names, touch a file beyond the writes in the same commit, close a Stage whose commands are green. Recorded, one Deviations line and on: a new file outside the target tree, a deleted test, a criterion that became unreachable. The owner's word, and only here: the goal and its measure, removing a promised file from the tree, the meaning of an acceptance criterion, scope beyond the Delivery.
 
-Today end-work reports minutes and credits nobody measures and proposes an experiment nobody adopts.
+### planctl and plan-gate (0_agents `planctl/`)
 
-It changes to this. The retro reports the three numbers above for the Delivery: corrections about form and about substance before approval; dumb questions, stops and gates during execution; and the status of the previous experiment. It names one new experiment and writes it into a register at the end of the process law with a date. The next end-work refuses to close a Delivery while the previous experiment has no status, accepted or declined on the owner's word; an accepted one becomes a rule in the same PR. A partial close says so in the ledger in one fixed form: merged, N boxes open under Deviations, the experiment line.
+Today: planctl refuses a fifth write, a story that does not repeat its paths, a commit touching one file beyond the writes, a Task without minutes; plan-gate checks receipts and nothing about how the text reads. Done, in four parts. PR #12 (open): writes are files, directories or globs with no cap, extra files are recorded in the result row, minutes and credits accept zero. The linter, in plan-gate: the skeleton (the Goal as currencies with today's number and target, the target tree, the Types block when `.ts` sources change, the New names table, the Not verified list); every box a command with its exit code or the Commit box; mermaid parsed; banned words, task codes and `file.ts:123` in prose refused; sentences over thirty words refused; Predict fields refused. The judge, `plan-gate --judge`: a fixed rubric in `shared/code-production/plan-judge.md`, one question per rule a linter cannot answer (is the Goal a goal or a problem, does each Stage read as a commit, are the names existing ones, is the prose plain), answered by a small model through `claude -p --model haiku` on the owner's subscription with a quote from the plan for every answer; 1.4 seconds on a test call today; the verdict stored by SPEC hash so the same bytes are never judged twice; `lock-spec` refuses without a PASS and an unavailable judge refuses the lock. The brief, `focus --brief`, as above.
 
-### The files
+### The instruction audit: `shared/code-production/instruction-audit.ts` (0_agents)
 
-What stays in 0_agents: `claude/CLAUDE.md` and `codex/AGENTS.md` (the screen above); `shared/lang/typescript.md` and `rust.md`, style only; two laws, `development-process.md` (lifecycle, sizes, cadence, the three tiers, git, verification once, unattended, handoff, the retro register) and `plan-format.md` (the skeleton, one template, what approval freezes, the linter's rules); the `agent:*` package contract; four process skills, `blueprint`, `blueprint-start`, `end-work`, `bug`; the utilities `cleanup-worktrees`, `mdurl`, `dictate`, `nvim` and the review driver `review-implementation`; the three cops; the owner's business skills untouched. New: `instruction-audit.ts` (the audit), `plan-judge.md` with `plan-judge.ts` (the rubric and the call), `planctl focus --brief` and the managed hook template that runs it at session start and on each prompt.
+Today: nothing counts the instruction set. Done: one script run by `agent:verify:docs` in 0_agents refuses a sentence of twelve or more words present in two instruction files, a path, script or skill that does not exist, a banned word (lane, receipt as a noun for a test result, stand, farm, envelope, ceremony, doctrine, census, plane, currency), a language guide named outside a by-extension rule, and more than 900 lines in the loaded set. Red today.
 
-What goes: skills `start-work`, `test-protocol`, `completion-note`, `verify-app`, `verify-frontend`, `fast-precommit`, `fix-ci-cd`, `quick-fix`, `plan`, `review-plan`, `execute`, `finish-plan`, `git`, `dispatch-to-linear`, `execute-from-linear`, `launch-e2e`; laws `plan-protocol.md` and `git-workflow.md`. Every rule of theirs that survives is in the paragraphs above.
+### The project screen: Magnis `CLAUDE.md` and `AGENTS.md` (Magnis plan)
 
-## Today, the raw counts
+Today: 74 and 84 lines, thirty stale facts: `bun run dev:web` does not exist, `MAGNIS_DB_MODE` is retired, `backend/src/sources` is gone, the Deployment section says PGlite. Done: `CLAUDE.md` under 45 lines opens with what Magnis is, in the owner's words:
 
-Measured on 0_agents `7cbc4a5` and magnis-app `dc396a3ee` on 2026-09-17. An agent in a Magnis session may load 56 instruction files, about 6 100 lines. They hold 974 rules (the registers under `docs/research/instruction-registers/` list each with every file it lives in): 336 are stated in two or more files, 59 contradict another rule, 49 name something that does not exist, 57 are about cargo and Rust in a TypeScript project, and the Task format exists in three versions. Memory holds 93 files plus 16 twins in a neighbouring directory. Of the owner's 218 corrections between 19 August and 15 September none became a rule; the skills were last changed on 30 August. At the last end-work, on 17 September, 49 boxes stayed open, 24 of them prose, and the retro's experiment was the ninth in a row without a status.
+```markdown
+Magnis is a local-first personal operations system built as a typed graph: entities and
+links with declared types, filled from a person's sources and read by AI agents. The
+hypothesis the product tests: an AI working over a typed graph brings more value than one
+working over untyped text. The TypeScript backend owns the graph and is the single source
+of truth; the React/Tauri client only shows it; one database behind one URL. Every name
+here is a type of that graph, spelled as `@magnis/sdk` spells it; `docs/project.md` holds
+the vocabulary and the key ideas.
+```
 
-What already works and stays: the push hook, the draft-without-matrix rule, the ready guard, the pre-approval screen, the three cops, micro-review, `mdurl`.
+then the commands as they exist (`db:up`, `dev`, `backend:dev`, scoped `bun test`, `check:backend`, `docs:check`, `test:e2e`, the vendored planctl path, `git reset -q` after a refused commit), the dev stand (`db:up` prints `DATABASE_URL`, embedded PostgreSQL 16 or `--docker`, `dev` runs backend and Vite on it, PGlite only in the test runner, one user, open auth, no CORS or origin guards), the layout as it is on staging, the docs-anchor rule (pin an ancestor that exists, anchor files that exist there), the E2E note (CI runs it only on PRs into main, run it locally against a staging baseline), the frontend rule (never hand-roll UI, assemble from `@magnis/host/ui`), the type rule (hand-written interfaces, zod decodes into them, one camelCase spelling across a boundary), and the pointer to `docs/project.md`. `AGENTS.md` is ten lines: read `CLAUDE.md`, the Codex entry points.
+
+### The vocabulary page: Magnis `docs/project.md` (Magnis plan)
+
+Today: none; each agent invents. Done: one page, what Magnis is, its key ideas, the names of its entities anchored to `@magnis/sdk`, and how things are written, dates, ids, spelling on the wire. It is the root from which documentation reachability is counted (below) and the source the judge and the New names table check against.
+
+### Project rules, skills, agents and hooks: Magnis `.claude/` and `.agents/` (Magnis plan)
+
+Today: six path-scoped rule files of which four describe Rust or paths that no longer exist; fifteen repo copies of skills and nine Codex copies with different bodies under the same names; three cops; twelve hooks plus three inline, one for cargo; a `permissions.yml` nobody reads. Done: rules become `testing.md`, `logging.md` and two three-line files (backend types; never hand-roll UI); every repo skill copy is deleted, the global ones serve; the cops stay, trimmed; the cargo hook and the inline prettier hook go, the `focus` hook and the CI-only checks (`check:rename`, the client-react typecheck) join the pre-push; `permissions.yml` is deleted.
+
+### The process pages: Magnis `docs/` (Magnis plan)
+
+Today: nine pages, 1 311 lines, copies of the laws that drifted (a legacy Task format nobody generates, four planctl commands missing, a scorecard that does not exist). Done: `development-process.md` and `plan-format.md` become copies of the two laws; `plan-protocol.md`, `git-workflow.md`, `codex-permissions.md`, `worktree-e2e-setup.md` and `testing/worktree-manual-testing.md` are deleted or folded into `CLAUDE.md`; `testing/policy.md` and the `docs/README.md` map stay.
+
+### The product pages: Magnis `docs/` (Magnis plan)
+
+Today: 77 current pages, 14 653 lines, sixty with anchor debt, the largest 1 964 lines; thirteen more already marked historical or superseded lie beside the live ones (`rust-rules.md`, `sqlite-gotchas.md`, `postgres-only-plan.md`, `cutover-status-2026-05-27.md` and nine others). Done: the thirteen move to `docs/archive/`; every current page gets one question, "is this still true on staging?", answered by reading the code it anchors; a page stays current only if it is reachable within two links from `docs/project.md` or `CLAUDE.md`, otherwise it is archived; the docs gate counts reachability.
+
+### Plans and research: Magnis `docs/plans`, `docs/research` (Magnis plan)
+
+Today: 107 plan files, 71 014 lines, and 59 research files, 5 077 lines; the docs gate anchors many of them and agents read merged plans to learn the design. Done: the ledger `docs/plans/README.md` stays the authority; a merged plan is frozen history and moves to `docs/plans/archive/` at end-work; the law says in one line that a merged plan is never a source of the current design; research stays where it is and is never loaded.
+
+### Memory: `~/.claude/projects/…/memory` and the neighbour directory
+
+Today: 93 files plus 16 twins, 56 of them lessons the agent recalls by chance. Done, by hand on the owner's word after the Magnis plan: twenty-two lessons are written once into the files above (register M names each), ten files remain, two consolidated references on host and bun traps, three project pointers, the two runtime blockers until PR #12 merges, and the index.
 
 ## Invariants
 
@@ -147,20 +173,8 @@ The first five are one script, `shared/code-production/instruction-audit.ts`, ru
 
 ## Not in this plan
 
-- The Magnis repository layer. Its `CLAUDE.md` opens with what the project is, in the owner's words, so no agent invents it:
-
-  ```markdown
-  Magnis is a local-first personal operations system built as a typed graph: entities and
-  links with declared types, filled from a person's sources and read by AI agents. The
-  hypothesis the product tests: an AI working over a typed graph brings more value than one
-  working over untyped text. The TypeScript backend owns the graph and is the single source
-  of truth; the React/Tauri client only shows it; one database behind one URL. Every name
-  here is a type of that graph, spelled as `@magnis/sdk` spells it; `docs/project.md` holds
-  the vocabulary and the key ideas.
-  ```
-
-  The rest of that layer: the vocabulary page `docs/project.md`, `CLAUDE.md` (its PGlite line and dead commands), `AGENTS.md`, `.claude/rules/*`, the repo copies of skills and cops, the cargo hook, the docs copies of the laws, the pre-push additions, the re-vendored runtime. It is the next plan in magnis-app and starts when this PR and PR #12 are merged.
-- The memory cleanup (register M) is done by hand on the owner's word after that plan; it lives outside any repository.
+- Everything marked "Magnis plan" above is the next plan in magnis-app; it starts when this PR and PR #12 are merged.
+- The memory cleanup is done by hand on the owner's word after that plan; it lives outside any repository.
 - The S/M/L size loop with git-measured facts and an optimism ratio at end-work is its own later plan.
 - Cyrus skills are deleted, not migrated; Cyrus does not run Magnis.
 - `content-os` and other consumers of 0_agents get the same skills through `update.sh`; their project files are not touched.
