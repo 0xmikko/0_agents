@@ -34,6 +34,16 @@ Two modes. Planning: `/blueprint` writes `docs/plans/<slug>.md` in its own workt
 the owner approves twice, the SPEC and then the Stages. Working by an approved plan:
 `/blueprint-start`. There is no third mode.
 
+IMPORTANT: the vocabulary does not grow. Every entity, field, status and command has one
+name, the one the code and the SDK already use. Before writing a name, find it. A name
+that exists nowhere is declared in the plan's table "new names: why the existing one is
+not enough" or it does not appear. No synonyms, no task codes, no `file.ts:123` in prose.
+
+Code is DRY and SOLID, and here that means: one mechanism per job, extend it, never copy
+it; one class per file, one reason to change; depend on interfaces the caller owns; a
+function does one thing and is named for it. A second copy of anything is a defect, and
+the reviewers reject it.
+
 The plan belongs to planctl after the first lock: `init`, `set-spec`, `lock-spec`,
 `put-stage`, `approve-plan`, `start-task`, `complete-task`, `close-stage`,
 `add-deviation`; `amend` only with the owner's word. Never edit a locked plan by hand;
@@ -47,11 +57,8 @@ Delivery through the pre-push hook. Never compose framework commands.
 Mistakes this model keeps making here, so do not:
 - Claims from structure. Check the artifact: run it, open it, `git show origin/staging:<path>`.
 - Fallbacks, defaults, "just in case". A missing value is an error.
-- A second copy of an existing mechanism. Extend it; delete what became unnecessary.
 - Tests green from birth. Red first; prove a green-from-birth test by mutating the source.
 - Stopping at a tool refusal. Record one line and continue; a stop ends with "waiting for: X".
-- Invented words. Repository names only; a new name needs a table "why the existing one is
-  not enough". No task codes and no `file.ts:123` in prose.
 
 Language guide by file: `.ts`/`.tsx` → typescript.md, `.rs` → rust.md.
 Never edit workflows, infrastructure, `.claude/`, secrets, CLAUDE.md or AGENTS.md unless
@@ -59,7 +66,7 @@ the task names the file. Never kill or reuse a process you did not start.
 The owner is on a Claude subscription: no API key, ever.
 ```
 
-`codex/AGENTS.md` is the same screen with `~/.codex/lang/` paths. That is the whole always-on set: about 30 lines, under 700 tokens.
+`codex/AGENTS.md` is the same screen with `~/.codex/lang/` paths. That is the whole always-on set: about 35 lines, under 800 tokens. One line carries IMPORTANT, the vocabulary, because it is the most frequent correction (81 in four weeks) and the guidance is to emphasize one line, not ten.
 
 ### Planning
 
