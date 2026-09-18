@@ -205,7 +205,7 @@ describe("plan-update", () => {
   // @deterministic: yes
   // @invariant: a merge that carries an approved plan is committable — the
   // journal proves local authorship, and a merge authored nothing here.
-  it("tst_scripts_planupdate_004 verify-staged stands aside during a merge", () => {
+  it("tst_scripts_planupdate_004 verify-staged stands aside for what a merge carries, not for a hand edit", () => {
     const root = mkdtempSync(join(tmpdir(), "portable-plan-update-merge-"));
     const plan = join(root, "plan.md");
     const writer = join(import.meta.dir, "../src/core/plan-update.ts");
@@ -242,6 +242,15 @@ describe("plan-update", () => {
       const staged = spawnSync("bun", [writer, "plan.md", "verify-staged"], { cwd: root, encoding: "utf8" });
       expect(staged.stderr).not.toContain("no journal");
       expect(staged.status).toBe(0);
+
+      // The exemption is for what the merge carries and nothing else: a hand
+      // edit while the merge is open needs its journal, or a merge would be a
+      // hole through which any plan could be rewritten unjournalled.
+      writeFileSync(plan, `${readFileSync(plan, "utf8")}a hand edit\n`);
+      git("add", "plan.md");
+      const edited = spawnSync("bun", [writer, "plan.md", "verify-staged"], { cwd: root, encoding: "utf8" });
+      expect(edited.status).toBe(1);
+      expect(edited.stderr).toContain("locked plan mutation has no journal");
 
       // Outside a merge the rule is unchanged: no journal, no commit.
       git("merge", "--abort");

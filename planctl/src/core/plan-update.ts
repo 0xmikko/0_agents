@@ -1386,17 +1386,37 @@ function merging(root: string): boolean {
   }).status === 0;
 }
 
+/** What a merge carries for `plan`: one side's bytes, or what git itself
+ * auto-merges from the two sides (`merge-tree --write-tree`, git >= 2.38).
+ * A plan in the merge's conflicted set has no auto-merge to inherit. */
+function carriedByMerge(root: string, plan: string, staged: string): boolean {
+  const show = (rev: string): string | null => {
+    const out = spawnSync("git", ["-C", root, "show", `${rev}:${plan}`], { encoding: "utf8" });
+    return out.status === 0 ? out.stdout : null;
+  };
+  if (show("HEAD") === staged || show("MERGE_HEAD") === staged) return true;
+  const merged = spawnSync(
+    "git",
+    ["-C", root, "merge-tree", "--write-tree", "-z", "--name-only", "--no-messages", "HEAD", "MERGE_HEAD"],
+    { encoding: "utf8" },
+  );
+  const [tree, ...conflicted] = merged.stdout.split("\0");
+  if (tree === undefined || !/^[0-9a-f]{40}$/.test(tree.trim()) || conflicted.includes(plan)) return false;
+  return show(tree.trim()) === staged;
+}
+
 export function verifyStagedPlan(planArg: string): void {
   const root = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
+  const plan = resolve(root, planArg).slice(root.length + 1);
   // A MERGE authored none of these bytes here. The journal proves that a
   // locked plan reached its staged shape through planctl in THIS worktree,
   // and a plan arriving from another branch never did — demanding one made
-  // every merge that carried an approved plan uncommittable, which is a gate
-  // refusing honest work. `plan-gate --freeze` is the authority for a merge:
-  // it reads git's own auto-merged tree and refuses a hand edit that a
-  // resolution smuggled in. This stands aside and lets it answer.
-  if (merging(root)) return;
-  const plan = resolve(root, planArg).slice(root.length + 1);
+  // every merge that carried an approved plan uncommittable. The exemption is
+  // for what the merge CARRIES and nothing else: a side's bytes or git's own
+  // auto-merge of both sides. Edit that plan by hand while the merge is open
+  // and the guard bites again, or a merge would be a hole through which any
+  // plan could be rewritten unjournalled.
+  if (merging(root) && carriedByMerge(root, plan, gitRaw(root, ["show", `:${plan}`]))) return;
   const journal = readJournal(journalPath(root));
   if (journal === null) throw new Error("locked plan mutation has no journal");
   if (journal.plan !== plan || journal.root !== root || journal.baseHead !== git(root, ["rev-parse", "HEAD"])) {
