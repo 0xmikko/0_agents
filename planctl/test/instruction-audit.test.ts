@@ -52,28 +52,6 @@ describe("instruction audit", () => {
     }
   });
 
-  // @test-id: tst_audit_002
-  // @invariant: a sentence of twelve or more words present in two files is
-  // refused and named in both files (one-home).
-  it("tst_audit_002 refuses a twelve-word sentence that lives in two files", () => {
-    const sentence = "Never rewrite history, never rebase, never amend, never force-push and never squash commits before a pull request.";
-    const root = tree({
-      "claude/CLAUDE.md": `# Working here\n\n${sentence}\n`,
-      "shared/code-production/laws/development-process.md": `# Process\n\n- ${sentence}\n`,
-    });
-    try {
-      const findings = audit(root);
-      expect(kinds(findings)).toEqual(["one-home"]);
-      expect(findings.map((finding) => finding.file).sort()).toEqual([
-        "claude/CLAUDE.md",
-        "shared/code-production/laws/development-process.md",
-      ]);
-      expect(findings[0]?.line).toBe(3);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
   // @test-id: tst_audit_003
   // @invariant: a path into this repository or a /skill that does not exist
   // is refused; a path into a consumer repository is not judged here.

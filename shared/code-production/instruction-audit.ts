@@ -2,10 +2,9 @@
  * The instruction audit: the machine that keeps the instruction set on a diet.
  *
  * Reads the always-on set of agent instructions in this repository and refuses
- * five things: a sentence of twelve or more words that lives in two files, a
- * path into this repository or a /skill that does not exist, a synonym of a
- * vocabulary term in prose, a language guide named outside a by-extension rule, and a set over
- * 900 lines. One line per finding, exit 1 when there is any.
+ * four things: a path into this repository or a /skill that does not exist, a
+ * synonym of a vocabulary term in prose, a language guide named outside a
+ * by-extension rule, and a set over 900 lines. One line per finding, exit 1 when there is any.
  *
  *   bun shared/code-production/instruction-audit.ts [root]
  */
@@ -13,7 +12,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export interface Finding {
-  readonly kind: "one-home" | "dead-reference" | "vocabulary" | "language-by-file" | "size";
+  readonly kind: "dead-reference" | "vocabulary" | "language-by-file" | "size";
   readonly file: string;
   readonly line: number;
   readonly subject: string;
@@ -39,7 +38,6 @@ export const THE_SET: readonly string[] = [
 ];
 
 export const SIZE_LIMIT = 900;
-export const SENTENCE_WORDS = 12;
 export const VOCABULARY = "shared/code-production/vocabulary.md";
 const LANGUAGE_GUIDES = ["typescript.md", "rust.md"];
 const EXTENSION = /`\.[a-z]+`|\.tsx?\b|\.rs\b/;
@@ -64,40 +62,6 @@ function lines(root: string, file: string): Line[] {
     }
     return { file, number: index + 1, text: raw, prose: !inCode };
   });
-}
-
-function sentences(text: string): string[] {
-  return text
-    .replace(/^\s*(?:[-*]|\d+\.)\s+/, "")
-    .split(/(?<=[.!?])\s+/)
-    .map((sentence) => sentence.replace(/[`*_]/g, "").replace(/\s+/g, " ").trim().toLowerCase())
-    .filter((sentence) => sentence.split(" ").length >= SENTENCE_WORDS);
-}
-
-function oneHome(all: readonly Line[]): Finding[] {
-  const homes = new Map<string, Line[]>();
-  for (const line of all) {
-    if (!line.prose) continue;
-    for (const sentence of sentences(line.text)) {
-      const list = homes.get(sentence) ?? [];
-      if (!list.some((known) => known.file === line.file)) list.push(line);
-      homes.set(sentence, list);
-    }
-  }
-  const findings: Finding[] = [];
-  for (const [sentence, list] of homes) {
-    if (list.length < 2) continue;
-    for (const line of list) {
-      findings.push({
-        kind: "one-home",
-        file: line.file,
-        line: line.number,
-        subject: sentence.slice(0, 60),
-        message: `sentence also lives in ${list.filter((other) => other !== line).map((other) => other.file).join(", ")}`,
-      });
-    }
-  }
-  return findings;
 }
 
 function deadReferences(root: string, all: readonly Line[], skills: readonly string[]): Finding[] {
@@ -209,7 +173,6 @@ export function audit(root: string): Finding[] {
     .filter((name) => existsSync(join(root, "shared/skills", name)) || existsSync(join(root, "claude/skills", name)));
   return [
     ...size(countedLines),
-    ...oneHome(all),
     ...deadReferences(root, all, skills),
     ...vocabulary(root, all),
     ...languageByFile(all),
