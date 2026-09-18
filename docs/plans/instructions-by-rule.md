@@ -235,7 +235,7 @@ Commit. feat(audit): an instruction audit that refuses duplicates, dead referenc
 
 ##### Tasks
 
-- [ ] IBR_001 — Add instruction-audit.ts with the five checks and its fixture-driven tests; agent:verify:docs runs the audit.
+- [x] IBR_001 — Add instruction-audit.ts with the five checks and its fixture-driven tests; agent:verify:docs runs the audit. — 6638424cbf66ecb01f4c6f2e914890a1913b4a40
 <!-- plan:task-meta:{"writes":["shared/code-production/instruction-audit.ts","planctl/test/instruction-audit.test.ts","planctl/package.json"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"walk the always-on set, split sentences, index twelve-word sentences by file, resolve every backticked path or /skill name against the tree, match the banned list, check guide mentions sit on a by-extension rule, count lines; tests build temp trees","red":"bun run agent:test:backend -- test/instruction-audit.test.ts"} -->
 
 ##### Acceptance criteria
@@ -249,6 +249,7 @@ Commit. feat(audit): an instruction audit that refuses duplicates, dead referenc
 <!-- plan:results:D1-S1:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| IBR_001 | 6638424cbf66ecb01f4c6f2e914890a1913b4a40 | 2026-09-18T15:52:01.051Z–2026-09-18T15:55:13.000Z | 3.2 / 3.2 min | unavailable: runner does not expose usage | Six tests green; on the real tree the audit names 1 352 lines in the set (limit 900), 22 banned words, 4 language-guide mentions by task language, 1 dead skill reference. |
 <!-- plan:results:D1-S1:end -->
 <!-- plan:stage:D1-S1:end -->
 
@@ -545,4 +546,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - put-stage D1-S8
 
 - approve sha256:270d386cff3a545fe01d83d08a8738f33af7162dcc060cd6e68b2d1ab569b62b owner:Да, тут важнее детали
+
+- record-result D1-S1 commit:6638424cbf66ecb01f4c6f2e914890a1913b4a40
 <!-- plan:execution:end -->
