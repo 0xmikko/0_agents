@@ -23,38 +23,43 @@ Code quality has no stage of its own. It is what execution produces when the fou
 
 ### The screen every agent reads first
 
-Today the global entry is 85 lines and repeats what skills say; the Codex entry is 21 lines and says none of it. Both become one short screen with the same six rules. This is the new `claude/CLAUDE.md`, as it will read:
+What belongs on an always-on screen is settled: commands the model cannot guess, style that differs from defaults, repository etiquette, environment quirks, and the mistakes this model keeps making here; not what it can read from the code, not explanations. A rule that must hold every time goes to a hook; knowledge needed only sometimes goes to a skill; for every remaining line the test is "would removing it cause a mistake?" ([Anthropic, Claude Code best practices](https://code.claude.com/docs/en/best-practices); Boris Cherny, YC Startup School, July 2026: delete everything, then bring back one instruction at a time when the model actually struggles).
+
+Today the global entry is 85 lines that repeat the skills, and the Codex entry has none of it. Both become this one screen. There are two modes and nothing else: planning with `/blueprint`, working by an approved plan with `/blueprint-start`. `/end-work` is not on the screen because the owner invokes it after a merge. The git rules that hooks already enforce are not on the screen either; the hook is the rule.
 
 ```markdown
-# How we work
+# Working here
 
-Read the project's CLAUDE.md. Load a language guide only for files of that language
-(`.ts`/`.tsx` → typescript.md, `.rs` → rust.md). The process has three entry points:
-/blueprint plans, /blueprint-start executes, /end-work closes a merged Delivery.
+Two modes. Planning: `/blueprint` writes `docs/plans/<slug>.md` in its own worktree and
+the owner approves twice, the SPEC and then the Stages. Working by an approved plan:
+`/blueprint-start`. There is no third mode.
 
-1. A claim about code is checked on the artifact it names: run it, open it,
-   `git show origin/staging:<path>`, run the compiler. Never from structure, grep,
-   a colleague's report or a tree behind staging.
-2. No fallbacks, defaults, safety nets or "just in case" code the owner did not ask
-   for. A missing value stays missing and surfaces as an error.
-3. Find the existing mechanism and extend it; a second copy is a defect. Delete what
-   the change makes unnecessary in the same commit.
-4. The test comes first and is red for the behavior, not for syntax or environment.
-   A test that is green from birth is proven by mutating the source and watching
-   only that test fail.
-5. A tool refusal is not a question for the owner: record one line and continue.
-   Every stop ends with "waiting for: X" or "continuing". "Impossible" needs an
-   author: an owner decision, a documented invariant, an external contract.
-6. Write in the repository's own words. A new name comes with a table "why the
-   existing one is not enough". No task codes, invariant numbers or `file.ts:123`
-   in prose. A report to the owner is sentences, not test ids.
+The plan belongs to planctl after the first lock: `init`, `set-spec`, `lock-spec`,
+`put-stage`, `approve-plan`, `start-task`, `complete-task`, `close-stage`,
+`add-deviation`; `amend` only with the owner's word. Never edit a locked plan by hand;
+the pre-commit hook refuses it. In a consumer repository planctl is
+`bun .agents/code-production/runtime/planctl.ts`, nothing else.
 
-Boundaries: never edit workflows, infrastructure, `.claude/`, secrets, CLAUDE.md or
-AGENTS.md unless the task names the file. Never kill or reuse a process you did not
-start. The owner is on a Claude subscription, not the API.
+Verify only with the project's `agent:*` scripts: `bun run agent:test:<lane> -- <file>`
+in the loop, the Stage's one to three files before its commit, the full gate once per
+Delivery through the pre-push hook. Never compose framework commands.
+
+Mistakes this model keeps making here, so do not:
+- Claims from structure. Check the artifact: run it, open it, `git show origin/staging:<path>`.
+- Fallbacks, defaults, "just in case". A missing value is an error.
+- A second copy of an existing mechanism. Extend it; delete what became unnecessary.
+- Tests green from birth. Red first; prove a green-from-birth test by mutating the source.
+- Stopping at a tool refusal. Record one line and continue; a stop ends with "waiting for: X".
+- Invented words. Repository names only; a new name needs a table "why the existing one is
+  not enough". No task codes and no `file.ts:123` in prose.
+
+Language guide by file: `.ts`/`.tsx` → typescript.md, `.rs` → rust.md.
+Never edit workflows, infrastructure, `.claude/`, secrets, CLAUDE.md or AGENTS.md unless
+the task names the file. Never kill or reuse a process you did not start.
+The owner is on a Claude subscription: no API key, ever.
 ```
 
-`codex/AGENTS.md` carries the same six rules and the Codex paths. That is the whole always-on set.
+`codex/AGENTS.md` is the same screen with `~/.codex/lang/` paths. That is the whole always-on set: about 30 lines, under 700 tokens.
 
 ### Planning
 
