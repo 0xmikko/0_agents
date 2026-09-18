@@ -1,8 +1,8 @@
 # Agent instructions, rule by rule: memory becomes law, the rest is cut
 
 Status: APPROVED  
-Spec lock: sha256:289562a2eea214a498e64d2ffe0f7179e7b4993c8fa2e7b2c8eef1fa45640ae1 owner:owner 2026-09-18: да, давай сделаем их идентичными  
-Implementation lock: sha256:6823a0e38627d18704e57471e8d6eadf45b16c73c2e652a9f3abecb9290f74a3 owner:owner 2026-09-18: да, давай сделаем их идентичными (re-approval after the SPEC amendment)  
+Spec lock: sha256:20dbf4f9095593c0e4cb10fed2f8b0a32da2af4ffc33a691b58f8ca9b4679815 owner:owner 2026-09-18: иногда размер спецификации определяется глубиной задачи, жёсткое правило не годится  
+Implementation lock: sha256:890b2deddf685dca55c2b8faa3cfa1ed09134e32e27ae604e109fce2e52bc159 owner:owner 2026-09-18: иногда размер спецификации определяется глубиной задачи, жёсткое правило не годится  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -94,7 +94,7 @@ Today: 323 lines globally and three Magnis-specialised copies, all carrying Rust
 
 Today: about 3 400 lines; thirteen skills are from the cargo era and contradict the process (full suite per Stage, rebase and force-push, "proceed without an approved plan", a fourth plan format, Cyrus dispatch). Done: ten stay, `blueprint`, `blueprint-start`, `end-work`, `bug`, `rename`, `review-implementation`, `cleanup-worktrees`, `mdurl`, `dictate`, `nvim`, each of the four process skills under 60 lines; `rename` is new and small: rename the symbol at its definition, run the project's typecheck, fix every place the compiler names and nothing else, one commit, never grep for the old name; sixteen go: `start-work`, `test-protocol`, `completion-note`, `verify-app`, `verify-frontend`, `fast-precommit`, `fix-ci-cd`, `quick-fix`, `plan`, `review-plan`, `execute`, `finish-plan`, `git`, `dispatch-to-linear`, `execute-from-linear`, `launch-e2e`. The owner's business skills are untouched. What the four process skills say:
 
-`blueprint`: the plan is born in its own worktree from fresh `origin/staging`, with the list of open PRs into staging touching its files; the SPEC has a fixed skeleton (below); names come from the repository, or from the project's vocabulary page where one exists; a new one is declared in a table with its reason and the pre-approval screen prints the count; every new or changed type is TypeScript, hand-written interfaces one field per line, zod decoding into them, never a sentence or "as elsewhere"; the Goal is the owner's currencies with today's number and the target, never "measure X"; sizes are counted, SPEC ≤ 250 lines, Delivery ≤ 8 Stages, Stage ≤ 40 lines reading as its commit message, Task ≤ 200 characters, more work is the next Delivery; no minutes, no credits; review only on the owner's word, at most three rounds, fixing only what the plan cannot run without; the linter and the judge have passed before the owner is asked.
+`blueprint`: the plan is born in its own worktree from fresh `origin/staging`, with the list of open PRs into staging touching its files; the SPEC has a fixed skeleton (below); names come from the repository, or from the project's vocabulary page where one exists; a new one is declared in a table with its reason and the pre-approval screen prints the count; every new or changed type is TypeScript, hand-written interfaces one field per line, zod decoding into them, never a sentence or "as elsewhere"; the Goal is the owner's currencies with today's number and the target, never "measure X"; sizes are printed, not capped: the pre-approval screen shows the SPEC's lines, the number of Stages and the longest Stage description next to the medians of the plans the owner approved in one round (150 to 300 lines of SPEC), because depth sets the size and the owner decides what depth a task needs; a Stage still reads as its commit message and a Task story stays under 200 characters; no minutes, no credits; review only on the owner's word, at most three rounds, fixing only what the plan cannot run without; the linter and the judge have passed before the owner is asked.
 
 `blueprint-start`: start and before the gate, merge `origin/staging`, run `agent:install`, dry-run the compiler, then the project's own post-merge checklist from its `CLAUDE.md` (for Magnis: build the SDK, grep raw SQL for renamed columns, `uniq -d` migration numbers, re-pin docs in the same commit that moves an anchor); the browser lane once at the start for its baseline; per Stage `start-task`, red, green, the Stage's one to three files, the three reviewers on the diff, one commit, `complete-task`, next Stage; the three tiers (below); the complete gate once through the pre-push hook, a push when someone needs the new state, the agent flips ready, the owner merges.
 
@@ -458,7 +458,7 @@ Commit. refactor(agents): three reviewers judge TypeScript by TypeScript rules; 
 
 What this Stage solves. plan-gate checks receipts and nothing about how a plan reads; every form defect costs the owner a rewrite round.
 
-What is built. plan-gate --lint refuses: a missing skeleton block (the Goal with a number, the target tree, a TypeScript block when .ts sources change, the New names table, the Not verified list); an acceptance box that is neither a command with its exit code nor Commit; a SPEC over 250 lines, a Delivery over 8 Stages, a Stage description over 40 lines, a Task story over 200 characters; a banned word, a task code or a file.ts:123 reference in prose; a sentence over thirty words; a Predict field; a mermaid block that does not parse. lock-spec runs it.
+What is built. plan-gate --lint refuses: a missing skeleton block (the Goal with a number, the target tree, a TypeScript block when .ts sources change, the New names table, the Not verified list); an acceptance box that is neither a command with its exit code nor Commit; a Task story over 200 characters, while the SPEC's lines, the Stage count and the longest Stage description are printed next to the medians of one-round plans, never refused; a banned word, a task code or a file.ts:123 reference in prose; a sentence over thirty words; a Predict field; a mermaid block that does not parse. lock-spec runs it.
 
 How it is proven. plan-gate.test.ts feeds one fixture plan per refusal and one that passes; each refusal names the line.
 
@@ -566,4 +566,10 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - amend spec owner:owner 2026-09-18: да, давай сделаем их идентичными sha256:289562a2eea214a498e64d2ffe0f7179e7b4993c8fa2e7b2c8eef1fa45640ae1
 
 - approve sha256:6823a0e38627d18704e57471e8d6eadf45b16c73c2e652a9f3abecb9290f74a3 owner:owner 2026-09-18: да, давай сделаем их идентичными (re-approval after the SPEC amendment)
+
+- amend spec owner:owner 2026-09-18: иногда размер спецификации определяется глубиной задачи, жёсткое правило не годится sha256:20dbf4f9095593c0e4cb10fed2f8b0a32da2af4ffc33a691b58f8ca9b4679815
+
+- approve sha256:6823a0e38627d18704e57471e8d6eadf45b16c73c2e652a9f3abecb9290f74a3 owner:owner 2026-09-18: иногда размер спецификации определяется глубиной задачи, жёсткое правило не годится (re-approval after the SPEC amendment)
+
+- amend implementation owner:owner 2026-09-18: иногда размер спецификации определяется глубиной задачи, жёсткое правило не годится sha256:890b2deddf685dca55c2b8faa3cfa1ed09134e32e27ae604e109fce2e52bc159
 <!-- plan:execution:end -->
