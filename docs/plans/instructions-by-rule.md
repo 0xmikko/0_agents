@@ -2,7 +2,7 @@
 
 Status: APPROVED  
 Spec lock: sha256:653df8d6678a1810e0efa00811a5d56c20e70a5ecc822edcf88a8ee31d48a6bc owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон  
-Implementation lock: sha256:6d6c7cd200286f1b6712215eff874c6ef0d4fb827dfbede050d01473f52d4678 owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон  
+Implementation lock: sha256:04320cb803ec5c6f46ed339020d09222ee652bdc75bf5f52b1c203c1c7fa8959 owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -230,7 +230,7 @@ Not in this PR. The Magnis repository layer (its CLAUDE.md, rules, hook wiring, 
 
 What this Stage solves. Nothing counts the instruction set, so it grew to 56 files and 6 100 lines with 336 rules stated twice, 49 dead references and 57 Rust-era rules.
 
-What is built. shared/code-production/instruction-audit.ts reads the always-on set (claude/CLAUDE.md, codex/AGENTS.md, the two laws, the language guides, the nine skills, the three reviewers) and refuses: a sentence of twelve or more words present in two files; a path, script or skill named that does not exist; a synonym of a term in `shared/code-production/vocabulary.md` (the audit names the term to say); a language guide named outside a by-extension rule; more than 900 lines in the set. It prints one line per finding with file and line. planctl/package.json runs it from agent:verify:docs.
+What is built. shared/code-production/instruction-audit.ts reads the always-on set (claude/CLAUDE.md, codex/AGENTS.md, the two laws, the language guides, the nine skills, the three reviewers) and refuses: a path, script or skill named that does not exist; a synonym of a term in `shared/code-production/vocabulary.md` (the audit names the term to say); a language guide named outside a by-extension rule; more than 900 lines in the set. It prints one line per finding with file and line. planctl/package.json runs it from agent:verify:docs.
 
 How it is proven. planctl/test/instruction-audit.test.ts feeds fixture trees for each refusal and one clean tree; on the real tree today the audit is red, which is the point.
 
@@ -386,7 +386,7 @@ What this Stage solves. Four laws disagree on the Task format, require minutes a
 
 What is built. development-process.md (under 100 lines): the lifecycle with two owner approvals, the sizes, the Stage cadence, the three tiers, git in one paragraph, verification once per Delivery, the unattended rule, the handoff, the retro register at the end. plan-format.md (under 80 lines): the skeleton, one Task template, what approval freezes, the linter's rules, the forbidden list. plan-protocol.md and git-workflow.md are deleted.
 
-How it is proven. A test pins the two files' sizes, the presence of the three tiers with the owner's word only in the third, the register table, and no banned word; the audit's one-home check over the laws passes.
+How it is proven. A test pins the two files' sizes, the presence of the three tiers with the owner's word only in the third, the register table, and no banned word; the audit is clean on the laws.
 
 Commit. docs(laws): two laws — the process and the plan format — carry every surviving rule once.
 
@@ -642,4 +642,8 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - approve sha256:c621f700ae52eacfdf2fc699a99f5c70078fb497ddd3bc22e17ec17cbc8af318 owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон (re-approval after the SPEC amendment)
 
 - amend implementation owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон sha256:6d6c7cd200286f1b6712215eff874c6ef0d4fb827dfbede050d01473f52d4678
+
+- amend implementation owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон sha256:1011cec90b6ccab6a35394120d595a3704ba846a08ddad79f4606bcaa63c6a48
+
+- amend implementation owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон sha256:04320cb803ec5c6f46ed339020d09222ee652bdc75bf5f52b1c203c1c7fa8959
 <!-- plan:execution:end -->
