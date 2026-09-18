@@ -1,7 +1,7 @@
 # Agent instructions, rule by rule: memory becomes law, the rest is cut
 
-Status: SPEC_DRAFT  
-Spec lock: unlocked  
+Status: SPEC_LOCKED  
+Spec lock: sha256:bb924d3815e01b33ebe830a95a94189d2b2c45bed38997ed5154108fd74f5a26 owner:SPEC is APPROVED let's go for stages  
 Implementation lock: unlocked  
 Active Delivery: none  
 Unattended decisions: allowed  
@@ -200,4 +200,6 @@ The first five are one script, `shared/code-production/instruction-audit.ts`, ru
 
 <!-- plan:execution:start -->
 ## Execution log
+
+- lock-spec sha256:bb924d3815e01b33ebe830a95a94189d2b2c45bed38997ed5154108fd74f5a26 owner:SPEC is APPROVED let's go for stages
 <!-- plan:execution:end -->
