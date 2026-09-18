@@ -1,8 +1,8 @@
 # Agent instructions, rule by rule: memory becomes law, the rest is cut
 
 Status: APPROVED  
-Spec lock: sha256:f4846c0b5b7519ebce1cb436ce36e61bff6b83f57ec56b7a9c9de7fdae001f46 owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов  
-Implementation lock: sha256:c621f700ae52eacfdf2fc699a99f5c70078fb497ddd3bc22e17ec17cbc8af318 owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов  
+Spec lock: sha256:653df8d6678a1810e0efa00811a5d56c20e70a5ecc822edcf88a8ee31d48a6bc owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон  
+Implementation lock: sha256:6d6c7cd200286f1b6712215eff874c6ef0d4fb827dfbede050d01473f52d4678 owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -114,7 +114,7 @@ Today: planctl refuses a fifth write, a story that does not repeat its paths, a 
 
 ### The instruction audit: `shared/code-production/instruction-audit.ts` (0_agents)
 
-Today: nothing counts the instruction set. Done: one script run by `agent:verify:docs` in 0_agents refuses a sentence of twelve or more words present in two instruction files, a path, script or skill that does not exist, a synonym of a term in the process vocabulary (`shared/code-production/vocabulary.md`: term, what it names, the words not used for it; the audit names the term), a language guide named outside a by-extension rule, and more than 900 lines in the loaded set. Red today.
+Today: nothing counts the instruction set. Done: one script run by `agent:verify:docs` in 0_agents refuses a path, script or skill that does not exist, a synonym of a term in the process vocabulary (`shared/code-production/vocabulary.md`: term, what it names, the words not used for it; the audit names the term), a language guide named outside a by-extension rule, and more than 900 lines in the loaded set. Red today.
 
 ### The project screen: Magnis `CLAUDE.md` and `AGENTS.md` (Magnis plan)
 
@@ -172,7 +172,6 @@ Today: 93 files plus 16 twins, 56 of them lessons the agent recalls by chance. D
 
 ## Invariants
 
-- `one-home`: no sentence of twelve or more words appears in two instruction files.
 - `no-dead-reference`: every path, script and skill an instruction names exists.
 - `size`: the always-loaded set plus the two laws and four process skills is at most 900 lines.
 - `vocabulary`: the instruction files use no synonym of a term in `shared/code-production/vocabulary.md`, one table of term, what it names, and the words not used for it; the audit names the term to say instead; a project's vocabulary page has the same shape and a plan's names are checked against both.
@@ -512,7 +511,7 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 ##### Acceptance criteria
 
 - [ ] `bun run --cwd planctl agent:test:backend -- test/plan-judge.test.ts` exits 0 — PASS and FAIL are parsed, the cache spares a second call, a missing judge refuses the lock
-- [ ] `bun shared/code-production/instruction-audit.ts` exits 0 — no duplicate sentence, dead reference, banned word or line over 900 in the set
+- [ ] `bun shared/code-production/instruction-audit.ts` exits 0 — no dead reference, synonym of a vocabulary term, guide named by task language or line over 900 in the set
 - [ ] `bun run --cwd planctl agent:verify:pr` exits 0 — typecheck, lint, tests and build pass on the Delivery head
 - [ ] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S8` exits 0 — the owner read what this Stage produced and said the word
 - [ ] Commit
@@ -633,4 +632,14 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - amend implementation owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов sha256:c621f700ae52eacfdf2fc699a99f5c70078fb497ddd3bc22e17ec17cbc8af318
 
 - deviation D1-S1: on the owner's word the audit's stop list became the process vocabulary (shared/code-production/vocabulary.md: term, what it names, not); commit 559002d changes the audit after the Stage closed; the Stage's own decisions still await the owner's explicit word
+
+- amend spec owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон sha256:80fb65773bc6128e0aca2cf359b1a13fc5af9c75e879f905b81b301224f83197
+
+- approve sha256:c621f700ae52eacfdf2fc699a99f5c70078fb497ddd3bc22e17ec17cbc8af318 owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон (re-approval after the SPEC amendment)
+
+- amend spec owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон sha256:653df8d6678a1810e0efa00811a5d56c20e70a5ecc822edcf88a8ee31d48a6bc
+
+- approve sha256:c621f700ae52eacfdf2fc699a99f5c70078fb497ddd3bc22e17ec17cbc8af318 owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон (re-approval after the SPEC amendment)
+
+- amend implementation owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон sha256:6d6c7cd200286f1b6712215eff874c6ef0d4fb827dfbede050d01473f52d4678
 <!-- plan:execution:end -->
