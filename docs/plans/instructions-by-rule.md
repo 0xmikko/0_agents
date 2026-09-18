@@ -1,8 +1,8 @@
 # Agent instructions, rule by rule: memory becomes law, the rest is cut
 
 Status: APPROVED  
-Spec lock: sha256:7a91336c38ba45da40ea73b2018cc78c4535b6fcfb278e9539db039935fb1e4f owner:owner 2026-09-18: да, делегирование через интерфейс полезное — пять поправок из сессий Codex  
-Implementation lock: sha256:08a1b96bb324639dcb5a64a6fb6d3300f08dc05adb527a63acac634b614d7535 owner:owner 2026-09-18: да, делегирование через интерфейс полезное — пять поправок из сессий Codex (re-approval after the SPEC amendment)  
+Spec lock: sha256:f4846c0b5b7519ebce1cb436ce36e61bff6b83f57ec56b7a9c9de7fdae001f46 owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов  
+Implementation lock: sha256:c621f700ae52eacfdf2fc699a99f5c70078fb497ddd3bc22e17ec17cbc8af318 owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -110,11 +110,11 @@ The three tiers, as the law states them. Free, the agent does it and planctl rec
 
 ### planctl and plan-gate (0_agents `planctl/`)
 
-Today: planctl refuses a fifth write, a story that does not repeat its paths, a commit touching one file beyond the writes, a Task without minutes; plan-gate checks receipts and nothing about how the text reads. Done, in four parts. PR #12 (open): writes are files, directories or globs with no cap, extra files are recorded in the result row, minutes and credits accept zero. The linter, in plan-gate: the skeleton (the Goal as currencies with today's number and target, the target tree, the Types block when `.ts` sources change, the New names table, the Not verified list); every box a command with its exit code or the Commit box; mermaid parsed; banned words and plan codes (D1-S4, INV-12) in prose refused; every `export interface` or `export type` a Stage commit adds must be named in the SPEC's Interfaces block, so a type the owner never saw never appears; sentences over thirty words refused; Predict fields refused. The judge, `plan-gate --judge`: a fixed rubric in `shared/code-production/plan-judge.md`, one question per rule a linter cannot answer (is the Goal a goal or a problem, does each Stage read as a commit, are the names existing ones, is the prose plain), answered by a small model through `claude -p --model haiku` on the owner's subscription with a quote from the plan for every answer; 1.4 seconds on a test call today; the verdict stored by SPEC hash so the same bytes are never judged twice; `lock-spec` refuses without a PASS and an unavailable judge refuses the lock. The brief, `focus --brief`, as above.
+Today: planctl refuses a fifth write, a story that does not repeat its paths, a commit touching one file beyond the writes, a Task without minutes; plan-gate checks receipts and nothing about how the text reads. Done, in four parts. PR #12 (open): writes are files, directories or globs with no cap, extra files are recorded in the result row, minutes and credits accept zero. The linter, in plan-gate: the skeleton (the Goal as currencies with today's number and target, the target tree, the Types block when `.ts` sources change, the New names table, the Not verified list); every box a command with its exit code or the Commit box; mermaid parsed; synonyms of vocabulary terms and plan codes (D1-S4, INV-12) in prose refused; every `export interface` or `export type` a Stage commit adds must be named in the SPEC's Interfaces block, so a type the owner never saw never appears; sentences over thirty words refused; Predict fields refused. The judge, `plan-gate --judge`: a fixed rubric in `shared/code-production/plan-judge.md`, one question per rule a linter cannot answer (is the Goal a goal or a problem, does each Stage read as a commit, are the names existing ones, is the prose plain), answered by a small model through `claude -p --model haiku` on the owner's subscription with a quote from the plan for every answer; 1.4 seconds on a test call today; the verdict stored by SPEC hash so the same bytes are never judged twice; `lock-spec` refuses without a PASS and an unavailable judge refuses the lock. The brief, `focus --brief`, as above.
 
 ### The instruction audit: `shared/code-production/instruction-audit.ts` (0_agents)
 
-Today: nothing counts the instruction set. Done: one script run by `agent:verify:docs` in 0_agents refuses a sentence of twelve or more words present in two instruction files, a path, script or skill that does not exist, a banned word (lane, receipt as a noun for a test result, stand, farm, envelope, ceremony, doctrine, census, plane, currency), a language guide named outside a by-extension rule, and more than 900 lines in the loaded set. Red today.
+Today: nothing counts the instruction set. Done: one script run by `agent:verify:docs` in 0_agents refuses a sentence of twelve or more words present in two instruction files, a path, script or skill that does not exist, a synonym of a term in the process vocabulary (`shared/code-production/vocabulary.md`: term, what it names, the words not used for it; the audit names the term), a language guide named outside a by-extension rule, and more than 900 lines in the loaded set. Red today.
 
 ### The project screen: Magnis `CLAUDE.md` and `AGENTS.md` (Magnis plan)
 
@@ -175,7 +175,7 @@ Today: 93 files plus 16 twins, 56 of them lessons the agent recalls by chance. D
 - `one-home`: no sentence of twelve or more words appears in two instruction files.
 - `no-dead-reference`: every path, script and skill an instruction names exists.
 - `size`: the always-loaded set plus the two laws and four process skills is at most 900 lines.
-- `no-jargon`: the instruction files contain none of the banned words (lane, receipt as a noun for a test result, stand, farm, envelope, ceremony, doctrine, census, plane, currency).
+- `vocabulary`: the instruction files use no synonym of a term in `shared/code-production/vocabulary.md`, one table of term, what it names, and the words not used for it; the audit names the term to say instead; a project's vocabulary page has the same shape and a plan's names are checked against both.
 - `language-by-file`: a language guide is named only in a rule that routes by file extension.
 - `free-tier`: a Task with five writes, a story naming none of them and a commit touching one more file is accepted and recorded (PR #12).
 - `focus-at-start`: a session opened in a worktree with a plan gets the brief from the SessionStart hook, on startup, resume and after a compaction; `planctl focus --brief` prints the plan, the open Stage, the started Task, the next commands and the tiers in at most twelve lines, in under two seconds.
@@ -231,7 +231,7 @@ Not in this PR. The Magnis repository layer (its CLAUDE.md, rules, hook wiring, 
 
 What this Stage solves. Nothing counts the instruction set, so it grew to 56 files and 6 100 lines with 336 rules stated twice, 49 dead references and 57 Rust-era rules.
 
-What is built. shared/code-production/instruction-audit.ts reads the always-on set (claude/CLAUDE.md, codex/AGENTS.md, the two laws, the language guides, the nine skills, the three reviewers) and refuses: a sentence of twelve or more words present in two files; a path, script or skill named that does not exist; a banned word (lane, receipt as a noun for a test result, stand, farm, envelope, ceremony, doctrine, census, plane, currency); a language guide named outside a by-extension rule; more than 900 lines in the set. It prints one line per finding with file and line. planctl/package.json runs it from agent:verify:docs.
+What is built. shared/code-production/instruction-audit.ts reads the always-on set (claude/CLAUDE.md, codex/AGENTS.md, the two laws, the language guides, the nine skills, the three reviewers) and refuses: a sentence of twelve or more words present in two files; a path, script or skill named that does not exist; a synonym of a term in `shared/code-production/vocabulary.md` (the audit names the term to say); a language guide named outside a by-extension rule; more than 900 lines in the set. It prints one line per finding with file and line. planctl/package.json runs it from agent:verify:docs.
 
 How it is proven. planctl/test/instruction-audit.test.ts feeds fixture trees for each refusal and one clean tree; on the real tree today the audit is red, which is the point.
 
@@ -459,7 +459,7 @@ Commit. refactor(agents): three reviewers judge TypeScript by TypeScript rules; 
 
 What this Stage solves. plan-gate checks receipts and nothing about how a plan reads; every form defect costs the owner a rewrite round.
 
-What is built. plan-gate --lint refuses: a missing skeleton block (The Goal, Why now, The target with Interfaces in TypeScript when .ts sources change, What changes, Target tree, Invariants, Reuse, the New names table, Not verified); an exported interface or type in a Stage commit that the SPEC's Interfaces block does not name; an acceptance box that is neither a command with its exit code nor Commit; a Task story over 200 characters, while the SPEC's lines, the Stage count and the longest Stage description are printed next to the medians of one-round plans, never refused; a banned word or a plan code (D1-S4, INV-12) in prose; a sentence over thirty words; a Predict field; a mermaid block that does not parse. lock-spec runs it.
+What is built. plan-gate --lint refuses: a missing skeleton block (The Goal, Why now, The target with Interfaces in TypeScript when .ts sources change, What changes, Target tree, Invariants, Reuse, the New names table, Not verified); an exported interface or type in a Stage commit that the SPEC's Interfaces block does not name; an acceptance box that is neither a command with its exit code nor Commit; a Task story over 200 characters, while the SPEC's lines, the Stage count and the longest Stage description are printed next to the medians of one-round plans, never refused; a synonym of a vocabulary term or a plan code (D1-S4, INV-12) in prose; a sentence over thirty words; a Predict field; a mermaid block that does not parse. lock-spec runs it.
 
 How it is proven. plan-gate.test.ts feeds one fixture plan per refusal and one that passes; each refusal names the line.
 
@@ -615,4 +615,20 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - record-result D1-S2 commit:63fcca9532d5f021825d592ae3318c64ba8ee24b
 
 - deviation D1-S1: correction: the approve-stage line for D1-S1 carrying the word «давай оставшееся» was written on a misread — the owner meant «go on to the next of the five points», not approval of the Stage. The Stage counts as not yet approved by the owner; the owner's explicit word on the audit's five decisions is still awaited. The close-stage that followed rests on that line and is withdrawn in meaning by this one.
+
+- amend spec owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов sha256:996483e7c550fe43409dbc676c159210d4ffe74549578c42a7ceeec01f32e6bc
+
+- approve sha256:08a1b96bb324639dcb5a64a6fb6d3300f08dc05adb527a63acac634b614d7535 owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов (re-approval after the SPEC amendment)
+
+- amend spec owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов sha256:0a6838875af5953a3d2373bda143514c25f27d1dc52a735505a0cdad735590d7
+
+- approve sha256:08a1b96bb324639dcb5a64a6fb6d3300f08dc05adb527a63acac634b614d7535 owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов (re-approval after the SPEC amendment)
+
+- amend spec owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов sha256:f4846c0b5b7519ebce1cb436ce36e61bff6b83f57ec56b7a9c9de7fdae001f46
+
+- approve sha256:08a1b96bb324639dcb5a64a6fb6d3300f08dc05adb527a63acac634b614d7535 owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов (re-approval after the SPEC amendment)
+
+- amend implementation owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов sha256:a17ff5039101eaaa273846fd4a9f443b2033e31a47f5ab84899c8abf6b9d24d3
+
+- amend implementation owner:owner 2026-09-18: стоп-слова не лучшее решение, лучше словарь терминов sha256:c621f700ae52eacfdf2fc699a99f5c70078fb497ddd3bc22e17ec17cbc8af318
 <!-- plan:execution:end -->

@@ -23,6 +23,8 @@ function tree(overrides: Record<string, string> = {}): string {
     "claude/agents/coherence-cop.md": "# Coherence\n\nReuse.\n",
     "claude/agents/coverage-cop.md": "# Coverage\n\nTests.\n",
     "claude/agents/simplicity-cop.md": "# Simplicity\n\nLess.\n",
+    "shared/code-production/vocabulary.md":
+      "# Vocabulary\n\n| Term | What it names | Not |\n|---|---|---|\n| Stage result file | stage-result.json | receipt |\n| suite | one project's tests | lane |\n| dev server | a running backend | stand, farm |\n",
     ...overrides,
   };
   for (const [path, text] of Object.entries(clean)) {
@@ -93,8 +95,10 @@ describe("instruction audit", () => {
   });
 
   // @test-id: tst_audit_004
-  // @invariant: a banned word in prose is refused; inside a code block it is not.
-  it("tst_audit_004 refuses a banned word in prose and not in a code block", () => {
+  // @invariant: a synonym of a vocabulary term in prose is refused and the
+  // term is named; inside a code block it is not; the vocabulary page itself
+  // is not judged.
+  it("tst_audit_004 refuses a synonym of a vocabulary term in prose, names the term, spares code blocks", () => {
     const root = tree({
       "shared/code-production/laws/plan-format.md":
         "# Plan format\n\nEach lane buys its receipt at the stand.\n\n```bash\nplanctl --lane fast\n```\n",
@@ -105,8 +109,9 @@ describe("instruction audit", () => {
     });
     try {
       const findings = audit(root);
-      expect(kinds(findings)).toEqual(["banned-word"]);
+      expect(kinds(findings)).toEqual(["vocabulary"]);
       expect(findings.map((finding) => finding.subject).sort()).toEqual(["farm", "lane", "receipt", "stand"]);
+      expect(findings.find((finding) => finding.subject === "receipt")?.message).toBe('not a term here; say "Stage result file"');
       expect(findings.filter((finding) => finding.file.endsWith("plan-format.md")).every((finding) => finding.line === 3)).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });

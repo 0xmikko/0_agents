@@ -3,8 +3,8 @@
  *
  * Reads the always-on set of agent instructions in this repository and refuses
  * five things: a sentence of twelve or more words that lives in two files, a
- * path into this repository or a /skill that does not exist, a banned word in
- * prose, a language guide named outside a by-extension rule, and a set over
+ * path into this repository or a /skill that does not exist, a synonym of a
+ * vocabulary term in prose, a language guide named outside a by-extension rule, and a set over
  * 900 lines. One line per finding, exit 1 when there is any.
  *
  *   bun shared/code-production/instruction-audit.ts [root]
@@ -13,7 +13,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export interface Finding {
-  readonly kind: "one-home" | "dead-reference" | "banned-word" | "language-by-file" | "size";
+  readonly kind: "one-home" | "dead-reference" | "vocabulary" | "language-by-file" | "size";
   readonly file: string;
   readonly line: number;
   readonly subject: string;
@@ -40,9 +40,7 @@ export const THE_SET: readonly string[] = [
 
 export const SIZE_LIMIT = 900;
 export const SENTENCE_WORDS = 12;
-export const BANNED_WORDS: readonly string[] = [
-  "lane", "receipt", "stand", "farm", "envelope", "ceremony", "doctrine", "census", "plane", "currency",
-];
+export const VOCABULARY = "shared/code-production/vocabulary.md";
 const LANGUAGE_GUIDES = ["typescript.md", "rust.md"];
 const EXTENSION = /`\.[a-z]+`|\.tsx?\b|\.rs\b/;
 /** The first path segment of a reference into this repository; anything
@@ -125,16 +123,41 @@ function deadReferences(root: string, all: readonly Line[], skills: readonly str
   return findings;
 }
 
-function bannedWords(all: readonly Line[]): Finding[] {
+/** The vocabulary table: term → the words that mean the same thing here and
+ * are therefore not used. Read from the "Not" column of every row. */
+export function synonyms(root: string): Map<string, string> {
+  const path = join(root, VOCABULARY);
+  if (!existsSync(path)) return new Map();
+  const map = new Map<string, string>();
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    const cells = line.split("|").map((cell) => cell.trim());
+    if (cells.length < 5 || cells[1] === "Term" || cells[1]?.startsWith("---")) continue;
+    const term = cells[1] ?? "";
+    for (const word of (cells[3] ?? "").split(",").map((w) => w.trim().toLowerCase()).filter((w) => w !== "")) {
+      if (!map.has(word)) map.set(word, term);
+    }
+  }
+  return map;
+}
+
+function vocabulary(root: string, all: readonly Line[]): Finding[] {
+  const map = synonyms(root);
+  if (map.size === 0) return [];
+  const words = [...map.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp);
+  const pattern = new RegExp(`\\b(${words.join("|")})(?:s|es)?\\b`, "gi");
   const findings: Finding[] = [];
-  const pattern = new RegExp(`\\b(${BANNED_WORDS.join("|")})s?\\b`, "gi");
   for (const line of all) {
-    if (!line.prose) continue;
+    if (!line.prose || line.file === VOCABULARY) continue;
     for (const match of line.text.matchAll(pattern)) {
-      findings.push({ kind: "banned-word", file: line.file, line: line.number, subject: (match[1] ?? "").toLowerCase(), message: "banned word in prose" });
+      const word = (match[1] ?? "").toLowerCase();
+      findings.push({ kind: "vocabulary", file: line.file, line: line.number, subject: word, message: `not a term here; say "${map.get(word) ?? ""}"` });
     }
   }
   return findings;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function languageByFile(all: readonly Line[]): Finding[] {
@@ -188,7 +211,7 @@ export function audit(root: string): Finding[] {
     ...size(countedLines),
     ...oneHome(all),
     ...deadReferences(root, all, skills),
-    ...bannedWords(all),
+    ...vocabulary(root, all),
     ...languageByFile(all),
   ].sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
 }
