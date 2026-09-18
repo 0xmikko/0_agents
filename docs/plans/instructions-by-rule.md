@@ -1,8 +1,8 @@
 # Agent instructions, rule by rule: memory becomes law, the rest is cut
 
 Status: APPROVED  
-Spec lock: sha256:95af7068c230a16cf80f86138e7c00ff18d4d2de6179b8128f71265d6cf1fb37 owner:owner 2026-09-18: рефакторинг через grep находил лишнее и приводил к ужасным вещам; переименовать в определении, запустить tsc, идти по его списку — сделать скилл для рефакторинга  
-Implementation lock: sha256:6823a0e38627d18704e57471e8d6eadf45b16c73c2e652a9f3abecb9290f74a3 owner:owner 2026-09-18: рефакторинг через grep находил лишнее и приводил к ужасным вещам; переименовать в определении, запустить tsc, идти по его списку — сделать скилл для рефакторинга  
+Spec lock: sha256:289562a2eea214a498e64d2ffe0f7179e7b4993c8fa2e7b2c8eef1fa45640ae1 owner:owner 2026-09-18: да, давай сделаем их идентичными  
+Implementation lock: sha256:6823a0e38627d18704e57471e8d6eadf45b16c73c2e652a9f3abecb9290f74a3 owner:owner 2026-09-18: да, давай сделаем их идентичными (re-approval after the SPEC amendment)  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -60,6 +60,8 @@ Never edit workflows, infrastructure, `.claude/`, secrets, CLAUDE.md or AGENTS.m
 the task names the file. Never kill or reuse a process you did not start.
 The owner is on a Claude subscription: no API key, ever.
 ```
+
+`codex/AGENTS.md` is byte-identical: a symbolic link to `claude/CLAUDE.md`, so the author and the reviewer can never read different rules; the audit counts one file as one home. Codex gets the brief from the same command, run by its own session hook.
 
 ### The session brief: `planctl focus --brief` and the managed hook
 
@@ -560,4 +562,8 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - approve sha256:270d386cff3a545fe01d83d08a8738f33af7162dcc060cd6e68b2d1ab569b62b owner:owner 2026-09-18: рефакторинг через grep находил лишнее и приводил к ужасным вещам; переименовать в определении, запустить tsc, идти по его списку — сделать скилл для рефакторинга (re-approval after the SPEC amendment)
 
 - amend implementation owner:owner 2026-09-18: рефакторинг через grep находил лишнее и приводил к ужасным вещам; переименовать в определении, запустить tsc, идти по его списку — сделать скилл для рефакторинга sha256:6823a0e38627d18704e57471e8d6eadf45b16c73c2e652a9f3abecb9290f74a3
+
+- amend spec owner:owner 2026-09-18: да, давай сделаем их идентичными sha256:289562a2eea214a498e64d2ffe0f7179e7b4993c8fa2e7b2c8eef1fa45640ae1
+
+- approve sha256:6823a0e38627d18704e57471e8d6eadf45b16c73c2e652a9f3abecb9290f74a3 owner:owner 2026-09-18: да, давай сделаем их идентичными (re-approval after the SPEC amendment)
 <!-- plan:execution:end -->
