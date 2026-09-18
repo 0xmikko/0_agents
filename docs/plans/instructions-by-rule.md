@@ -102,12 +102,12 @@ Plus: read the project file; a language guide loads for files of that language; 
 | 10 | A Task's writes are files, directories or globs, as many as the change needs; the story does not repeat them. | 4 files say "four writes" | E1 |
 | 11 | No minutes and no credits in a plan. Size is files and lines a Stage touches; the fact comes from git at end-work. Mermaid is parsed, and banned words, task codes and `file.ts:123` in prose are refused, before the plan is shown. | 12 rules in 6 files; 2 mermaid parse bombs in one week | P5 |
 | 12 | Every new file or mechanism names what it replaces or extends; the Reuse map holds the greps. | 2 files | E6 |
-| 13 | Review of a plan runs only on the owner's word, at most three rounds, and fixes only what the plan cannot run without; the rest is listed as declined. | caps 2 and 3 in 3 files | P3 |
+| 13 | Review of a plan runs only on the owner's word, at most three rounds, and fixes only what the plan cannot run without; the rest is listed as declined. | caps 2 and 3 in 3 files | P6 |
 | 14 | Read each acceptance command against the tree the plan builds; a command only this machine can pass is prose with its number. | 2 files + 4 memories | E2 |
 | 15 | A plan judged by a model-run metric first publishes the band of the unchanged product and counts an effect only when every block clears it. | 3 memories | E8 |
 | 16 | Forbidden, as today: opening with the problem, DEC lists, tests asserting layout or a deleted file, inventory pins, self-declared approval, boxes mirroring CI or PR state. | 2 files | — |
 | 16a | A box is a command with its exit code or the Commit box. What a machine cannot check goes to the pre-approval screen under "not verified". | 0 files | E2 |
-| 17 | The pre-approval screen is the last block and the one the owner reads: file tree, acceptance stories in plain words, the count of new names, what is not verified and why. | 2 files | P1 |
+| 17 | The pre-approval screen is the last block and the one the owner reads: file tree, acceptance stories in plain words, the count of new names, what is not verified and why. | 2 files | P7 |
 
 **How a plan is executed — `blueprint-start` + `development-process.md`**
 
@@ -124,7 +124,7 @@ Plus: read the project file; a language guide loads for files of that language; 
 
 | # | Rule | Today | Decision |
 |---|---|---|---|
-| 24 | All work in a `.worktrees/<slug>` worktree on `feat|fix|refactor|chore/<slug>` from `origin/staging`; one agent, one worktree, one branch; `git -C <abs>` for every writing git command. | 4 files + 1 memory | E7 |
+| 24 | All work in a `.worktrees/<slug>` worktree on `feat\|fix\|refactor\|chore/<slug>` from `origin/staging`; one agent, one worktree, one branch; `git -C <abs>` for every writing git command. | 4 files + 1 memory | E7 |
 | 25 | Merge commits only; never rebase, amend, force-push or squash; never `cp` or `git checkout <branch> -- <path>` between trees. | 7 files, contradicted by `fix-ci-cd` | E7 |
 | 26 | One work commit per Stage, Conventional subject, body says why. No wip commits in a plan run. | 5 files, contradicted by `git` and `start-work` | E7 |
 | 27 | A push buys a CI matrix: push when someone needs the new state. The pre-push hook is the gate, run once, and writes the receipt; nobody runs `agent:verify:pr` by hand first. A plan document is pushed on the owner's word. The agent flips ready, the owner merges. Never push to staging or main. | 12 files for "never push", 0 for "when" + 9 memories | E3 |
