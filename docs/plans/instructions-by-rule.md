@@ -244,9 +244,9 @@ Commit. feat(audit): an instruction audit that refuses duplicates, dead referenc
 
 ##### Acceptance criteria
 
-- [ ] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts` exits 0 — each of the five refusals fires on its fixture and the clean fixture passes
-- [ ] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S1` exits 0 — the owner read what this Stage produced and said the word
-- [ ] Commit
+- [x] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts` exits 0 — each of the five refusals fires on its fixture and the clean fixture passes — 21fb6f892f20d5f1c4bc0899b3f5aa775482d642
+- [x] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S1` exits 0 — the owner read what this Stage produced and said the word — 21fb6f892f20d5f1c4bc0899b3f5aa775482d642
+- [x] Commit — 21fb6f892f20d5f1c4bc0899b3f5aa775482d642
 
 ##### Results
 
@@ -606,4 +606,8 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - approve sha256:08a1b96bb324639dcb5a64a6fb6d3300f08dc05adb527a63acac634b614d7535 owner:owner 2026-09-18: да, делегирование через интерфейс полезное — пять поправок из сессий Codex (re-approval after the SPEC amendment)
 
 - deviation D1-S1: target: work stays inside the approved plan; reached: while D1-S1 waited for the owner's word, the agent did three pieces of work no plan named — 0_agents PR #14 (init/set-spec journal, spent journal consumed, merge exemption) and magnis-app PR #264 (runtime re-vendor, three doc sentences, five re-pins) — to unblock a neighbouring session's complete-task; the owner merged both and said it was unexpected and the process must be reviewed. Rule the retro should weigh: unplanned work is a plan or a question, not a favor; a blocked neighbour is reported to the owner, who decides.
+
+- approve-stage D1-S1 owner:давай оставшееся — owner, 2026-09-18
+
+- close D1-S1 closed commit:21fb6f892f20d5f1c4bc0899b3f5aa775482d642
 <!-- plan:execution:end -->
