@@ -205,7 +205,7 @@ The first five are one script, `shared/code-production/instruction-audit.ts`, ru
 
 ## Not in this plan
 
-- The Magnis repository layer: the vocabulary page `docs/project.md` (what Magnis is, key ideas, names anchored to `@magnis/sdk`, notation for dates, ids and wire spelling), `CLAUDE.md`, `AGENTS.md`, `.claude/rules/*`, the repo copies of skills and cops, the cargo hook, the docs copies of the laws, the pre-push additions, the re-vendored runtime. It is the next plan in magnis-app, rule 35–39 are its content, and it starts when this PR and PR #12 are merged.
+- The Magnis repository layer: the vocabulary page `docs/project.md` (what Magnis is, key ideas, names anchored to `@magnis/sdk`, notation for dates, ids and wire spelling), `CLAUDE.md`, `AGENTS.md`, `.claude/rules/*`, the repo copies of skills and cops, the cargo hook, the docs copies of the laws, the pre-push additions, the re-vendored runtime. It is the next plan in magnis-app, the five repository-facts rules at the end of the tables are its content, and it starts when this PR and PR #12 are merged.
 - The memory cleanup (register M) is done by hand on the owner's word after that plan; it lives outside any repository.
 - The S/M/L size loop with git-measured facts and an optimism ratio at end-work is its own later plan.
 - Cyrus skills are deleted, not migrated; Cyrus does not run Magnis.
