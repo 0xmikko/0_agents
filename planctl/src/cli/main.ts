@@ -22,6 +22,8 @@ const PLAN_UPDATE_FILE = portableRuntimeFile("plan-update.ts");
 const {
   createDraftPlan,
   deliveryMetas,
+  journalCreatedPlan,
+  mutatePlanFile,
   replaceDraftSpec,
   stageInputs,
   taskExecutionBrief,
@@ -905,8 +907,10 @@ function init(args: readonly string[]): void {
   const rootPath = root();
   const target = addressedPath(rootPath, plan);
   if (existsSync(target.absolute)) throw new Error(`plan already exists: ${target.relative}`);
-  atomicWrite(target.absolute, createDraftPlan(flag(args, "--title")));
+  const body = createDraftPlan(flag(args, "--title"));
+  atomicWrite(target.absolute, body);
   stage(rootPath, target.relative);
+  journalCreatedPlan(target.relative, body);
 }
 
 function setSpec(args: readonly string[]): void {
@@ -915,9 +919,10 @@ function setSpec(args: readonly string[]): void {
   const rootPath = root();
   const target = addressedPath(rootPath, plan);
   const spec = readFileSync(resolve(rootPath, flag(args, "--from")), "utf8");
-  const changed = replaceDraftSpec(readFileSync(target.absolute, "utf8"), spec);
-  atomicWrite(target.absolute, changed.body);
-  stage(rootPath, target.relative);
+  // Through the journaled writer, like every other mutation: a SPEC written by
+  // hand left no journal, and the managed pre-commit refuses a staged marker
+  // plan that has none.
+  mutatePlanFile(target.relative, "set-spec", (body: string) => replaceDraftSpec(body, spec));
 }
 
 async function configCommand(args: readonly string[]): Promise<void> {
