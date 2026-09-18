@@ -1305,7 +1305,28 @@ function readJournal(path: string): MutationJournal | null {
   return parseJournal(parsed);
 }
 
-function mutatePlanFile(planArg: string, operation: string, transform: (body: string) => MutationResult): void {
+/** The journal for a plan planctl has just created: the init event from
+ * nothing to the draft's bytes, so the managed pre-commit's staged-plan guard
+ * accepts the first commit like every later journaled mutation. */
+export function journalCreatedPlan(planArg: string, body: string): void {
+  const root = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
+  const absolute = resolve(root, planArg);
+  const plan = absolute.slice(root.length + 1);
+  const empty = digest("");
+  const candidateHash = digest(body);
+  const journal: MutationJournal = {
+    version: 1,
+    root,
+    plan,
+    baseHead: git(root, ["rev-parse", "HEAD"]),
+    initialHash: empty,
+    candidateHash,
+    events: [{ operation: "init", beforeHash: empty, afterHash: candidateHash }],
+  };
+  writeFileSync(journalPath(root), `${JSON.stringify(journal, null, 2)}\n`);
+}
+
+export function mutatePlanFile(planArg: string, operation: string, transform: (body: string) => MutationResult): void {
   const root = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
   const absolute = resolve(root, planArg);
   const plan = absolute.slice(root.length + 1);
@@ -1314,7 +1335,17 @@ function mutatePlanFile(planArg: string, operation: string, transform: (body: st
   const body = readFileSync(absolute, "utf8");
   const head = git(root, ["rev-parse", "HEAD"]);
   const currentHash = digest(body);
-  const existing = readJournal(path);
+  let existing = readJournal(path);
+  // A journal whose candidate HEAD already carries was spent by that commit;
+  // a repository without the managed post-commit hook never cleared it. It is
+  // consumed here, so the next mutation starts a fresh transaction from HEAD.
+  if (existing !== null && existing.root === root && existing.plan === plan && existing.baseHead !== head) {
+    const committedNow = spawnSync("git", ["-C", root, "show", `HEAD:${plan}`], { encoding: "utf8" });
+    if (committedNow.status === 0 && digest(committedNow.stdout) === existing.candidateHash) {
+      unlinkSync(path);
+      existing = null;
+    }
+  }
   let initialHash: string;
   let events: readonly JournalEvent[];
   if (existing === null) {

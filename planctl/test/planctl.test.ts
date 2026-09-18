@@ -60,6 +60,8 @@ function fixtureRepository(): {
   git(root, "init", "-q");
   git(root, "config", "user.email", "planctl@example.test");
   git(root, "config", "user.name", "Planctl Test");
+  // a plan is born in a repository with history: the journal binds to HEAD
+  git(root, "commit", "-q", "--allow-empty", "-m", "the repository");
   mkdirSync(join(root, "docs", "plans"), { recursive: true });
   const plan = join(root, "docs", "plans", "fixture.md");
   const spec = join(root, "spec.md");
@@ -134,14 +136,22 @@ describe("planctl", () => {
   it("tst_scripts_planctl_002 authors and locks a plan through the canonical writer", () => {
     const fixture = fixtureRepository();
     try {
-      for (const result of [
-        run(fixture.root, "init", fixture.plan, "--title", "Fixture plan"),
-        run(fixture.root, "set-spec", fixture.plan, "--from", fixture.spec),
-      ]) {
-        expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-      }
+      // init and set-spec journal their own bytes, so the plan planctl just
+      // wrote passes planctl's own staged-plan guard before its first commit
+      // (the managed pre-commit runs that guard on every staged plan)
+      const initialised = run(fixture.root, "init", fixture.plan, "--title", "Fixture plan");
+      expect(initialised.status, `${initialised.stdout}\n${initialised.stderr}`).toBe(0);
+      const guardedInit = run(fixture.root, "verify-staged", fixture.plan);
+      expect(guardedInit.status, `${guardedInit.stdout}\n${guardedInit.stderr}`).toBe(0);
+      git(fixture.root, "commit", "-qm", "docs: open the plan");
+      expect(run(fixture.root, "clear-transaction", fixture.plan, "--commit", git(fixture.root, "rev-parse", "HEAD")).status).toBe(0);
+      const specced = run(fixture.root, "set-spec", fixture.plan, "--from", fixture.spec);
+      expect(specced.status, `${specced.stdout}\n${specced.stderr}`).toBe(0);
+      const guardedSpec = run(fixture.root, "verify-staged", fixture.plan);
+      expect(guardedSpec.status, `${guardedSpec.stdout}\n${guardedSpec.stderr}`).toBe(0);
       expect(readFileSync(fixture.plan, "utf8")).toContain("Status: SPEC_DRAFT");
       git(fixture.root, "commit", "-qam", "docs: draft plan");
+      expect(run(fixture.root, "clear-transaction", fixture.plan, "--commit", git(fixture.root, "rev-parse", "HEAD")).status).toBe(0);
 
       for (const result of [
         run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "spec-approved"),
