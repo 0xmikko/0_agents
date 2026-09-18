@@ -1,85 +1,32 @@
-# Global Claude Code instructions
+# Working here
 
-This file is the entry point for every Claude Code session.
+Where you are and what you can do now is printed at session start by planctl. If it is
+missing, run `bun .agents/code-production/runtime/planctl.ts focus` before anything else.
+Two modes and no third: /blueprint plans, /blueprint-start works by an approved plan.
 
-## Session context
+IMPORTANT: little code that is understood and explained beats much code. One name per
+thing, the name the repository already uses: find it before you write one. A word that
+exists nowhere in the repository is declared with its reason or does not appear. No
+synonyms, no plan codes (D1-S4, INV-12) in prose.
 
-The initiator of each session (Cyrus, a CLI invocation, the VS Code plugin,
-my SSH terminal) is responsible for telling you the session's purpose and
-constraints in the first message. If the first message includes instructions
-about which skills to use or skip, follow them. Without explicit instructions,
-treat the session as a normal interactive collaboration where all skills are
-available.
+DRY and SOLID, here: one mechanism per job, extend it, never copy it; one class per file,
+one reason to change; depend on interfaces the caller owns; a function does one thing and
+is named for it. A second copy of anything is a defect and the reviewers reject it.
 
-## At the start of any task
+Not more engineering than the test needs. No abstraction, generic, interface, option or
+new file for a case that does not exist yet: two users or none. The simplest change that
+makes the red test green, then stop.
 
-1. If a project-local CLAUDE.md exists in `$cwd` or any ancestor directory,
-   read it. Project rules override global ones for project-specific conflicts.
-2. Determine the language(s) the task touches. Read the matching
-   `~/.claude/lang/<lang>.md` for each.
+Mistakes this model keeps making here, so do not:
+- Claims from structure. Check the artifact: run it, open it, `git show origin/staging:<path>`.
+- Fallbacks, defaults, "just in case". A missing value is an error.
+- Tests green from birth. Red first; prove a green-from-birth test by mutating the source.
+- Stopping at a tool refusal. Record one line and continue; a stop ends with "waiting for: X".
+- Refactoring by grep. Rename at the definition, run the compiler, fix exactly what it
+  names; grep finds comments and strangers, the compiler finds the callers. /rename is the procedure.
 
-## Language routing
-
-Read the matching file for each language the task touches:
-
-- Rust → `~/.claude/lang/rust.md`
-- TypeScript / JavaScript / React / Node → `~/.claude/lang/typescript.md`
-
-For multi-language tasks, read all relevant files.
-
-## Always-on principles
-
-### Shared code-production process
-
-The process has three self-contained entrypoints: `blueprint` plans,
-`blueprint-start` executes, and `end-work` closes a merged Delivery. Do not
-chain auxiliary process skills. Plans change only through `planctl`; project
-verification runs only through the standard Bun `agent:*` scripts. Agents
-never merge to `staging` or `main`.
-
-For git operations (branching, commits, merges, history) — see
-~/.claude/agents/git.md. The summary: never rewrite history.
-
-### TDD
-
-- Define **invariants** (a numbered list of testable statements) before writing
-  any code.
-- Write a **RED test** that captures each invariant — it must FAIL on current
-  code. If it passes immediately, it doesn't capture the invariant; rewrite it.
-- Implement the minimum code to make the test GREEN.
-- Run the Stage's 1–3 named behavior files before its commit. The complete
-  suite runs once at the PR Delivery publication boundary through
-  `agent:verify:pr`, then CI repeats it on the published SHA.
-- Skill-level escape hatches that bypass RED test (e.g. `/bug` for typos)
-  are explicit and require the skill itself to announce them. Never skip
-  RED test on your own initiative.
-
-### Code changes
-
-- **Explore before editing.** Don't guess file ownership, architecture, or
-  verification requirements. Read relevant files and grep for patterns first.
-- **NO FALLBACKS without user confirmation.** Never add fallback logic, default
-  behaviors, safety nets, or "just in case" code that wasn't explicitly
-  requested. If a value is missing, leave it missing and surface the error.
-- When docs and current code differ, **prefer the code** and call out the
-  drift to the user.
-
-### Process etiquette
-
-- Don't kill, stop, reuse, or attach to processes you didn't start.
-- Don't use shared/main dev ports for E2E or Playwright verification — pick
-  isolated ports per worktree.
-
-## Project-local override
-
-If a project's `CLAUDE.md` disagrees with this file on a specific rule, the
-project wins for that project. Otherwise this file is the source of truth.
-
-## Boundaries (always)
-
-- Never modify `.github/workflows/`, `infrastructure/`, `.claude/`,
-  `~/.claude/`, `~/.cyrus/`, `~/Coding/0_agents/claude/`, or any path
-  containing secrets, unless the task explicitly names the file.
-- Never edit `CLAUDE.md` or `AGENTS.md` as part of a feature task. They are
-  governance documents — changes to them are a separate task initiated by the
-  user.
+Verify only with the project's `agent:*` scripts; never compose framework commands.
+Language guide by file: `.ts`/`.tsx` → typescript.md, `.rs` → rust.md.
+Never edit workflows, infrastructure, `.claude/`, secrets, CLAUDE.md or AGENTS.md unless
+the task names the file. Never kill or reuse a process you did not start.
+The owner is on a Claude subscription: no API key, ever.
