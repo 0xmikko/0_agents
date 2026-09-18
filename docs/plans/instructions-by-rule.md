@@ -117,20 +117,34 @@ Today: nothing counts the instruction set. Done: one script run by `agent:verify
 Today: 74 and 84 lines, thirty stale facts: `bun run dev:web` does not exist, `MAGNIS_DB_MODE` is retired, `backend/src/sources` is gone, the Deployment section says PGlite. Done: `CLAUDE.md` under 45 lines opens with what Magnis is, in the owner's words:
 
 ```markdown
-Magnis is a local-first personal operations system built as a typed graph: entities and
-links with declared types, filled from a person's sources and read by AI agents. The
-hypothesis the product tests: an AI working over a typed graph brings more value than one
-working over untyped text. The TypeScript backend owns the graph and is the single source
-of truth; the React/Tauri client only shows it; one database behind one URL. Every name
-here is a type of that graph, spelled as `@magnis/sdk` spells it; `docs/project.md` holds
-the vocabulary and the key ideas.
+Magnis is a personal operations system on the owner's own machine. It connects to the
+services a person already uses (Telegram, Gmail, Google Calendar), syncs their data
+locally and shows the whole picture: who they talk to, what they work on, how it relates.
+
+It is built as a typed graph, and that is the bet: a typed graph works better than an
+untyped one. Graphiti, cognee and mem0 store what a model concluded as free nodes and
+free edges; Magnis classifies. A meeting gets a shape agreed once, every meeting has the
+same shape, and over the shapes there are tables, search, grouping and dashboards. The
+shape is the vocabulary a question can be asked in. Two kinds of rows enter the shapes,
+told apart by one column, `origin`: canonical, what a source delivered as delivered; and
+agent, what a model concluded from canonical rows, with confidence, evidence and a
+validity interval. `docs/graph.md` holds the idea and the vocabulary of every shape,
+spelled as the code spells it.
+
+The NestJS backend on Bun owns the graph and is the only writer. The React/Tauri desktop
+app, the CLI and the MCP surface are clients. The backend is handed one PostgreSQL URL
+and never chooses a database: a native cluster inside the desktop app, embedded on the
+dev stand, managed on the server; PGlite only in the test runner. Sources run as
+connectors in their own processes over MCP; modules (contacts, meetings, episodes, …) own
+their shapes and their UI; an installation is one document naming the accounts, from
+which the server derives the modules.
 ```
 
-then the commands as they exist (`db:up`, `dev`, `backend:dev`, scoped `bun test`, `check:backend`, `docs:check`, `test:e2e`, the vendored planctl path, `git reset -q` after a refused commit), the dev stand (`db:up` prints `DATABASE_URL`, embedded PostgreSQL 16 or `--docker`, `dev` runs backend and Vite on it, PGlite only in the test runner, one user, open auth, no CORS or origin guards), the layout as it is on staging, the docs-anchor rule (pin an ancestor that exists, anchor files that exist there), the E2E note (CI runs it only on PRs into main, run it locally against a staging baseline), the frontend rule (never hand-roll UI, assemble from `@magnis/host/ui`), the type rule (hand-written interfaces, zod decodes into them, one camelCase spelling across a boundary), and the pointer to `docs/project.md`. `AGENTS.md` is ten lines: read `CLAUDE.md`, the Codex entry points.
+then the commands as they exist (`db:up`, `dev`, `backend:dev`, scoped `bun test`, `check:backend`, `docs:check`, `test:e2e`, the vendored planctl path, `git reset -q` after a refused commit), the dev stand (`db:up` prints `DATABASE_URL`, embedded PostgreSQL 16 or `--docker`, `dev` runs backend and Vite on it, PGlite only in the test runner, one user, open auth, no CORS or origin guards), the layout as it is on staging, the docs-anchor rule (pin an ancestor that exists, anchor files that exist there), the E2E note (CI runs it only on PRs into main, run it locally against a staging baseline), the frontend rule (never hand-roll UI, assemble from `@magnis/host/ui`), the type rule (hand-written interfaces, zod decodes into them, one camelCase spelling across a boundary), and the pointer to `docs/graph.md`. `AGENTS.md` is ten lines: read `CLAUDE.md`, the Codex entry points.
 
-### The vocabulary page: Magnis `docs/project.md` (Magnis plan)
+### The vocabulary page: Magnis `docs/graph.md` (Magnis plan)
 
-Today: none; each agent invents. Done: one page, what Magnis is, its key ideas, the names of its entities anchored to `@magnis/sdk`, and how things are written, dates, ids, spelling on the wire. It is the root from which documentation reachability is counted (below) and the source the judge and the New names table check against.
+Today: the page exists on the `feat/graph-reading-pipeline` branch, unpushed, with the hypothesis in the owner's words and a table "word, what it names, where the code spells it"; nothing links to it and no check reads it. Done: no second page. `docs/graph.md` lands with that plan or ahead of it, `CLAUDE.md` links it, the judge and the New names table check plan names against its table, and documentation reachability (below) is counted from it and from `CLAUDE.md`.
 
 ### Project rules, skills, agents and hooks: Magnis `.claude/` and `.agents/` (Magnis plan)
 
@@ -142,7 +156,7 @@ Today: nine pages, 1 311 lines, copies of the laws that drifted (a legacy Task f
 
 ### The product pages: Magnis `docs/` (Magnis plan)
 
-Today: 77 current pages, 14 653 lines, sixty with anchor debt, the largest 1 964 lines; thirteen more already marked historical or superseded lie beside the live ones (`rust-rules.md`, `sqlite-gotchas.md`, `postgres-only-plan.md`, `cutover-status-2026-05-27.md` and nine others). Done: the thirteen move to `docs/archive/`; every current page gets one question, "is this still true on staging?", answered by reading the code it anchors; a page stays current only if it is reachable within two links from `docs/project.md` or `CLAUDE.md`, otherwise it is archived; the docs gate counts reachability.
+Today: 77 current pages, 14 653 lines, sixty with anchor debt, the largest 1 964 lines; thirteen more already marked historical or superseded lie beside the live ones (`rust-rules.md`, `sqlite-gotchas.md`, `postgres-only-plan.md`, `cutover-status-2026-05-27.md` and nine others). Done: the thirteen move to `docs/archive/`; every current page gets one question, "is this still true on staging?", answered by reading the code it anchors; a page stays current only if it is reachable within two links from `docs/graph.md` or `CLAUDE.md`, otherwise it is archived; the docs gate counts reachability.
 
 ### Plans and research: Magnis `docs/plans`, `docs/research` (Magnis plan)
 
