@@ -147,7 +147,19 @@ The first five are one script, `shared/code-production/instruction-audit.ts`, ru
 
 ## Not in this plan
 
-- The Magnis repository layer: the vocabulary page `docs/project.md`, `CLAUDE.md` (its PGlite line and dead commands), `AGENTS.md`, `.claude/rules/*`, the repo copies of skills and cops, the cargo hook, the docs copies of the laws, the pre-push additions, the re-vendored runtime. It is the next plan in magnis-app and starts when this PR and PR #12 are merged.
+- The Magnis repository layer. Its `CLAUDE.md` opens with what the project is, in the owner's words, so no agent invents it:
+
+  ```markdown
+  Magnis is a local-first personal operations system built as a typed graph: entities and
+  links with declared types, filled from a person's sources and read by AI agents. The
+  hypothesis the product tests: an AI working over a typed graph brings more value than one
+  working over untyped text. The TypeScript backend owns the graph and is the single source
+  of truth; the React/Tauri client only shows it; one database behind one URL. Every name
+  here is a type of that graph, spelled as `@magnis/sdk` spells it; `docs/project.md` holds
+  the vocabulary and the key ideas.
+  ```
+
+  The rest of that layer: the vocabulary page `docs/project.md`, `CLAUDE.md` (its PGlite line and dead commands), `AGENTS.md`, `.claude/rules/*`, the repo copies of skills and cops, the cargo hook, the docs copies of the laws, the pre-push additions, the re-vendored runtime. It is the next plan in magnis-app and starts when this PR and PR #12 are merged.
 - The memory cleanup (register M) is done by hand on the owner's word after that plan; it lives outside any repository.
 - The S/M/L size loop with git-measured facts and an optimism ratio at end-work is its own later plan.
 - Cyrus skills are deleted, not migrated; Cyrus does not run Magnis.
