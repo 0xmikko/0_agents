@@ -33,6 +33,7 @@ Each decision names the mechanism (why it moves the currency), what changes, and
 | P4 Fresh base and open PRs before the lock | S1 of #258 was thrown away because staging already carried the mechanism; 7 "fresh staging" corrections. | rule 8 | mechanisms replaced at integration: 0 |
 | P5 What breaks the owner's reading is checked by a machine | Broken mermaid, `file.ts:123` and task codes in prose, banned words, minutes and credits: each costs a rewrite round that decides nothing. | plan-gate: mermaid parsed before the plan is shown, banned words and code references refused in prose, no Predict fields; rule 11 | corrections about form: 0 |
 | P6 Review only on the owner's word, three rounds, fixes only what blocks | 53 plan commits and 10 rounds on one SPEC; "ты зачем всё переделывать стал". | rule 13; `review-plan` skill deleted | rounds ≤ 3 |
+| P8 Types are shown, not described | The owner decides on types; an agent that writes "the shape as in the SDK" or a sentence instead of an interface hides the decision, and the owner asks for it in a rewrite round. A type that does not exist yet is the one thing prose cannot carry. | rule 9a: every new or changed type appears in the SPEC as TypeScript, hand-written interfaces one field per line, zod decoding into them; the pre-approval screen has a Types block; plan-gate refuses a SPEC that adds or changes `.ts` sources and shows no TypeScript | rewrite rounds for missing types: 0 |
 | P7 The pre-approval screen is what the owner reads | Every steering correction across three branches was one of: the file tree, the stories, what is not verified. | rule 17 kept; adds the new-names count and the "not verified" list that replaces prose boxes | — |
 
 **Stage 2 — Execution**
@@ -98,6 +99,7 @@ Plus: read the project file; a language guide loads for files of that language; 
 | 7 | The Goal is the owner's currencies with today's number and the target, never "measure X". | example in 2 files is a measurement goal | P2 |
 | 8 | Before `lock-spec`: fresh `origin/staging`, and the open PRs into staging that touch the SPEC's files, recorded in the SPEC. | 0 files, 7 corrections | P4 |
 | 8a | The plan's names come from the project's vocabulary page or its SDK; a new name is declared in a table with the reason the existing one is not enough; the pre-approval screen prints how many. | 0 files; the Magnis page is the follow-up plan | P1 |
+| 9a | Every new or changed type is in the SPEC as TypeScript: hand-written interfaces, one field per line, zod decodes into them, never `z.infer` for a domain type, never a sentence or "as in the SDK". Things that are not types (a command line, a file) get no interface. | 1 file says "interfaces in TypeScript rather than prose"; 1 memory (owner 2026-09-09); the check does not exist | P8 |
 | 9 | Sizes the gate counts: SPEC ≤ 250 lines; a Delivery ≤ 8 Stages; a Stage description ≤ 40 lines and reads as the future commit message; a Task story ≤ 200 characters. More work is the next Delivery. | 0 files | P3 |
 | 10 | A Task's writes are files, directories or globs, as many as the change needs; the story does not repeat them. | 4 files say "four writes" | E1 |
 | 11 | No minutes and no credits in a plan. Size is files and lines a Stage touches; the fact comes from git at end-work. Mermaid is parsed, and banned words, task codes and `file.ts:123` in prose are refused, before the plan is shown. | 12 rules in 6 files; 2 mermaid parse bombs in one week | P5 |
@@ -191,9 +193,10 @@ What already works and stays: the push hook, the draft-without-matrix rule, the 
 7. `three-tiers-stated`: the process law names the three tiers and the owner's word appears only in the third.
 8. `boxes-are-commands`: `plan-gate` refuses a plan whose acceptance box is neither `` `cmd` exits N `` nor `Commit`.
 9. `retro-has-a-status`: `end-work` refuses closure while the previous Delivery's experiment line has no status.
+11. `types-shown`: `plan-gate` refuses a SPEC whose target tree adds or changes `.ts` sources and whose SPEC has no TypeScript block; the pre-approval screen carries a Types block.
 10. `retro-reports-currencies`: an `end-work` retro without the three numbers of R1 is refused by the same check.
 
-Invariants 1–5 are one script, `shared/code-production/instruction-audit.ts`, run by `agent:verify:docs` in 0_agents and red today. Invariants 8 and 9 are two checks in `plan-gate` and `end-work`, red today.
+Invariants 1–5 are one script, `shared/code-production/instruction-audit.ts`, run by `agent:verify:docs` in 0_agents and red today. Invariants 8, 9 and 11 are three checks in `plan-gate` and `end-work`, red today.
 
 ## Not in this plan
 
