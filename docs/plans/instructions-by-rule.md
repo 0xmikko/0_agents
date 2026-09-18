@@ -1,8 +1,8 @@
 # Agent instructions, rule by rule: memory becomes law, the rest is cut
 
-Status: SPEC_LOCKED  
+Status: APPROVED  
 Spec lock: sha256:bb924d3815e01b33ebe830a95a94189d2b2c45bed38997ed5154108fd74f5a26 owner:SPEC is APPROVED let's go for stages  
-Implementation lock: unlocked  
+Implementation lock: sha256:270d386cff3a545fe01d83d08a8738f33af7162dcc060cd6e68b2d1ab569b62b owner:Да, тут важнее детали  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -543,4 +543,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - put-stage D1-S7
 
 - put-stage D1-S8
+
+- approve sha256:270d386cff3a545fe01d83d08a8738f33af7162dcc060cd6e68b2d1ab569b62b owner:Да, тут важнее детали
 <!-- plan:execution:end -->
