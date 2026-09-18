@@ -1,8 +1,8 @@
 # Agent instructions, rule by rule: memory becomes law, the rest is cut
 
 Status: APPROVED  
-Spec lock: sha256:bb924d3815e01b33ebe830a95a94189d2b2c45bed38997ed5154108fd74f5a26 owner:SPEC is APPROVED let's go for stages  
-Implementation lock: sha256:270d386cff3a545fe01d83d08a8738f33af7162dcc060cd6e68b2d1ab569b62b owner:Да, тут важнее детали  
+Spec lock: sha256:95af7068c230a16cf80f86138e7c00ff18d4d2de6179b8128f71265d6cf1fb37 owner:owner 2026-09-18: рефакторинг через grep находил лишнее и приводил к ужасным вещам; переименовать в определении, запустить tsc, идти по его списку — сделать скилл для рефакторинга  
+Implementation lock: sha256:6823a0e38627d18704e57471e8d6eadf45b16c73c2e652a9f3abecb9290f74a3 owner:owner 2026-09-18: рефакторинг через grep находил лишнее и приводил к ужасным вещам; переименовать в определении, запустить tsc, идти по его списку — сделать скилл для рефакторинга  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -51,6 +51,8 @@ Mistakes this model keeps making here, so do not:
 - Fallbacks, defaults, "just in case". A missing value is an error.
 - Tests green from birth. Red first; prove a green-from-birth test by mutating the source.
 - Stopping at a tool refusal. Record one line and continue; a stop ends with "waiting for: X".
+- Refactoring by grep. Rename at the definition, run the compiler, fix exactly what it names;
+  grep finds comments and strangers, the compiler finds the callers. `/rename` is the procedure.
 
 Verify only with the project's `agent:*` scripts; never compose framework commands.
 Language guide by file: `.ts`/`.tsx` → typescript.md, `.rs` → rust.md.
@@ -88,7 +90,7 @@ Today: 323 lines globally and three Magnis-specialised copies, all carrying Rust
 
 ### The skills (0_agents): 16 shared, 9 personal
 
-Today: about 3 400 lines; thirteen skills are from the cargo era and contradict the process (full suite per Stage, rebase and force-push, "proceed without an approved plan", a fourth plan format, Cyrus dispatch). Done: nine stay, `blueprint`, `blueprint-start`, `end-work`, `bug`, `review-implementation`, `cleanup-worktrees`, `mdurl`, `dictate`, `nvim`, each of the four process skills under 60 lines; sixteen go: `start-work`, `test-protocol`, `completion-note`, `verify-app`, `verify-frontend`, `fast-precommit`, `fix-ci-cd`, `quick-fix`, `plan`, `review-plan`, `execute`, `finish-plan`, `git`, `dispatch-to-linear`, `execute-from-linear`, `launch-e2e`. The owner's business skills are untouched. What the four process skills say:
+Today: about 3 400 lines; thirteen skills are from the cargo era and contradict the process (full suite per Stage, rebase and force-push, "proceed without an approved plan", a fourth plan format, Cyrus dispatch). Done: ten stay, `blueprint`, `blueprint-start`, `end-work`, `bug`, `rename`, `review-implementation`, `cleanup-worktrees`, `mdurl`, `dictate`, `nvim`, each of the four process skills under 60 lines; `rename` is new and small: rename the symbol at its definition, run the project's typecheck, fix every place the compiler names and nothing else, one commit, never grep for the old name; sixteen go: `start-work`, `test-protocol`, `completion-note`, `verify-app`, `verify-frontend`, `fast-precommit`, `fix-ci-cd`, `quick-fix`, `plan`, `review-plan`, `execute`, `finish-plan`, `git`, `dispatch-to-linear`, `execute-from-linear`, `launch-e2e`. The owner's business skills are untouched. What the four process skills say:
 
 `blueprint`: the plan is born in its own worktree from fresh `origin/staging`, with the list of open PRs into staging touching its files; the SPEC has a fixed skeleton (below); names come from the repository, or from the project's vocabulary page where one exists; a new one is declared in a table with its reason and the pre-approval screen prints the count; every new or changed type is TypeScript, hand-written interfaces one field per line, zod decoding into them, never a sentence or "as elsewhere"; the Goal is the owner's currencies with today's number and the target, never "measure X"; sizes are counted, SPEC ≤ 250 lines, Delivery ≤ 8 Stages, Stage ≤ 40 lines reading as its commit message, Task ≤ 200 characters, more work is the next Delivery; no minutes, no credits; review only on the owner's word, at most three rounds, fixing only what the plan cannot run without; the linter and the judge have passed before the owner is asked.
 
@@ -331,7 +333,7 @@ Commit. feat(planctl): focus --brief prints where the agent is and what it may d
 
 <!-- plan:stage:D1-S4:start -->
 <!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S3"],"parallelWith":[],"writes":["shared/skills/","claude/skills/","codex/skills/","README.md","ONBOARDING.md","planctl/test/instruction-audit.test.ts"],"tempRoot":".tmp/code-production/instructions-by-rule/D1-S4","verifyActiveMinutes":0,"verifyCredits":0} -->
-#### Stage D1-S4 — Nine skills instead of twenty-five
+#### Stage D1-S4 — Ten skills instead of twenty-five
 
 - Owner: agent-1; Profile: strong; Depends: D1-S3; Parallel with: none.
 - Writes: `shared/skills/`, `claude/skills/`, `codex/skills/`, `README.md`, `ONBOARDING.md`, `planctl/test/instruction-audit.test.ts`.
@@ -548,4 +550,14 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - approve sha256:270d386cff3a545fe01d83d08a8738f33af7162dcc060cd6e68b2d1ab569b62b owner:Да, тут важнее детали
 
 - record-result D1-S1 commit:6638424cbf66ecb01f4c6f2e914890a1913b4a40
+
+- amend spec owner:owner 2026-09-18: рефакторинг через grep находил лишнее и приводил к ужасным вещам; переименовать в определении, запустить tsc, идти по его списку — сделать скилл для рефакторинга sha256:6ca26af284202a6cbc9c8f9b906362d84468294b911236e2d2805a7c9d8d710d
+
+- approve sha256:270d386cff3a545fe01d83d08a8738f33af7162dcc060cd6e68b2d1ab569b62b owner:owner 2026-09-18: рефакторинг через grep находил лишнее и приводил к ужасным вещам; переименовать в определении, запустить tsc, идти по его списку — сделать скилл для рефакторинга (re-approval after the SPEC amendment)
+
+- amend spec owner:owner 2026-09-18: рефакторинг через grep находил лишнее и приводил к ужасным вещам; переименовать в определении, запустить tsc, идти по его списку — сделать скилл для рефакторинга sha256:95af7068c230a16cf80f86138e7c00ff18d4d2de6179b8128f71265d6cf1fb37
+
+- approve sha256:270d386cff3a545fe01d83d08a8738f33af7162dcc060cd6e68b2d1ab569b62b owner:owner 2026-09-18: рефакторинг через grep находил лишнее и приводил к ужасным вещам; переименовать в определении, запустить tsc, идти по его списку — сделать скилл для рефакторинга (re-approval after the SPEC amendment)
+
+- amend implementation owner:owner 2026-09-18: рефакторинг через grep находил лишнее и приводил к ужасным вещам; переименовать в определении, запустить tsc, идти по его списку — сделать скилл для рефакторинга sha256:6823a0e38627d18704e57471e8d6eadf45b16c73c2e652a9f3abecb9290f74a3
 <!-- plan:execution:end -->
