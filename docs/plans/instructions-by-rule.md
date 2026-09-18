@@ -31,8 +31,9 @@ Each decision names the mechanism (why it moves the currency), what changes, and
 | P2 The goal in the owner's currencies | The skill's own "good goal" example is a measurement goal the owner rejected on 09-09; agents copy examples. | rule 7; the examples replaced | "это не цель, это проблема": 0 |
 | P3 Small plans in one format | Plans the owner approved in one round were ≤ 1 000 lines; 3 000-line plans took 10 rounds and 42 Stages. Three Task formats across laws and copies, a fourth in the `plan` skill; the agent mixes them. | rule 9 (SPEC ≤ 250, Delivery ≤ 8 Stages, Stage ≤ 40 lines, Task ≤ 200 chars); plan-gate counts; `plan` skill and `plan-protocol.md` deleted, one template | substance rounds ≤ 3; plan commits before approval ≤ 10; formats: 1 |
 | P4 Fresh base and open PRs before the lock | S1 of #258 was thrown away because staging already carried the mechanism; 7 "fresh staging" corrections. | rule 8 | mechanisms replaced at integration: 0 |
-| P5 What breaks the owner's reading is checked by a machine | Broken mermaid, `file.ts:123` and task codes in prose, banned words, minutes and credits: each costs a rewrite round that decides nothing. | plan-gate: mermaid parsed before the plan is shown, banned words and code references refused in prose, no Predict fields; rule 11 | corrections about form: 0 |
+| P5 What breaks the owner's reading is checked by a linter | Broken mermaid, `file.ts:123` and task codes in prose, banned words, minutes and credits, a missing block: each costs a rewrite round that decides nothing. A linter sees all of it without reading for meaning. | plan-format defines a strict skeleton (headings in order; the currencies table; the target tree; the Types block; the New names table; the Not verified list); plan-gate refuses a plan missing a block, parses mermaid, refuses banned words and code references in prose, sentences over 30 words, Predict fields; rule 11 | corrections about form: 0 |
 | P6 Review only on the owner's word, three rounds, fixes only what blocks | 53 plan commits and 10 rounds on one SPEC; "ты зачем всё переделывать стал". | rule 13; `review-plan` skill deleted | rounds ≤ 3 |
+| P9 A cheap judge reads the plan before the owner does | What a linter cannot see, the owner sees in a rewrite round: is the Goal a goal or a problem, does each Stage read as a commit, are the names existing ones, is the prose plain. A small model answers a fixed rubric in seconds (`claude -p --model haiku` on the owner's subscription: 1.4 s and about two cents for a test call today), quoting the plan for every answer. Not an agent, not a review round: a gate. | `plan-gate --judge`: the rubric is a versioned file `shared/code-production/plan-judge.md` (one question per rule 7, 8a, 9a, 16a, 17 and the plain-prose rule, answer PASS or FAIL with a quote and the fix); the verdict is stored by SPEC hash so unchanged bytes are never judged twice; `lock-spec` and the pre-approval screen refuse without a PASS; rule 17a | substance rounds ≤ 3; corrections about form: 0 |
 | P8 Types are shown, not described | The owner decides on types; an agent that writes "the shape as in the SDK" or a sentence instead of an interface hides the decision, and the owner asks for it in a rewrite round. A type that does not exist yet is the one thing prose cannot carry. | rule 9a: every new or changed type appears in the SPEC as TypeScript, hand-written interfaces one field per line, zod decoding into them; the pre-approval screen has a Types block; plan-gate refuses a SPEC that adds or changes `.ts` sources and shows no TypeScript | rewrite rounds for missing types: 0 |
 | P7 The pre-approval screen is what the owner reads | Every steering correction across three branches was one of: the file tree, the stories, what is not verified. | rule 17 kept; adds the new-names count and the "not verified" list that replaces prose boxes | — |
 
@@ -72,6 +73,7 @@ Each decision names the mechanism (why it moves the currency), what changes, and
 | agents `coherence-cop`, `coverage-cop`, `simplicity-cop` | three reviewers | ≤ 80 each | E5 |
 | skills `startup-pressure-test`, `icp-pain`, `investor` | business | untouched | — |
 | `shared/code-production/instruction-audit.ts` | the machine that keeps the diet | new | E7, P5 |
+| `shared/code-production/plan-judge.md`, `planctl/src/core/plan-judge.ts` | the rubric and the call: `plan-gate --judge` | new | P9 |
 
 Removed: skills `start-work`, `test-protocol`, `completion-note`, `verify-app`, `verify-frontend`, `fast-precommit`, `fix-ci-cd`, `quick-fix`, `plan`, `review-plan`, `execute`, `finish-plan`, `git`, `dispatch-to-linear`, `execute-from-linear`, `launch-e2e`; laws `plan-protocol.md`, `git-workflow.md`. Their surviving rules are in the tables below with their new home.
 
@@ -109,6 +111,7 @@ Plus: read the project file; a language guide loads for files of that language; 
 | 15 | A plan judged by a model-run metric first publishes the band of the unchanged product and counts an effect only when every block clears it. | 3 memories | E8 |
 | 16 | Forbidden, as today: opening with the problem, DEC lists, tests asserting layout or a deleted file, inventory pins, self-declared approval, boxes mirroring CI or PR state. | 2 files | — |
 | 16a | A box is a command with its exit code or the Commit box. What a machine cannot check goes to the pre-approval screen under "not verified". | 0 files | E2 |
+| 17a | Before the owner is asked, `plan-gate --judge` has said PASS on these exact bytes: a fixed rubric answered by a small model with a quote for every answer; a FAIL names the sentence and the fix. `lock-spec` refuses without it. The judge is unavailable → the lock is refused, not skipped. | 0 files; no LLM reads a plan today | P9 |
 | 17 | The pre-approval screen is the last block and the one the owner reads: file tree, acceptance stories in plain words, the count of new names, what is not verified and why. | 2 files | P7 |
 
 **How a plan is executed — `blueprint-start` + `development-process.md`**
@@ -193,10 +196,12 @@ What already works and stays: the push hook, the draft-without-matrix rule, the 
 7. `three-tiers-stated`: the process law names the three tiers and the owner's word appears only in the third.
 8. `boxes-are-commands`: `plan-gate` refuses a plan whose acceptance box is neither `` `cmd` exits N `` nor `Commit`.
 9. `retro-has-a-status`: `end-work` refuses closure while the previous Delivery's experiment line has no status.
+12. `judge-before-owner`: `lock-spec` refuses a SPEC whose hash carries no PASS from `plan-gate --judge`; the judge's answers each carry a quote from the plan; the rubric file is the only prompt.
+13. `strict-skeleton`: `plan-gate` refuses a plan missing any block of the skeleton (currencies table, target tree, Types block when `.ts` sources change, New names table, Not verified list).
 11. `types-shown`: `plan-gate` refuses a SPEC whose target tree adds or changes `.ts` sources and whose SPEC has no TypeScript block; the pre-approval screen carries a Types block.
 10. `retro-reports-currencies`: an `end-work` retro without the three numbers of R1 is refused by the same check.
 
-Invariants 1–5 are one script, `shared/code-production/instruction-audit.ts`, run by `agent:verify:docs` in 0_agents and red today. Invariants 8, 9 and 11 are three checks in `plan-gate` and `end-work`, red today.
+Invariants 1–5 are one script, `shared/code-production/instruction-audit.ts`, run by `agent:verify:docs` in 0_agents and red today. Invariants 8, 9, 11, 12 and 13 are checks in `plan-gate` and `end-work`, red today.
 
 ## Not in this plan
 
