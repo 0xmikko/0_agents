@@ -315,9 +315,9 @@ Commit. feat(planctl): focus --brief prints where the agent is and what it may d
 
 ##### Tasks
 
-- [ ] IBR_003 — focus --brief prints the position, the next commands and the tiers in at most twelve lines for an approved plan, a draft plan and no plan; focus.test.ts covers the three.
+- [x] IBR_003 — focus --brief prints the position, the next commands and the tiers in at most twelve lines for an approved plan, a draft plan and no plan; focus.test.ts covers the three. — 1a0e344eaacc1471d71ec96ca9df4505d43d5d6c
 <!-- plan:task-meta:{"writes":["planctl/src/","planctl/test/focus.test.ts"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"extend the focus command with --brief; derive open Stage, started Task from the journal, next commands from state; twelve-line cap enforced in code","red":"bun run agent:test:backend -- test/focus.test.ts -t tst_focus_brief"} -->
-- [ ] IBR_004 — retro-status exits 1 while the last experiment line in the register lacks a status; retro-status.test.ts covers both; the hook template runs the brief.
+- [x] IBR_004 — retro-status exits 1 while the last experiment line in the register lacks a status; retro-status.test.ts covers both; the hook template runs the brief. — 1a0e344eaacc1471d71ec96ca9df4505d43d5d6c
 <!-- plan:task-meta:{"writes":["planctl/src/","planctl/test/retro-status.test.ts","shared/code-production/templates/claude/"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"parse the register table at the end of development-process.md (date, experiment, status); the template JSON names the two hook events and the command","red":"bun run agent:test:backend -- test/retro-status.test.ts"} -->
 
 ##### Acceptance criteria
@@ -331,6 +331,8 @@ Commit. feat(planctl): focus --brief prints where the agent is and what it may d
 <!-- plan:results:D1-S3:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| IBR_003 | 1a0e344eaacc1471d71ec96ca9df4505d43d5d6c | 2026-09-20T12:14:31.297Z–2026-09-20T12:20:34.318Z | 6.05 / 6.05 min | unavailable: runner does not expose usage | focus --brief prints eight lines on this plan from its own state (three states covered); retro-status exits 1 while the register's last row has no status and names it; the hook template runs the brief at SessionStart and on each prompt; retro-register.ts is vendored (8 managed files). — beyond writes: planctl/test/package-boundary.test.ts, shared/code-production/agent-stack.ts |
+| IBR_004 | 1a0e344eaacc1471d71ec96ca9df4505d43d5d6c | 2026-09-20T12:14:31.297Z–2026-09-20T12:20:34.318Z | 6.05 / 6.05 min | unavailable: runner does not expose usage | focus --brief prints eight lines on this plan from its own state (three states covered); retro-status exits 1 while the register's last row has no status and names it; the hook template runs the brief at SessionStart and on each prompt; retro-register.ts is vendored (8 managed files). — beyond writes: planctl/test/package-boundary.test.ts, shared/code-production/agent-stack.ts |
 <!-- plan:results:D1-S3:end -->
 <!-- plan:stage:D1-S3:end -->
 
@@ -669,4 +671,8 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - approve-stage D1-S2 owner:Ок Давай сделаем следующую стадию тогда — owner, 2026-09-20
 
 - close D1-S2 closed commit:20671b9b4580b1ad2270f443d563900cc74b2018
+
+- record-result D1-S3 commit:1a0e344eaacc1471d71ec96ca9df4505d43d5d6c
+
+- deviation D1-S3: IBR_004 was not started through start-task: both Tasks of the Stage were built in one sitting after IBR_003's start-task, and the runtime records one receipt per Stage
 <!-- plan:execution:end -->
