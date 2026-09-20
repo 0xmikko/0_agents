@@ -1,8 +1,8 @@
 # Agent instructions, rule by rule: memory becomes law, the rest is cut
 
 Status: APPROVED  
-Spec lock: sha256:653df8d6678a1810e0efa00811a5d56c20e70a5ecc822edcf88a8ee31d48a6bc owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон  
-Implementation lock: sha256:04320cb803ec5c6f46ed339020d09222ee652bdc75bf5f52b1c203c1c7fa8959 owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон  
+Spec lock: sha256:5581ac71508ae8ca241ebaa40ab2c1115e243941fcd7abbda46050f9dc579cb0 owner:owner 2026-09-20: desktop-а и Rust больше нет в magnis-app — desktop переехал в magnis, там он собирается  
+Implementation lock: sha256:04320cb803ec5c6f46ed339020d09222ee652bdc75bf5f52b1c203c1c7fa8959 owner:owner 2026-09-20: desktop-а и Rust больше нет в magnis-app — desktop переехал в magnis, там он собирается (re-approval after the SPEC amendment)  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -135,10 +135,11 @@ agent, what a model concluded from canonical rows, with confidence, evidence and
 validity interval. `docs/graph.md` holds the idea and the vocabulary of every shape,
 spelled as the code spells it.
 
-The NestJS backend on Bun owns the graph and is the only writer. The React/Tauri desktop
-app, the CLI and the MCP surface are clients. The backend is handed one PostgreSQL URL
-and never chooses a database: a native cluster inside the desktop app, embedded on the
-dev stand, managed on the server; PGlite only in the test runner. Sources run as
+The NestJS backend on Bun owns the graph and is the only writer. The React web client,
+the CLI and the MCP surface are clients; the desktop shell (Tauri) lives and is built in
+the `magnis` repository, not here. The backend is handed one PostgreSQL URL and never
+chooses a database: embedded on the dev stand, managed on the server, the desktop shell's
+own cluster when it hosts the backend; PGlite only in the test runner. Sources run as
 connectors in their own processes over MCP; modules (contacts, meetings, episodes, …) own
 their shapes and their UI; an installation is one document naming the accounts, from
 which the server derives the modules.
@@ -190,7 +191,7 @@ The first five are one script, `shared/code-production/instruction-audit.ts`, ru
 
 ## Not in this plan
 
-- Everything marked "Magnis plan" above is the next plan in magnis-app; it starts when this PR and PR #12 are merged.
+- Everything marked "Magnis plan" above is the next plan in magnis-app; it starts when this PR and PR #12 are merged. Its first Stage removes what no longer belongs to magnis-app: `desktop/` (87 files, the Tauri shell now built in the `magnis` repository), `.cargo/config.toml`, the cargo hook and `scripts/codex/setup-rust-build-cache.sh`, the Rust mentions in `CLAUDE.md`, `.claude/settings.json` and `pre-commit-checks.sh`, and the twelve `docs/` pages about the desktop build, macOS and cargo, which move to `docs/archive/`.
 - The memory cleanup is done by hand on the owner's word after that plan; it lives outside any repository.
 - The S/M/L size loop with git-measured facts and an optimism ratio at end-work is its own later plan.
 - Cyrus skills are deleted, not migrated; Cyrus does not run Magnis.
@@ -646,4 +647,12 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - amend implementation owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон sha256:1011cec90b6ccab6a35394120d595a3704ba846a08ddad79f4606bcaa63c6a48
 
 - amend implementation owner:owner 2026-09-18: это не надо — надо просто навести порядок, я не верю в этот закон sha256:04320cb803ec5c6f46ed339020d09222ee652bdc75bf5f52b1c203c1c7fa8959
+
+- amend spec owner:owner 2026-09-20: desktop-а и Rust больше нет в magnis-app — desktop переехал в magnis, там он собирается sha256:4c729d3a1f4440829508d534900b1c6d2fd37f6ed7b6c316e809903ba29d13e6
+
+- approve sha256:04320cb803ec5c6f46ed339020d09222ee652bdc75bf5f52b1c203c1c7fa8959 owner:owner 2026-09-20: desktop-а и Rust больше нет в magnis-app — desktop переехал в magnis, там он собирается (re-approval after the SPEC amendment)
+
+- amend spec owner:owner 2026-09-20: desktop-а и Rust больше нет в magnis-app — desktop переехал в magnis, там он собирается sha256:5581ac71508ae8ca241ebaa40ab2c1115e243941fcd7abbda46050f9dc579cb0
+
+- approve sha256:04320cb803ec5c6f46ed339020d09222ee652bdc75bf5f52b1c203c1c7fa8959 owner:owner 2026-09-20: desktop-а и Rust больше нет в magnis-app — desktop переехал в magnis, там он собирается (re-approval after the SPEC amendment)
 <!-- plan:execution:end -->
