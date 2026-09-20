@@ -737,7 +737,7 @@ async function focusBrief(args: readonly string[]): Promise<string> {
   }
   const current = started?.stage ?? ready[0] ?? null;
   const lines: string[] = [];
-  lines.push(`Plan ${planPath} — APPROVED. Done: ${done.length === 0 ? "nothing yet" : done.map((stage) => stage.id).join(", ")}. Waiting: ${waiting.length === 0 ? "none" : waiting.map((stage) => stage.id).join(", ")}.`);
+  lines.push(`Plan ${planPath} — APPROVED. Done: ${done.length} of ${stages.length} Stages${done.length === 0 ? "" : ` (${done.map((stage) => stage.id).join(", ")})`}. Waiting: ${waiting.length === 0 ? "none" : waiting.map((stage) => stage.id).join(", ")}.`);
   if (current === null) {
     lines.push(`Every Stage is closed. Next: /end-work once the owner has merged.`);
     return lines.join("\n");

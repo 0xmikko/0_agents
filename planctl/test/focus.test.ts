@@ -235,7 +235,7 @@ describe("planctl focus --brief", () => {
       expect(working.status, `${working.stdout}\n${working.stderr}`).toBe(0);
       const lines = working.stdout.trim().split("\n");
       expect(lines.length).toBeLessThanOrEqual(12);
-      expect(working.stdout).toContain("APPROVED");
+      expect(working.stdout).toContain("APPROVED. Done: 0 of 2 Stages.");
       expect(working.stdout).toContain("D1-S1");
       expect(working.stdout).toContain("T_001");
       expect(working.stdout).toContain("bun run agent:test:backend -- test/x.test.ts");
