@@ -356,9 +356,9 @@ Commit. refactor(skills): nine skills, four of them the process — the cargo-er
 
 ##### Tasks
 
-- [ ] IBR_005 — Rewrite blueprint, blueprint-start, end-work and bug to the SPEC's texts, each under 60 lines; instruction-audit.test.ts pins the size and that none names a deleted skill.
+- [x] IBR_005 — Rewrite blueprint, blueprint-start, end-work and bug to the SPEC's texts, each under 60 lines; instruction-audit.test.ts pins the size and that none names a deleted skill. — 02a13f06561662e3260268309647b849182628e4
 <!-- plan:task-meta:{"writes":["shared/skills/blueprint/","shared/skills/blueprint-start/","shared/skills/end-work/","shared/skills/bug/","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"write the four SKILL.md files from the SPEC paragraphs; the test reads them","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills"} -->
-- [ ] IBR_006 — Delete the sixteen retired skills with their claude/ and codex/ symlinks; trim review-implementation and cleanup-worktrees; README.md and ONBOARDING.md list the nine.
+- [x] IBR_006 — Delete the sixteen retired skills with their claude/ and codex/ symlinks; trim review-implementation and cleanup-worktrees; README.md and ONBOARDING.md list the nine. — 02a13f06561662e3260268309647b849182628e4
 <!-- plan:task-meta:{"writes":["shared/skills/","claude/skills/","codex/skills/","README.md","ONBOARDING.md"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"git rm the directories and symlinks; replace the skill lists in the two documents; the audit's dead-reference check is the proof","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills"} -->
 
 ##### Acceptance criteria
@@ -372,6 +372,8 @@ Commit. refactor(skills): nine skills, four of them the process — the cargo-er
 <!-- plan:results:D1-S4:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| IBR_005 | 02a13f06561662e3260268309647b849182628e4 | 2026-09-20T19:42:24.526Z–2026-09-20T19:54:04.000Z | 11.66 / 11.66 min | unavailable: runner did not expose usage | Ten skills remain, one text each under shared/skills; the four process skills are 54, 53, 26 and 24 lines; review-implementation is one shared text; sixteen retired skills and their links are gone; lib/doctor.sh spot-checks blueprint, mdurl, bug, rename instead of two retired names. — beyond writes: lib/doctor.sh |
+| IBR_006 | 02a13f06561662e3260268309647b849182628e4 | 2026-09-20T19:42:24.526Z–2026-09-20T19:54:04.000Z | 11.66 / 11.66 min | unavailable: runner did not expose usage | Ten skills remain, one text each under shared/skills; the four process skills are 54, 53, 26 and 24 lines; review-implementation is one shared text; sixteen retired skills and their links are gone; lib/doctor.sh spot-checks blueprint, mdurl, bug, rename instead of two retired names. — beyond writes: lib/doctor.sh |
 <!-- plan:results:D1-S4:end -->
 <!-- plan:stage:D1-S4:end -->
 
@@ -681,4 +683,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - approve-stage D1-S3 owner:звучит разумно - но надо тестировать / давай это сделаем и дальше пойдём по нашему плану — owner, 2026-09-20
 
 - close D1-S3 closed commit:a1301020c1a1537a660dac65be2b970fd15972f4
+
+- record-result D1-S4 commit:02a13f06561662e3260268309647b849182628e4
 <!-- plan:execution:end -->
