@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { audit, type Finding } from "../../shared/code-production/instruction-audit";
+import { retroStatus } from "../src/core/retro-register";
 
 /** A fixture tree with the same layout as 0_agents: every file of the set
  * present and clean unless a test overrides it. */
@@ -206,6 +207,32 @@ describe("the skills", () => {
       return RETIRED.filter((name) => new RegExp(`(^|[\\s\`(])/${name}\\b`, "m").test(text)).map((name) => `${file} names /${name}`);
     });
     expect(named).toEqual([]);
+  });
+});
+
+describe("the laws", () => {
+  const root = join(import.meta.dir, "../..");
+  const LAWS = "shared/code-production/laws";
+  // @test-id: tst_audit_laws_001
+  // @covers: shared/code-production/laws/development-process.md, plan-format.md
+  // @deterministic: yes
+  // @invariant: two laws carry every surviving rule once: the process under
+  // 100 lines with the three tiers (the owner's word named only after the
+  // refused tier) and the register of experiments; the plan format under 80;
+  // the audit finds nothing in them.
+  it("tst_audit_laws_001 two laws, under 100 and 80 lines, three tiers, a register, clean audit", () => {
+    expect(readdirSync(join(root, LAWS)).sort()).toEqual(["development-process.md", "plan-format.md"]);
+    const process = readFileSync(join(root, LAWS, "development-process.md"), "utf8");
+    const format = readFileSync(join(root, LAWS, "plan-format.md"), "utf8");
+    const count = (text: string): number => text.trimEnd().split("\n").length;
+    expect({ process: count(process), format: count(format), fits: count(process) < 100 && count(format) < 80 })
+      .toEqual({ process: count(process), format: count(format), fits: true });
+    const tiers = process.slice(process.indexOf("## Three tiers"), process.indexOf("## Git"));
+    expect(tiers.match(/^(Free|Recorded|Refused by planctl) — /gm)).toEqual(["Free — ", "Recorded — ", "Refused by planctl — "]);
+    expect(tiers.match(/owner's word/g)?.length).toBe(1);
+    expect(tiers.indexOf("owner's word")).toBeGreaterThan(tiers.indexOf("Refused by planctl"));
+    expect(retroStatus(join(root, LAWS, "development-process.md")).ok).toBe(true);
+    expect(audit(root).filter((finding) => finding.file.startsWith(LAWS))).toEqual([]);
   });
 });
 

@@ -1,189 +1,99 @@
-# Development process
+# The development process
 
-This is the shared production system for all repositories. Project documents
-describe architecture; they do not redefine this lifecycle. The compact agent
-card is [plan-protocol.md](plan-protocol.md), the exact document contract is
-[plan-format.md](plan-format.md), and project commands implement
-[the package API](../package-contract.md).
+One process for every repository that installed the stack: how work moves
+from an idea to a merged pull request, and what needs whose word. The plan's
+shape is [plan-format.md](plan-format.md); a project's commands are
+[the package contract](../package-contract.md).
 
-## Production goal
+## The lifecycle
 
-Produce mergeable code predictably: high quality, low cost and short wall
-time. Optimize measured work, not activity. Every Delivery records:
+A worktree on `feat/<slug>` from fresh `origin/staging`; the plan's first
+draft committed; the SPEC written and read; the draft PR opened and the plan
+published with mdurl. The owner approves the SPEC: `planctl approve-spec`.
+Deliveries, Stages and Tasks are added through planctl; the owner approves
+the plan: `planctl approve-plan`. From here the plan changes only through
+planctl. One Delivery at a time, Stage by Stage, one commit each, a pull
+request from the first commit. The complete gate once, in the pre-push hook;
+CI repeats it on the published SHA; the agent flips the PR to ready; the
+owner merges. `/end-work` closes it: the three measures, the register, the
+ledger row.
 
-- predicted and actual active minutes;
-- elapsed time and external wait time;
-- credits/tokens when the runner exposes them, otherwise `unavailable`;
-- rework commits and review rounds;
-- verification gates bought;
-- unauthorized scope changes and temp leftovers.
+Two approvals and no third. Review rounds run only on the owner's word,
+three at most, fixing only what the plan cannot run without.
 
-Parallel work reduces wall time only when dependency paths and write ownership
-permit it. Never divide total work by agent count and call that a forecast.
+## Sizes
 
-## Lifecycle
+Sizes are printed, not capped: depth sets the size. The pre-approval screen
+shows the SPEC's lines, the number of Stages and the longest Stage next to
+the medians of the plans the owner approved in one round, 150 to 300 lines
+of SPEC. A Stage reads as its commit message. A Task story is under 200
+characters. Minutes and credits are not forecast; the result row records
+what the clock and the runner said.
 
-```text
-idea
-  -> plan worktree + first draft commit
-  -> SPEC discussion (goal, flows, metrics, constraints, invariants, reuse)
-  -> draft PR + mdurl
-  -> owner SPEC approval / lock
-  -> Deliveries, Stages, Tasks, estimates and RED commands
-  -> owner implementation approval / lock
-  -> one active PR Delivery
-       -> independent Stage agents may run in parallel
-       -> one work commit per Stage
-       -> integration Stage joins commits and buys the full gate once
-  -> ready, green, mergeable PR + GitHub Markdown URL + mdurl
-  -> owner merge
-  -> scorecard, retro and registered temp cleanup
-```
+## The Stage
 
-There are exactly two planning stops. The owner approves the SPEC before
-implementation decomposition, then approves the concrete Delivery/Stage/Task
-contract before code. Review rounds run only on the owner's word.
+`planctl start-task` prints the contract: the story, the writes, the RED
+command. The test first, red for the missing behavior; the smallest change
+that turns it green; the Stage's one to three named test files and nothing
+wider; the three reviewers on the diff; one Conventional commit whose body
+is the why; `planctl complete-task` with the Stage result file;
+`close-stage` when its commands are green. A Stage whose criteria include
+`stage-approved` ends the agent's turn with five lines of what it produced
+and `waiting for: the word`. A green test counts only after it was seen red.
 
-## Hierarchy and publication
+## Three tiers
 
-- A **Plan** may contain sequential PR Deliveries.
-- A **PR Delivery** is one branch, one PR and one full publication gate.
-- A **Stage** is one delegable, observable TDD result and one work commit.
-- A **Task** is one atomic code change inside a Stage, written so the owner and
-  executor understand it without chat history.
+Free — the agent does it and planctl records the difference in the result
+row: add a test, add a file the compiler names, touch a file beyond the
+writes but inside the Delivery's target tree in the same commit, close a
+Stage whose commands are green.
 
-Only one Delivery is active by default. This keeps base relationships and CI
-receipts obvious. Stages inside it may run in parallel when the plan names
-disjoint writes, one exact base and an integration owner. Uncertain overlap
-serializes.
+Recorded — one Deviations line, and on: a file outside the target tree, a
+deleted test, a criterion that became unreachable.
 
-## Planning quality
+Refused by planctl — a file another Stage or another plan declares in its
+writes: the owner of that code changes it, and the caller adapts to its API.
 
-The owner view is a review interface, not an execution log.
+Above the tiers, the owner's word and only here: the goal and its measure,
+removing a promised file from the tree, the meaning of a criterion, scope
+beyond the Delivery. Asked in the chat, answered in the chat; the plan
+changes when the owner says so, through `planctl amend`.
 
-- A Stage is its result-oriented title followed by the single compact metadata
-  block rendered by `planctl`: owner/profile, routing, Stage writes, temp root,
-  total forecast and verification share. It has no free-form execution story.
-  The title never says “finish the colleague's branch”, “half-landed” or
-  “remaining work”.
-- A Task story names one concrete change in at most 200 characters; its
-  rendered line ends with the predicted active minutes when minutes were given.
-- A Task's writes are files, directories or globs, as many as the change
-  needs; a commit that touches files beyond them is recorded, not refused.
-  Split a Task only when its story joins independent changes.
-- A Task stands alone. “Existing”, “new”, “named files”, “the map above” and
-  similar pointers are invalid unless the same sentence resolves them to an
-  exact symbol or path.
-- Exact writes, credits, How and RED are frozen in the hidden metadata line
-  immediately after the Task. `planctl start-task` reveals them; the plan does
-  not repeat them as visible Task prose.
+## Git
 
-Bad Stage: “Finish the colleague's branch: build fixes and Verify rewire.”
+One branch, one worktree, created from `origin/staging` and refreshed with
+`git merge origin/staging`; merge commits only, history never rewritten, the
+hooks never silenced. One commit per Stage, no wip. Code moves between trees
+only by merge, never `cp` or `git checkout <branch> -- <path>`. The agent
+never pushes to `staging` or `main`. Every git command an agent runs or
+hands the owner names its tree: `git -C <absolute path>`.
 
-Good Stage: “Restore the preview build after the Verify rename.”
+## Verification
 
-Bad Task: “Apply the rename map in the named files.”
+Inside a Stage, the named files. Once per Delivery, the complete gate: the
+pre-push hook runs `agent:verify:docs` and `agent:verify:pr` on the exact
+head and stores the hook's record, so the push that follows does not run the
+suite twice; CI runs the same gate on the published SHA. A review reuses the
+record of an unchanged head. Only the project's `agent:*` scripts, ever.
 
-Good Task: “Replace generic `Error` in `src/prepare/result.ts` with canonical
-`SDKError` and cover it in `test/prepare/result.test.ts`. (12 min)”
+## Unattended
 
-Before approval, follow every acceptance story through its public calls. Every
-file that must gain or change a public contract is a Task write, even when the
-call originates in another Stage file. A missing owning file makes the plan
-incomplete. After approval, amend before editing while the owner is available;
-unattended work uses the reversible decision protocol below.
+A shortfall is a Deviations line and the work continues. A question the plan
+cannot answer gets the smallest reversible decision, recorded, and the work
+continues. Only irreversible data loss, security damage or the destruction
+of unmerged work stops a run. Time overrun stops nothing.
 
-A Stage forecast equals the sum of its Task forecasts plus an explicit
-verification share, for both active minutes and credits. A Delivery reports
-aggregate active work, the longest dependency path and external waits
-separately.
+## The handoff
 
-## One source of truth and two locks
+"Done" is said with its proof in the same message: the pull request as a
+Markdown link, the plan's mdurl, the head SHA and its CI run, what was not
+verified and why. A branch name or "pushed" is not a handoff. A Delivery's
+temp root, `.tmp/code-production/<plan>/`, is absent before publication.
 
-The canonical `docs/plans/<slug>.md` is the only plan copy. JSON files are
-temporary command inputs or typed execution receipts. Git-local journals store
-hashes and timers, never a second plan.
+## Register of experiments
 
-The reusable implementation lives in the dedicated `planctl/` Bun package;
-its commands run from that package working directory. `agent-stack` vendors
-only the lightweight CLI/core bytes to stable consumer runtime paths, so NestJS
-service dependencies never become part of a consumer repository contract.
+`/end-work` writes one row per merged Delivery. The owner accepts or declines
+the previous row before the next Delivery closes.
 
-While status is `SPEC_DRAFT`, the agent may freely edit SPEC prose. After SPEC
-approval, and especially after `APPROVED`, all mutations go through `planctl`.
-The pre-commit hook refuses direct checkbox changes, rewritten Tasks, criteria,
-forecasts or results without the HEAD/blob-bound mutation journal.
-
-Scope changes require the owner's word through `planctl amend`. At night the
-agent does not wait: it records alternatives, goal preservation, rollback base
-and verification, commits the smallest reversible choice as
-`owner_review_pending`, and continues. Ordinary shortfalls go to Deviations.
-
-## Execution cadence
-
-For each Task:
-
-1. Run `planctl start-task <plan> --task <ID>`; read the printed frozen scope.
-2. Write the named behavior test and show RED for the expected reason.
-3. Implement the minimum change and show GREEN with the same narrow command.
-4. Run only the 1–3 behavior files named by the Stage.
-5. Micro-review the diff for scope, duplication and missing behavior.
-6. Create the Stage work commit; hooks run `agent:verify:docs` and
-   `agent:verify:commit`. Never bypass them.
-7. Import a typed receipt with `planctl complete-task`; the runtime compares
-   its paths with frozen Task writes and the actual commit diff.
-8. Continue automatically to the next ready Stage.
-
-An owner-response wait is runtime state, not prose. Immediately before asking a
-question that blocks an active Task, record one safe-line reason with
-`planctl needs-owner <plan> --task <ID> --reason <text>`. After the response,
-clear it atomically with `planctl resume-task <plan> --task <ID>` before work
-continues; `start-task` also clears an existing marker. Transcripts, question
-marks and terminal turns never create an owner obligation.
-
-At the PR Delivery boundary, the integration Stage joins the Stage commits,
-refreshes dependencies with `agent:install`, then invokes `.githooks/pre-push`.
-After a clean exact-head gate passes, the hook stores a Git-local SHA receipt;
-the following `git push` reuses it instead of running the suite twice. CI
-independently repeats the complete gate on the published ready-PR SHA. Final
-review reuses unchanged receipts instead of buying the same suite again.
-
-A green test is evidence only after the same test was observed RED against the
-incomplete behavior.
-
-## Failure and unattended behavior
-
-- Hook or test failure: fix the cause and rerun the failed scope.
-- Task scope no longer matches reality: owner amendment; at night use a
-  complete reversible unattended decision and continue.
-- Predicted time exceeded: record actuals; do not stop merely because an
-  estimate was wrong.
-- Unrelated file appears in the diff: remove it from the Stage or amend scope.
-- Existing base failure: record its exact command/SHA; fix it only when it
-  blocks the Delivery and the plan authorizes the change.
-- Stop unattended work only for irreversible data loss, security damage or
-  destruction of unmerged work.
-
-## Temp-root hygiene
-
-Each Delivery registers one temp root and each parallel Stage owns a child.
-Before a Stage hands off, it deletes obsolete artifacts from that child. Before
-publication, every registered temp path must be absent. Remove only explicit,
-inactive registered paths; never sweep broad `/tmp`, home or workspace roots.
-
-## Handoff and scorecard
-
-The agent hands over a ready, mergeable PR, not “some commits.” The final
-message contains:
-
-- `[PR #N — title](GitHub URL)` as a clickable Markdown URL;
-- plan `mdurl`;
-- exact head SHA and green CI state;
-- predicted versus actual active/elapsed/wait time and usage;
-- tests and review receipts reused from that SHA;
-- deviations, rework and unverified gaps;
-- registered temp roots confirmed absent.
-
-After the owner merges, record the scorecard and a short retro: what changed in
-scope, where estimates missed, which gate duplicated work, whether parallelism
-reduced the critical path, and the smallest process change to test next.
+| Date | Delivery | Experiment | Status |
+|---|---|---|---|
