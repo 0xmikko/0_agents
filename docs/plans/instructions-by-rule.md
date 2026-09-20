@@ -322,9 +322,9 @@ Commit. feat(planctl): focus --brief prints where the agent is and what it may d
 
 ##### Acceptance criteria
 
-- [ ] `bun run --cwd planctl agent:test:backend -- test/focus.test.ts test/retro-status.test.ts` exits 0 — the brief has three states under twelve lines and the register check fails without a status
-- [ ] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S3` exits 0 — the owner read what this Stage produced and said the word
-- [ ] Commit
+- [x] `bun run --cwd planctl agent:test:backend -- test/focus.test.ts test/retro-status.test.ts` exits 0 — the brief has three states under twelve lines and the register check fails without a status — a1301020c1a1537a660dac65be2b970fd15972f4
+- [x] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S3` exits 0 — the owner read what this Stage produced and said the word — a1301020c1a1537a660dac65be2b970fd15972f4
+- [x] Commit — a1301020c1a1537a660dac65be2b970fd15972f4
 
 ##### Results
 
@@ -677,4 +677,8 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - deviation D1-S3: IBR_004 was not started through start-task: both Tasks of the Stage were built in one sitting after IBR_003's start-task, and the runtime records one receipt per Stage
 
 - deviation D1-S7: owner 2026-09-20 showed a plan whose TypeScript block packs four fields on one line (entityId; contentHash; indexerVersion; modelName;) — the SPEC's rule «one field per line» has no check; the linter of this Stage adds one: every interface or type in a ts block is refused when a line declares more than one field, with the line quoted
+
+- approve-stage D1-S3 owner:звучит разумно - но надо тестировать / давай это сделаем и дальше пойдём по нашему плану — owner, 2026-09-20
+
+- close D1-S3 closed commit:a1301020c1a1537a660dac65be2b970fd15972f4
 <!-- plan:execution:end -->
