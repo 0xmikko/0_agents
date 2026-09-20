@@ -179,12 +179,17 @@ export function audit(root: string): Finding[] {
   ].sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
 }
 
+/** Exit status: findings fail the run only under `--strict` (or
+ * INSTRUCTION_AUDIT_STRICT=1); until the diet is complete the audit reports
+ * and lets the gate pass, so every Stage of the diet can publish. */
 if (import.meta.main) {
-  const root = resolve(process.argv[2] ?? ".");
+  const args = process.argv.slice(2);
+  const strict = args.includes("--strict") || process.env["INSTRUCTION_AUDIT_STRICT"] === "1";
+  const root = resolve(args.find((arg) => !arg.startsWith("--")) ?? ".");
   const findings = audit(root);
   for (const finding of findings) {
     console.log(`${finding.file}:${finding.line} ${finding.kind} ${finding.subject} — ${finding.message}`);
   }
-  console.log(findings.length === 0 ? "instruction audit: clean" : `instruction audit: ${findings.length} finding(s)`);
-  process.exitCode = findings.length === 0 ? 0 : 1;
+  console.log(findings.length === 0 ? "instruction audit: clean" : `instruction audit: ${findings.length} finding(s)${strict ? "" : " (reported, not enforced until --strict)"}`);
+  process.exitCode = findings.length === 0 || !strict ? 0 : 1;
 }

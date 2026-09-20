@@ -160,3 +160,25 @@ describe("the global screen", () => {
     expect(audit(root).filter((finding) => finding.file === "claude/CLAUDE.md")).toEqual([]);
   });
 });
+
+describe("the audit as a command", () => {
+  // @test-id: tst_audit_007
+  // @covers: shared/code-production/instruction-audit.ts (main)
+  // @deterministic: yes
+  // @invariant: findings fail the run only under --strict; without it the
+  // audit reports and exits 0, so the diet's Stages can publish before it ends.
+  it("tst_audit_007 reports without --strict and refuses with it", () => {
+    const root = tree({ "claude/CLAUDE.md": "# Working here\n\nSee `claude/agents/git.md`.\n" });
+    const script = join(import.meta.dir, "../../shared/code-production/instruction-audit.ts");
+    try {
+      const report = Bun.spawnSync(["bun", script, root], { stdout: "pipe", stderr: "pipe" });
+      expect(report.exitCode).toBe(0);
+      expect(report.stdout.toString()).toContain("1 finding(s) (reported, not enforced until --strict)");
+      const strict = Bun.spawnSync(["bun", script, "--strict", root], { stdout: "pipe", stderr: "pipe" });
+      expect(strict.exitCode).toBe(1);
+      expect(strict.stdout.toString()).toContain("dead-reference claude/agents/git.md");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

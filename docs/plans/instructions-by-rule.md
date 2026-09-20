@@ -1,8 +1,8 @@
 # Agent instructions, rule by rule: memory becomes law, the rest is cut
 
 Status: APPROVED  
-Spec lock: sha256:5581ac71508ae8ca241ebaa40ab2c1115e243941fcd7abbda46050f9dc579cb0 owner:owner 2026-09-20: desktop-а и Rust больше нет в magnis-app — desktop переехал в magnis, там он собирается  
-Implementation lock: sha256:04320cb803ec5c6f46ed339020d09222ee652bdc75bf5f52b1c203c1c7fa8959 owner:owner 2026-09-20: desktop-а и Rust больше нет в magnis-app — desktop переехал в magnis, там он собирается (re-approval after the SPEC amendment)  
+Spec lock: sha256:874dd0ba76a59688d14d4ea5c5960524fb4fa60534c96f8dc6ace5cf626fa4b6 owner:owner 2026-09-20: давай второе — не принципиально (аудит печатает, не роняет гейт до последней стадии)  
+Implementation lock: sha256:875c240121d3e637716534a64c01ba009e03bd9a4d7fc0f31b9eb95560cd6887 owner:owner 2026-09-20: давай второе — не принципиально (аудит печатает, не роняет гейт до последней стадии)  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -114,7 +114,7 @@ Today: planctl refuses a fifth write, a story that does not repeat its paths, a 
 
 ### The instruction audit: `shared/code-production/instruction-audit.ts` (0_agents)
 
-Today: nothing counts the instruction set. Done: one script run by `agent:verify:docs` in 0_agents refuses a path, script or skill that does not exist, a synonym of a term in the process vocabulary (`shared/code-production/vocabulary.md`: term, what it names, the words not used for it; the audit names the term), a language guide named outside a by-extension rule, and more than 900 lines in the loaded set. Red today.
+Today: nothing counts the instruction set. Done: one script run by `agent:verify:docs` in 0_agents reports, and under `--strict` refuses, a path, script or skill that does not exist, a synonym of a term in the process vocabulary (`shared/code-production/vocabulary.md`: term, what it names, the words not used for it; the audit names the term), a language guide named outside a by-extension rule, and more than 900 lines in the loaded set. Red today.
 
 ### The project screen: Magnis `CLAUDE.md` and `AGENTS.md` (Magnis plan)
 
@@ -496,7 +496,7 @@ Commit. feat(plan-gate): a linter refuses the plan defects the owner used to cor
 
 What this Stage solves. What a linter cannot see, the owner sees in a rewrite round: is the Goal a goal, does each Stage read as a commit, are the names existing ones, is the prose plain.
 
-What is built. shared/code-production/plan-judge.md is the rubric, one question per rule with PASS or FAIL, a quote and the fix; plan-gate --judge sends the SPEC and the rubric to claude -p --model haiku, parses the JSON answer, stores the verdict by SPEC hash in the git-local journal, and lock-spec refuses without a PASS; an unavailable judge refuses the lock. The audit runs green on the whole tree and README.md describes the set that remains.
+What is built. shared/code-production/plan-judge.md is the rubric, one question per rule with PASS or FAIL, a quote and the fix; plan-gate --judge sends the SPEC and the rubric to claude -p --model haiku, parses the JSON answer, stores the verdict by SPEC hash in the git-local journal, and lock-spec refuses without a PASS; an unavailable judge refuses the lock. The audit runs green on the whole tree, `agent:verify:docs` turns on `--strict` so it refuses from here on, and README.md describes the set that remains.
 
 How it is proven. plan-judge.test.ts uses a fake claude on PATH answering PASS and FAIL; the verdict cache is proven by a second call that spawns nothing; the audit exits 0 on the tree; the planctl gate passes.
 
@@ -655,4 +655,10 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - amend spec owner:owner 2026-09-20: desktop-а и Rust больше нет в magnis-app — desktop переехал в magnis, там он собирается sha256:5581ac71508ae8ca241ebaa40ab2c1115e243941fcd7abbda46050f9dc579cb0
 
 - approve sha256:04320cb803ec5c6f46ed339020d09222ee652bdc75bf5f52b1c203c1c7fa8959 owner:owner 2026-09-20: desktop-а и Rust больше нет в magnis-app — desktop переехал в magnis, там он собирается (re-approval after the SPEC amendment)
+
+- amend spec owner:owner 2026-09-20: давай второе — не принципиально (аудит печатает, не роняет гейт до последней стадии) sha256:874dd0ba76a59688d14d4ea5c5960524fb4fa60534c96f8dc6ace5cf626fa4b6
+
+- approve sha256:04320cb803ec5c6f46ed339020d09222ee652bdc75bf5f52b1c203c1c7fa8959 owner:owner 2026-09-20: давай второе — не принципиально (аудит печатает, не роняет гейт до последней стадии) (re-approval after the SPEC amendment)
+
+- amend implementation owner:owner 2026-09-20: давай второе — не принципиально (аудит печатает, не роняет гейт до последней стадии) sha256:875c240121d3e637716534a64c01ba009e03bd9a4d7fc0f31b9eb95560cd6887
 <!-- plan:execution:end -->
