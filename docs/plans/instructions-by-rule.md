@@ -282,9 +282,9 @@ Commit. docs(claude): the always-on screen holds only what the model cannot infe
 
 ##### Acceptance criteria
 
-- [ ] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_screen` exits 0 — both screens are under 30 lines, carry one IMPORTANT and the same mistakes
-- [ ] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S2` exits 0 — the owner read what this Stage produced and said the word
-- [ ] Commit
+- [x] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_screen` exits 0 — both screens are under 30 lines, carry one IMPORTANT and the same mistakes — 20671b9b4580b1ad2270f443d563900cc74b2018
+- [x] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S2` exits 0 — the owner read what this Stage produced and said the word — 20671b9b4580b1ad2270f443d563900cc74b2018
+- [x] Commit — 20671b9b4580b1ad2270f443d563900cc74b2018
 
 ##### Results
 
@@ -661,4 +661,12 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - approve sha256:04320cb803ec5c6f46ed339020d09222ee652bdc75bf5f52b1c203c1c7fa8959 owner:owner 2026-09-20: давай второе — не принципиально (аудит печатает, не роняет гейт до последней стадии) (re-approval after the SPEC amendment)
 
 - amend implementation owner:owner 2026-09-20: давай второе — не принципиально (аудит печатает, не роняет гейт до последней стадии) sha256:875c240121d3e637716534a64c01ba009e03bd9a4d7fc0f31b9eb95560cd6887
+
+- approve-stage D1-S1 owner:Ок Давай сделаем следующую стадию тогда — owner, 2026-09-20
+
+- close D1-S1 closed commit:20671b9b4580b1ad2270f443d563900cc74b2018
+
+- approve-stage D1-S2 owner:Ок Давай сделаем следующую стадию тогда — owner, 2026-09-20
+
+- close D1-S2 closed commit:20671b9b4580b1ad2270f443d563900cc74b2018
 <!-- plan:execution:end -->
