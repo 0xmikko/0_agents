@@ -153,3 +153,99 @@ describe("planctl focus and progress", () => {
     })).rejects.toThrow("timed out");
   });
 });
+
+describe("planctl focus --brief", () => {
+  /*
+   * @test-id: tst_focus_brief_001
+   * @covers: planctl/src/cli/main.ts::focus --brief
+   * @deterministic: yes
+   * @fixtures: a temporary repository with one plan in each state
+   * @invariant: the brief is at most twelve lines, comes from the plan's own
+   * state, and says in each state where the agent is and what it can do next
+   * with the exact commands; without a plan it says so in one line.
+   */
+  it("tst_focus_brief_001 prints the position and the next commands for a draft, an approved plan and no plan", async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { execFileSync, spawnSync } = await import("node:child_process");
+    const root = mkdtempSync(join(tmpdir(), "planctl-brief-"));
+    const git = (...args: readonly string[]): string =>
+      execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+    const run = (...args: readonly string[]) =>
+      spawnSync("bun", [join(import.meta.dir, "../src/cli/main.ts"), ...args], { cwd: root, encoding: "utf8" });
+    try {
+      git("init", "-q");
+      git("config", "user.email", "t@t");
+      git("config", "user.name", "t");
+      git("commit", "-q", "--allow-empty", "-m", "the repository");
+      mkdirSync(join(root, "docs", "plans"), { recursive: true });
+
+      // no plan on this branch
+      const none = run("focus", "--brief");
+      expect(none.status).toBe(0);
+      expect(none.stdout.trim().split("\n")).toHaveLength(1);
+      expect(none.stdout).toContain("No plan here");
+      expect(none.stdout).toContain("/blueprint");
+
+      // a draft
+      const plan = "docs/plans/fixture.md";
+      expect(run("init", plan, "--title", "Fixture plan").status).toBe(0);
+      git("commit", "-qm", "open the plan");
+      const draft = run("focus", "--brief");
+      expect(draft.status).toBe(0);
+      const draftLines = draft.stdout.trim().split("\n");
+      expect(draftLines.length).toBeLessThanOrEqual(12);
+      expect(draft.stdout).toContain("SPEC_DRAFT");
+      expect(draft.stdout).toContain("set-spec");
+      expect(draft.stdout).toContain("approve-spec");
+      expect(draft.stdout).toContain("owner's word");
+
+      // approved, one Task started
+      writeFileSync(join(root, "spec.md"), "## The Goal\n\nShip one observable result.\n\n## The target\n\nOne active Delivery.\n");
+      expect(run("set-spec", plan, "--from", "spec.md").status).toBe(0);
+      git("commit", "-qam", "spec");
+      expect(run("approve-spec", plan, "--owner-word", "yes").status).toBe(0);
+      writeFileSync(join(root, "delivery.json"), JSON.stringify({
+        id: "D1", title: "writer", branch: "feat/writer", depends: [], gate: ["backend"], active: true,
+        stageGraph: "D1-S1 -> D1-S2", predictedExternalWaitMinutes: 0,
+        description: "What changed for people. One.\n\nWhat changed in the code. Two.\n\nHow it was proven. Three.",
+      }));
+      const stage = (id: string, depends: string[], task: string) => ({
+        id, deliveryId: "D1", title: `Stage ${id}`, owner: "agent-1", profile: "fast", depends, parallelWith: [],
+        writes: ["scripts/"], tempRoot: `.tmp/code-production/fixture/${id}`,
+        predictedActiveMinutes: 0, predictedCredits: 0, verifyActiveMinutes: 0, verifyCredits: 0,
+        description: "What this Stage solves. A.\n\nWhat is built. B.\n\nHow it is proven. C.\n\nCommit. feat: x",
+        tasks: [{ id: task, story: `Stage ${id} writes one file under scripts/ that prints its own id`, writes: ["scripts/"], predictedActiveMinutes: 0, predictedCredits: 0,
+          how: "do it", red: "bun run agent:test:backend -- test/x.test.ts" }],
+        criteria: ["`true` exits 0 — proven", "Commit"],
+      });
+      writeFileSync(join(root, "s1.json"), JSON.stringify(stage("D1-S1", [], "T_001")));
+      writeFileSync(join(root, "s2.json"), JSON.stringify(stage("D1-S2", ["D1-S1"], "T_002")));
+      for (const step of [
+        run("put-delivery", plan, "--from", "delivery.json"),
+        run("put-stage", plan, "--from", "s1.json"),
+        run("put-stage", plan, "--from", "s2.json"),
+        run("approve-plan", plan, "--owner-word", "yes"),
+      ]) expect(step.status, `${step.stdout}\n${step.stderr}`).toBe(0);
+      git("commit", "-qam", "approve");
+      expect(run("start-task", plan, "--task", "T_001").status).toBe(0);
+
+      const working = run("focus", "--brief");
+      expect(working.status, `${working.stdout}\n${working.stderr}`).toBe(0);
+      const lines = working.stdout.trim().split("\n");
+      expect(lines.length).toBeLessThanOrEqual(12);
+      expect(working.stdout).toContain("APPROVED");
+      expect(working.stdout).toContain("D1-S1");
+      expect(working.stdout).toContain("T_001");
+      expect(working.stdout).toContain("bun run agent:test:backend -- test/x.test.ts");
+      expect(working.stdout).toContain("complete-task");
+      expect(working.stdout).toContain("add-deviation");
+      expect(working.stdout).toContain("Waiting: D1-S2");
+      expect(working.stdout).toContain("Without the owner:");
+      expect(working.stdout).toContain("Owner's word only:");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+});
