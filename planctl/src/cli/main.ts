@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import type { DeliveryMeta, ParsedStageInput, TaskExecutionBrief } from "../core/plan-update";
@@ -10,7 +10,7 @@ import type { OwnerWaitMarker, TaskRun, TaskRunV1 } from "../core/task-run";
 import type { GitWorktreeIdentity } from "../machine/sessions/session-source";
 import type { FocusView, ProgressPlanView } from "./render";
 
-function portableRuntimeFile(name: "plan-gate.ts" | "plan-update.ts"): string {
+function portableRuntimeFile(name: "plan-gate.ts" | "plan-update.ts" | "retro-register.ts"): string {
   const layout = basename(import.meta.dir);
   const runtimeName = import.meta.path.endsWith(".js") ? name.replace(/\.ts$/, ".js") : name;
   if (layout === "cli") return resolve(import.meta.dir, "../core", runtimeName);
@@ -60,6 +60,7 @@ Execution:
   add-deviation      Append one scoped execution deviation
   approve-stage      Journal the owner's word on one Stage
   stage-approved     Exit 0 only if the owner's word on that Stage is journaled
+  retro-status       Exit 0 only if the last retro experiment carries the owner's status
   close-stage        Prove and close a Stage's acceptance criteria
   amend              Apply an explicit owner amendment
 
@@ -174,10 +175,18 @@ story/writes/forecast/How/RED contract, and stores only a Git-local start
 receipt. It does not edit the plan. Run it before RED.
 `,
   focus: `Usage: planctl focus <plan.md> [--task <Task-ID>] [--server] [--config <absolute.toml>]
+       planctl focus --brief [<plan.md>]
 
 Shows the locked Goal, current exact Task contract, next dependency-ready work,
 progress/forecast and the evidence behind focused, unassigned, drifted or
 owner-blocked status. Server comparison is attempted only with --server.
+
+--brief prints where the agent is and what it may do now, in at most twelve
+lines, from the plan's own state: the plan and its status, the open Stage and
+the started Task, what is done and what waits, the next commands with their
+exact arguments, what is free without the owner and what needs the owner's
+word. Without a plan argument it takes the one plan whose branch matches, or
+says "no plan here" in one line. A session-start hook prints it.
 `,
   progress: `Usage: planctl progress <plan.md> [--server] [--config <absolute.toml>]
 
@@ -234,6 +243,14 @@ the owner's actual word, after the owner read what the Stage produced.
 
 Exits 0 when the Execution log carries an approve-stage line for that Stage,
 1 otherwise. A Stage criterion can require it: \`planctl stage-approved <plan> --stage <id>\` exits 0.
+`,
+  "retro-status": `Usage: planctl retro-status [--law <development-process.md>]
+
+Reads the "Register of experiments" table at the end of the process law and
+exits 0 when its last row carries the owner's status (accepted or declined),
+1 while it has none. end-work runs it before closing a Delivery. The law
+defaults to shared/code-production/laws/development-process.md, then
+docs/development-process.md, from the repository root.
 `,
   "close-stage": `Usage: planctl close-stage <plan.md> --stage <D1-S1>
 
@@ -658,6 +675,91 @@ async function serverProgress(args: readonly string[]): Promise<{
   return { settings, response };
 }
 
+/** The plan this branch is about: the one whose file name matches the
+ * branch's last segment, else the only plan in docs/plans, else none. */
+function planOfThisBranch(rootPath: string): string | null {
+  const dir = join(rootPath, "docs", "plans");
+  if (!existsSync(dir)) return null;
+  const plans = readdirSync(dir).filter((name) => name.endsWith(".md") && name !== "README.md");
+  const branch = spawnSync("git", ["-C", rootPath, "rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf8" }).stdout.trim();
+  const slug = branch.split("/").pop() ?? "";
+  const named = plans.find((name) => name === `${slug}.md`);
+  if (named !== undefined) return `docs/plans/${named}`;
+  return plans.length === 1 ? `docs/plans/${plans[0]}` : null;
+}
+
+/** Where the agent is and what it may do now: at most twelve lines from the
+ * plan's own state, never stale, printed by the session-start hook. */
+async function focusBrief(args: readonly string[]): Promise<string> {
+  const rootPath = root();
+  const explicit = args.slice(1).find((arg) => !arg.startsWith("--"));
+  const planPath = explicit === undefined ? planOfThisBranch(rootPath) : addressedPath(rootPath, explicit).relative;
+  if (planPath === null || !existsSync(join(rootPath, planPath))) {
+    return "No plan here. Planning is /blueprint (a plan in docs/plans/<slug>.md on its own branch); a small fix is a commit and a PR.";
+  }
+  const body = readFileSync(join(rootPath, planPath), "utf8");
+  const state = body.match(/^Status:\s*(SPEC_DRAFT|SPEC_LOCKED|APPROVED)\b/m)?.[1] ?? "unknown";
+  const planctl = `planctl`;
+  if (state === "SPEC_DRAFT") {
+    return [
+      `Plan ${planPath} — SPEC_DRAFT: you are planning; the SPEC is yours to edit.`,
+      `Next: ${planctl} set-spec ${planPath} --from <spec.md>; then ${planctl} approve-spec ${planPath} --owner-word "<the owner's word>" — only on the owner's word.`,
+      `The linter and the judge run before the owner is asked.`,
+    ].join("\n");
+  }
+  if (state === "SPEC_LOCKED") {
+    return [
+      `Plan ${planPath} — SPEC_LOCKED: the SPEC is the owner's; you are writing Stages.`,
+      `Next: ${planctl} put-delivery ${planPath} --from <delivery.json>; ${planctl} put-stage ${planPath} --from <stage.json> per Stage;`,
+      `then ${planctl} approve-plan ${planPath} --owner-word "<the owner's word>" — only on the owner's word.`,
+    ].join("\n");
+  }
+  const deliveries: readonly DeliveryMeta[] = deliveryMetas(body);
+  const active = deliveries.find((delivery) => delivery.active);
+  const stages: readonly ParsedStageInput[] = stageInputs(body).filter((stage: ParsedStageInput) => active === undefined || stage.deliveryId === active.id);
+  const done = stages.filter((stage) => stage.tasks.every((task) => task.completed));
+  const doneIds = new Set(done.map((stage) => stage.id));
+  const open = stages.filter((stage) => !doneIds.has(stage.id));
+  const ready = open.filter((stage) => stage.depends.every((dependency) => doneIds.has(dependency)));
+  const waiting = open.filter((stage) => !ready.includes(stage));
+  // the started Task: a TaskRun receipt for an open Task of a ready Stage
+  let started: { readonly stage: ParsedStageInput; readonly taskId: string; readonly since: string } | null = null;
+  for (const stage of ready) {
+    for (const task of stage.tasks) {
+      if (task.completed) continue;
+      const path = taskRunPath(rootPath, planPath, task.id);
+      if (!existsSync(path)) continue;
+      const run = JSON.parse(readFileSync(path, "utf8")) as { startedAt?: string };
+      started = { stage, taskId: task.id, since: run.startedAt ?? "" };
+      break;
+    }
+    if (started !== null) break;
+  }
+  const current = started?.stage ?? ready[0] ?? null;
+  const lines: string[] = [];
+  lines.push(`Plan ${planPath} — APPROVED. Done: ${done.length} of ${stages.length} Stages${done.length === 0 ? "" : ` (${done.map((stage) => stage.id).join(", ")})`}. Waiting: ${waiting.length === 0 ? "none" : waiting.map((stage) => stage.id).join(", ")}.`);
+  if (current === null) {
+    lines.push(`Every Stage is closed. Next: /end-work once the owner has merged.`);
+    return lines.join("\n");
+  }
+  const title = current.title.length > 60 ? `${current.title.slice(0, 57)}…` : current.title;
+  if (started === null) {
+    const first = current.tasks.find((task) => !task.completed);
+    lines.push(`You are in Stage ${current.id} "${title}", no Task started.`);
+    if (first !== undefined) lines.push(`Now: ${planctl} start-task ${planPath} --task ${first.id}`);
+  } else {
+    const task = current.tasks.find((entry) => entry.id === started?.taskId);
+    lines.push(`You are in Stage ${current.id} "${title}", Task ${started.taskId} started ${started.since.slice(0, 16)}Z.`);
+    if (task !== undefined) lines.push(`RED for ${task.id}: ${task.red}`);
+    lines.push(`After the commit: ${planctl} complete-task ${planPath} --from <stage-result.json>`);
+  }
+  lines.push(`A shortfall: ${planctl} add-deviation ${planPath} --stage ${current.id} --reason "…"  (record it, do not stop)`);
+  lines.push(`Commands green: ${planctl} close-stage ${planPath} --stage ${current.id}`);
+  lines.push(`Without the owner: add a test, add a file the compiler names, touch one more file in this commit.`);
+  lines.push(`Owner's word only: the goal, the target tree, the meaning of a criterion.`);
+  return lines.join("\n");
+}
+
 async function focus(args: readonly string[]): Promise<void> {
   dedicatedRuntime();
   const { rootPath, target, body } = approvedPlan(args);
@@ -995,7 +1097,24 @@ async function run(args: readonly string[]): Promise<number> {
     await startTask(args);
     return 0;
   }
+  if (command === "retro-status") {
+    const rootPath = root();
+    const given = optionalFlag(args, "--law");
+    const candidates = given === undefined
+      ? ["shared/code-production/laws/development-process.md", "docs/development-process.md"].map((path) => join(rootPath, path))
+      : [resolve(rootPath, given)];
+    const law = candidates.find((path) => existsSync(path));
+    if (law === undefined) throw new Error("no process law with a register found; pass --law <file>");
+    const { retroStatus } = await import(portableRuntimeFile("retro-register.ts"));
+    const verdict = retroStatus(law);
+    console.log(`retro-status: ${verdict.reason}`);
+    return verdict.ok ? 0 : 1;
+  }
   if (command === "focus") {
+    if (args.includes("--brief")) {
+      console.log(await focusBrief(args));
+      return 0;
+    }
     await focus(args);
     return 0;
   }

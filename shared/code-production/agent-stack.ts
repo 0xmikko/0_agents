@@ -142,6 +142,12 @@ function managedFiles(sourceRoot: string, ci: CiContract): readonly ManagedFile[
       guarded: false,
     },
     {
+      source: join(planctlSource, "core/retro-register.ts"),
+      target: ".agents/code-production/runtime/retro-register.ts",
+      executable: false,
+      guarded: false,
+    },
+    {
       source: join(sourceRoot, "templates/hooks/pre-commit"),
       target: ".githooks/pre-commit",
       executable: true,

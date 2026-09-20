@@ -18,6 +18,7 @@ const CANONICAL_RUNTIME = [
   ["src/cli/main.ts", ".agents/code-production/runtime/planctl.ts"],
   ["src/core/plan-update.ts", ".agents/code-production/runtime/plan-update.ts"],
   ["src/core/plan-gate.ts", ".agents/code-production/runtime/plan-gate.ts"],
+  ["src/core/retro-register.ts", ".agents/code-production/runtime/retro-register.ts"],
 ] as const;
 
 function git(root: string, ...args: readonly string[]): string {
@@ -69,7 +70,8 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
 
     const installed = installStack(consumer);
 
-    expect(installed.files).toHaveLength(7);
+    // planctl, plan-update, plan-gate, retro-register, three hooks, the workflow
+    expect(installed.files).toHaveLength(8);
     for (const [source, target] of CANONICAL_RUNTIME) {
       expect(readFileSync(join(consumer, target), "utf8")).toBe(
         readFileSync(join(REPOSITORY_ROOT, "planctl", source), "utf8"),

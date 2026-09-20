@@ -1,0 +1,28 @@
+{
+  "$comment": "The session brief. Copy the two hook entries into .claude/settings.json of a repository that vendors planctl: at session start (startup, resume, after a compaction) planctl prints where the agent is and what it may do now; on every prompt one line keeps the position in view.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && bun .agents/code-production/runtime/planctl.ts focus --brief",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && bun .agents/code-production/runtime/planctl.ts focus --brief | head -2",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
