@@ -363,9 +363,9 @@ Commit. refactor(skills): nine skills, four of them the process — the cargo-er
 
 ##### Acceptance criteria
 
-- [ ] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills` exits 0 — the four process skills are under 60 lines and no skill names a deleted one
-- [ ] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S4` exits 0 — the owner read what this Stage produced and said the word
-- [ ] Commit
+- [x] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills` exits 0 — the four process skills are under 60 lines and no skill names a deleted one — 3cff01f91d3661e6aeb80759f4f523bd3e987327
+- [x] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S4` exits 0 — the owner read what this Stage produced and said the word — 3cff01f91d3661e6aeb80759f4f523bd3e987327
+- [x] Commit — 3cff01f91d3661e6aeb80759f4f523bd3e987327
 
 ##### Results
 
@@ -685,4 +685,8 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - close D1-S3 closed commit:a1301020c1a1537a660dac65be2b970fd15972f4
 
 - record-result D1-S4 commit:02a13f06561662e3260268309647b849182628e4
+
+- approve-stage D1-S4 owner:nice — это уже применено; да (2026-09-20, on the PR #15 summary) — owner, 2026-09-20
+
+- close D1-S4 closed commit:3cff01f91d3661e6aeb80759f4f523bd3e987327
 <!-- plan:execution:end -->
