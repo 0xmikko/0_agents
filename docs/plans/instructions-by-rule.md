@@ -675,4 +675,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - record-result D1-S3 commit:1a0e344eaacc1471d71ec96ca9df4505d43d5d6c
 
 - deviation D1-S3: IBR_004 was not started through start-task: both Tasks of the Stage were built in one sitting after IBR_003's start-task, and the runtime records one receipt per Stage
+
+- deviation D1-S7: owner 2026-09-20 showed a plan whose TypeScript block packs four fields on one line (entityId; contentHash; indexerVersion; modelName;) — the SPEC's rule «one field per line» has no check; the linter of this Stage adds one: every interface or type in a ts block is refused when a line declares more than one field, with the line quoted
 <!-- plan:execution:end -->
