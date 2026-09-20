@@ -397,7 +397,7 @@ Commit. docs(laws): two laws — the process and the plan format — carry every
 
 ##### Tasks
 
-- [ ] IBR_007 — Rewrite development-process.md (under 100 lines, three tiers, retro register) and plan-format.md (under 80 lines); delete plan-protocol.md and git-workflow.md; the laws test pins it.
+- [x] IBR_007 — Rewrite development-process.md (under 100 lines, three tiers, retro register) and plan-format.md (under 80 lines); delete plan-protocol.md and git-workflow.md; the laws test pins it. — 629790178da90db909ef33bc1a1de814d5a19408
 <!-- plan:task-meta:{"writes":["shared/code-production/laws/","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"write the two laws from the SPEC's paragraphs; git rm the other two; the test reads sizes, tiers, register, banned words","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_laws"} -->
 
 ##### Acceptance criteria
@@ -411,6 +411,7 @@ Commit. docs(laws): two laws — the process and the plan format — carry every
 <!-- plan:results:D1-S5:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| IBR_007 | 629790178da90db909ef33bc1a1de814d5a19408 | 2026-09-20T20:14:12.270Z–2026-09-20T20:18:16.000Z | 4.06 / 4.06 min | unavailable: runner did not expose usage | Two laws: development-process.md 99 lines, plan-format.md 79 lines; plan-protocol.md and git-workflow.md deleted; the loaded set is under 900 lines and the instruction audit reports clean. |
 <!-- plan:results:D1-S5:end -->
 <!-- plan:stage:D1-S5:end -->
 
@@ -689,4 +690,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - approve-stage D1-S4 owner:nice — это уже применено; да (2026-09-20, on the PR #15 summary) — owner, 2026-09-20
 
 - close D1-S4 closed commit:3cff01f91d3661e6aeb80759f4f523bd3e987327
+
+- record-result D1-S5 commit:629790178da90db909ef33bc1a1de814d5a19408
 <!-- plan:execution:end -->
