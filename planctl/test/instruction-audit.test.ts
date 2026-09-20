@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -158,6 +158,54 @@ describe("the global screen", () => {
     expect(claude).toContain("/blueprint");
     expect(claude).toContain("/blueprint-start");
     expect(audit(root).filter((finding) => finding.file === "claude/CLAUDE.md")).toEqual([]);
+  });
+});
+
+describe("the skills", () => {
+  const root = join(import.meta.dir, "../..");
+  /** The four skills that are the process, and the words each must say
+   * because the SPEC says it does. */
+  const PROCESS: Record<string, readonly string[]> = {
+    blueprint: ["origin/staging", "Why now", "Interfaces", "Stage 0", "approve-spec", "approve-plan"],
+    "blueprint-start": ["start-task", "complete-task", "add-deviation", "pre-push", "coherence", "coverage", "simplicity"],
+    "end-work": ["merged", "register", "retro-status", "worktree"],
+    bug: ["red", "Skipping red test"],
+  };
+  /** The cargo-era and Cyrus skills. A retired skill is gone when no skill
+   * directory carries its name and no living skill or page invokes it. */
+  const RETIRED = [
+    "start-work", "test-protocol", "completion-note", "verify-app", "verify-frontend", "fast-precommit",
+    "fix-ci-cd", "quick-fix", "plan", "review-plan", "execute", "finish-plan", "git",
+    "dispatch-to-linear", "execute-from-linear", "launch-e2e",
+  ];
+  function skillFiles(dir: string): string[] {
+    const home = join(root, dir);
+    return readdirSync(home)
+      .map((name) => join(dir, name, "SKILL.md"))
+      .filter((file) => existsSync(join(root, file)));
+  }
+  // @test-id: tst_audit_skills_001
+  // @covers: shared/skills/*/SKILL.md, claude/skills, codex/skills, README.md, ONBOARDING.md
+  // @deterministic: yes
+  // @invariant: the four process skills are each under 60 lines and say what
+  // the SPEC says they say; the sixteen retired skills have no directory and
+  // are named by no living skill, README or ONBOARDING.
+  it("tst_audit_skills_001 four process skills under 60 lines, sixteen retired skills gone and unnamed", () => {
+    for (const [name, says] of Object.entries(PROCESS)) {
+      const text = readFileSync(join(root, "shared/skills", name, "SKILL.md"), "utf8");
+      const lines = text.trimEnd().split("\n").length;
+      expect({ name, lines, under60: lines < 60 }).toEqual({ name, lines, under60: true });
+      expect({ name, missing: says.filter((word) => !text.includes(word)) }).toEqual({ name, missing: [] });
+    }
+    const dirs = ["shared/skills", "claude/skills", "codex/skills"];
+    const present = dirs.flatMap((dir) => RETIRED.filter((name) => existsSync(join(root, dir, name))).map((name) => `${dir}/${name}`));
+    expect(present).toEqual([]);
+    const pages = [...dirs.flatMap(skillFiles), "README.md", "ONBOARDING.md"];
+    const named = pages.flatMap((file) => {
+      const text = readFileSync(join(root, file), "utf8");
+      return RETIRED.filter((name) => new RegExp(`(^|[\\s\`(])/${name}\\b`, "m").test(text)).map((name) => `${file} names /${name}`);
+    });
+    expect(named).toEqual([]);
   });
 });
 

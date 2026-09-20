@@ -115,7 +115,7 @@ done
 if [ -d "$HOME/.codex/skills" ]; then
   ok "~/.codex/skills exists"
   # Spot-check that the most-used shared skills are symlinked
-  for skill in start-work mdurl bug fast-precommit; do
+  for skill in blueprint mdurl bug rename; do
     src="$REPO_DIR/codex/skills/$skill"
     dst="$HOME/.codex/skills/$skill"
     if [ -L "$dst" ]; then
