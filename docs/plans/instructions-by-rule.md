@@ -714,4 +714,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - amend spec owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) sha256:f86887bc440fdcfaca29316a9e89c68d32418ffbb6ae4e20e19aca8c9f17439e
 
 - approve sha256:c8d045fc8b1ce39e578a6f1e230796d73753432d98ba6324ab488ec0e9ad1083 owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) (re-approval after the SPEC amendment)
+
+- deviation D1-S5: Stage 5 carries two commits: the owner's reading of plan-format.md turned a file-format page into the way a plan is made with planctl, and added the measure of a Stage; both laws are under 100 lines by the amendment of 2026-09-21
 <!-- plan:execution:end -->
