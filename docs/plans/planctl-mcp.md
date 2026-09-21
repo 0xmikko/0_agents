@@ -1,4 +1,4 @@
-# Planctl MCP: помощь при записи спецификации
+# Planctl MCP: fast standards feedback when writing a SPEC
 
 Status: SPEC_DRAFT  
 Spec lock: unlocked  
@@ -9,199 +9,149 @@ Unattended decisions: allowed
 <!-- plan:spec:start -->
 ## The Goal
 
-Агент по просьбе владельца создаёт и уточняет спецификацию через MCP, получает полезные исправления и показывает актуальный документ по ссылке.
-Исследование и прямое поручение остаются возможны без плана. Исходный запрос виден в документе, а решение о начале выполнения принимает владелец.
-Сегодня такого MCP-интерфейса нет. Первая поставка должна провести один реальный запрос через создание, запись с обратной связью и показ, с одним вызовом быстрой модели на запись.
+An agent submits an English SPEC once and receives the saved draft, safe corrections and exact feedback on the plan standards through MCP.
+One changed submission makes at most one lightweight model call. The proposed model deadline is five seconds; actual latency remains to be measured.
+Every reported issue identifies the rule, source location, offending text and proposed correction. The user's Goal, scope and approval remain unchanged by automatic fixes.
 
 ## Why now
 
-Этот документ — SPEC для обсуждения, а не разрешение реализовать весь описанный маршрут.
-Владелец попросил собрать фактуру, объяснить проверки и двигаться небольшими шагами после сбоев управления работой 21 сентября 2026 года.
-База исследования: `0_agents` на `b4e353c9e9808f41258746336dcffc2350e583a7`. Незакоммиченные настройки и изменения сервера публикации не входят в эту базу.
+There are currently no MCP tools for writing planctl specifications. Agents must construct CLI arguments and intermediate files, then interpret separate checks.
+The owner wants these checks inside submission, with quick, specific feedback and a small first delivery.
+This SPEC uses `0_agents` at `b4e353c9e9808f41258746336dcffc2350e583a7` as its code baseline.
 
-### Что подтверждено
-
-| Наблюдение | Источник | Вывод для этого изменения |
+| Current fact | Evidence | Required change |
 |---|---|---|
-| Слияние PR #15 изменило 75 файлов: 1504 добавления и 4674 удаления относительно первого родителя merge. Оно затронуло скиллы, инструкции, проверки и установку. | [PR #15](https://github.com/0xmikko/0_agents/pull/15), merge `ecec22b` | Не связывать запуск MCP с массовым пересмотром правил и установок. |
-| Вместо одной минимальной пробы агент выбрал 159 операций. Владелец этого объёма не поручал. | Приведённый владельцем диалог в этой сессии | Проверять соответствие Goal исходному запросу; не превращать полноту проверки в разрешение увеличить объём. |
-| В сессии GLM агент правильно описал сравнение представлений tools, затем сравнил модели при неизменном интерфейсе. | Сессия `42c03ba5-a96f-459d-83a7-cf0ec5bb510f`, записи 10:46–10:58 UTC; изученный журнал и артефакты эксперимента | Текущая цель должна быть видна рядом с документом. Наличие инструкции не доказывает её соблюдение. |
-| Между последним правильным уточнением GLM и неверным выводом compaction не было. | Тот же журнал | Нельзя объяснять все ошибки только потерей контекста или конкретным скиллом. |
-| Автоматический выбор работы через focus удалён в PR #16. | [PR #16](https://github.com/0xmikko/0_agents/pull/16) | MCP не выбирает план и не запускает найденную задачу самостоятельно. |
-| Обе версии review-plan восстановлены без переписывания в PR #19. | [PR #19](https://github.com/0xmikko/0_agents/pull/19) | Сохранить восстановление; не заменять содержательное ревью быстрой языковой проверкой. |
-| Правила уже требуют judge перед показом SPEC, но его реализация осталась в draft PR #17. | `shared/skills/blueprint/SKILL.md:39`, `shared/code-production/laws/plan-format.md:26`, [PR #17](https://github.com/0xmikko/0_agents/pull/17) | Не делать доступность внешней модели условием возможности сохранить или показать черновик. |
-| Единственная изученная реальная проба judge вернула 429 из-за недельного лимита подписки. | Проба 21 сентября, 1,9 секунды; результат предыдущей работы сохранён в локальном отчёте | Качество реального ответа модели ещё не доказано. Нельзя отмечать проверку успешной при ошибке провайдера. |
-| Нынешний линтер отклоняет длинные предложения, служебные названия в прозе и план на два файла. | `planctl/src/core/plan-gate.ts:179`, `planctl/src/core/plan-gate.ts:285` | Обратная связь по форме не должна автоматически запрещать работу или заставлять раздувать документ. |
-| Словарь содержит конечные пары терминов и замен. Проверка не понимает все новые слова и все значения слов. | `shared/code-production/vocabulary.md:1`, `shared/code-production/instruction-audit.ts:96` | Проверять словарь и контекст вместе; не обещать доказательство правильности терминологии. |
-| Запись SPEC уже идёт через общий writer с журналом и staging. | `planctl/src/cli/main.ts:790`, `planctl/src/core/plan-update.ts:333`, `planctl/src/core/plan-update.ts:1356` | Подключить MCP к этому механизму, не создавать второй формат плана или собственный редактор файлов. |
-| CLI и core местами зависят от process.cwd; CLI печатает текст и сам запускает диспетчер при импорте. | `planctl/src/cli/main.ts:310`, `planctl/src/cli/main.ts:842`, `planctl/src/cli/main.ts:915` | Импорт всего CLI как библиотеки небезопасен для stdio. Нужен небольшой общий участок операций записи. |
-| На main renderer использует Mermaid 10; незакоммиченный локальный файл и реально открытая страница используют Mermaid 11. Линтер зависит от Mermaid 10.9.5. | `markdown-server/server.py:187` на базовом SHA; GET `http://u3775:6420/`; `planctl/package.json` | Это расхождение источника и установки. Проверка синтаксиса одной версией не доказывает отображение другой. |
+| SPEC writing already has a canonical writer, mutation journal and staging behavior. | `planctl/src/cli/main.ts:790`, `planctl/src/core/plan-update.ts:333`, `planctl/src/core/plan-update.ts:1356` | Reuse that writer from MCP. |
+| The existing checker parses Markdown, TypeScript and Mermaid and loads two vocabulary tables. | `planctl/src/core/plan-gate.ts:179`, `planctl/src/core/plan-gate.ts:285` | Reuse its checks inside submit_spec. |
+| Current checks also reject long sentences and plans affecting two files. | `planctl/src/core/plan-gate.ts:285` | Return specific standards feedback without forcing a larger plan. |
+| The proposed mandatory judge exists only in draft PR #17; its real subscription probe returned 429. | [PR #17](https://github.com/0xmikko/0_agents/pull/17), recorded probe on 21 September | A failed model call must remain visible and must not prevent saving a draft. |
+| Mermaid differs between the committed renderer, local changes and running service. | `markdown-server/server.py:187`, `planctl/package.json`, GET `http://u3775:6420/` | Align parser and renderer versions and verify one actual diagram. |
 
-Число 159 взято из диалога владельца. Причинную связь каждой ошибки с изменениями PR #15 мы не установили.
-Не подтверждено и самопроизвольное переключение модели на low. Новый SPEC не выдаёт эти предположения за установленный диагноз.
-
-### Запрос владельца, который сохраняем
-
-В этой сессии выбраны: MCP для создания плана; название `submit_spec`; показ через mdurl; проверка при записи вместо отдельного lint tool.
-Однозначные ошибки исправляются автоматически. Быстрая модель проверяет словарь, простые правила и соответствие цели запросу.
-Обратная связь должна помогать уточнить небольшую задачу. Она не разрешает менять объём, переписывать рабочие скиллы или начинать реализацию.
+The old change mixed many concerns: merging PR #15 changed 75 files, adding 1504 lines and deleting 4674 against its first parent.
+The owner also showed an agent expanding one requested probe into 159 operations. The new acceptance probe remains one request and one submission.
+The GLM session changed the comparison despite a recent clarification. Goal feedback must therefore compare the promised outcome with the actual supplied request.
+These observations justify narrow scope. They do not establish that one skill caused every failure or that the model switched its reasoning level automatically.
 
 ## The target
 
-### Первая поставка и граница
+### First useful delivery
 
-Один локальный MCP через stdio в существующем пакете planctl. CLI сохраняется и использует тот же writer.
-MCP-клиент запускает процесс с явно указанным корнем одного worktree: `planctl mcp --root <absolute-worktree>`.
-Здесь нет отдельного сетевого сервиса, порта, новой БД, фонового диспетчера или автоматического поиска активного плана.
-Существующий HTTP observer остаётся отдельным читателем прогресса; переносить в него запись файлов worktree не требуется.
+Add a local stdio MCP interface to the existing planctl package: `planctl mcp --root <absolute-worktree>`.
+The process serves one explicitly selected worktree. CLI and MCP share the existing plan format and writer.
+No database, HTTP service, automatic plan selection or background task dispatcher is needed.
+The existing observer remains a separate reader of progress.
 
-Первый каталог содержит четыре инструмента. Он покрывает полный полезный путь от пустого черновика до ссылки.
-
-| Tool | Вход | Результат и побочный эффект |
+| Tool | Input | Result |
 |---|---|---|
-| `init` | Относительный путь плана и название | Создаёт SPEC_DRAFT существующим механизмом; возвращает документ и revision. Существующий файл не перезаписывает. |
-| `submit_spec` | Путь, ожидаемая revision, текущий запрос владельца и текст SPEC | Проверяет, применяет разрешённые исправления, сохраняет черновик и возвращает точный текст, исправления, замечания и статус проверки моделью. |
-| `show_plan` | Путь существующего плана | Повторно вызывает mdurl для текущей версии, возвращает URL и revision опубликованного документа. Модель не вызывает. |
-| `vocabulary` | Без параметров: репозиторий уже задан при запуске | Возвращает существующие общий и проектный словари с источниками. Ничего не записывает. |
+| `init` | Plan path and title | Creates a SPEC_DRAFT document and returns its content and revision. |
+| `submit_spec` | Plan path, expected revision, owner's request and SPEC text | Checks the English SPEC, applies allowed corrections, saves it and returns precise feedback. |
+| `show_plan` | Existing plan path | Runs mdurl and returns the current published URL and document revision. |
+| `vocabulary` | None; the repository is fixed at startup | Returns existing common and project terms with their meanings and sources. |
 
-Инструменты `lint`, `approve_spec`, `approve_plan` и автоматическое выполнение задач в первый каталог не входят.
-Утверждение пока остаётся через существующий процесс после явных слов владельца. Сохранение SPEC не меняет его статус на APPROVED.
-`init` и `submit_spec` используют нынешний staging и mutation journal; они не делают commit, push, PR или новый worktree.
+There is no separate lint tool. Submission does not approve the plan, create worktrees, commit, push or start implementation.
+Creating and updating the document retain the existing writer's staging behavior.
+Research and direct work require no MCP call or plan. Planning tools are used when the owner requests a plan.
 
-### Путь одного запроса
+### Submission flow
 
 ```mermaid
 flowchart TD
-  U[User requests a plan] --> I[init: create draft]
-  I --> S[submit_spec: request and SPEC]
-  S --> W[Check write preconditions]
-  W -->|invalid| E[Return error without changing plan]
-  W -->|valid| C[Check content and apply safe corrections]
-  C --> M[One fast model call]
-  M -->|feedback| F[Validate feedback and allowed corrections]
-  M -->|unavailable| N[Record unavailable review]
-  F --> R[Recheck corrected content]
-  N --> R
-  R --> D[Save draft and return exact result]
-  D --> P[show_plan: publish current draft]
-  P --> O[Owner reads and decides]
+  A[Agent submits English SPEC] --> B[Check write preconditions]
+  B -->|invalid| C[Return write error]
+  B -->|valid| D[Check structure and syntax]
+  D --> E[One quick standards check]
+  E --> F[Validate feedback and safe corrections]
+  F --> G[Recheck content and file revision]
+  G --> H[Save draft and return exact feedback]
+  H --> I[show_plan publishes the saved document]
 ```
 
-| Момент | Поведение сервера | Что получает агент |
+| Step | Server action | Agent receives |
 |---|---|---|
-| До работы с планом | Ничего не делает, пока инструмент не вызван | Возможность исследовать и выполнять прямой запрос без регистрации плана |
-| Перед записью | Проверяет адрес, состояние и ожидаемую версию файла | Конкретную ошибку записи либо разрешение продолжить этот вызов |
-| Во время подготовки SPEC | Проверяет содержимое и выполняет узкие исправления | Диагностику, привязанную к строке и цитате |
-| Проверка моделью | Один ограниченный вызов без tools | Замечание и конкретное предложение, а не приказ начать другую работу |
-| После записи | Возвращает сохранённый текст и SHA-256 файла | Доказательство того, какая версия записана и какие изменения внёс сервер |
-| Просмотр | Публикует ровно существующую версию | Ссылку; просмотр разрешён и для незавершённого черновика |
+| Address | Validate parameters, path, draft state and expected revision | A concrete error before model spending if writing is invalid |
+| Local checks | Parse structure, diagrams and code blocks; normalize line endings | Structured findings with source locations |
+| Model check | Check the supplied standards once against the request, SPEC and vocabulary | Only offending quotations and concrete corrections |
+| Correction | Apply the permitted mechanical edits and repeat local checks | An explicit list of applied changes |
+| Save | Recheck the file and call the existing writer | Saved content, new revision, remaining findings and model status |
+| Display | Republish through mdurl | A URL for that saved revision, without another model call |
 
-### Goal и исходный запрос
+### The standards checked on submission
 
-Goal остаётся разделом SPEC. Отдельного сервиса целей или нового хранилища задач не создаём.
-В `submit_spec` агент передаёт актуальный запрос владельца явно, без самостоятельно придуманного расширения.
-Сервер сохраняет эту цитату в начале SPEC под заголовком `Owner request`. Этот блок создаётся сервером из параметра ownerRequest.
-Текст spec не должен содержать второй такой блок. Проверки стиля и автозамены не редактируют цитату владельца.
-Весь получившийся SPEC остаётся в существующем Markdown-файле, поэтому запрос переживает перезапуск MCP.
+The model is a quick standards checker. Its job is the finite checklist below; it does not conduct an architecture review or rewrite the document.
+The prompt contains this checklist, the owner's request, the SPEC and the two vocabulary tables. It does not load the repository, session history or skill catalogue.
 
-Модель сопоставляет Goal с запросом: какой результат обещан, не потеряно ли ограничение, не добавлены ли чужие задачи.
-Например, запрос на одну пробу и цель измерить все операции должны дать замечание о расширении объёма.
-Изменение Goal, исходного запроса, ограничений или технического решения модель сама не применяет.
-
-MCP не видит достоверную историю разговора сам по себе. Параметр ownerRequest передаёт агент; это полезное свидетельство для сравнения, но не доказательство согласия владельца.
-Цитата и её изменения видны в документе и diff. Проверка моделью остаётся советом, а не авторизацией.
-
-### Какие проверки останавливают запись
-
-Останавливают только нарушения самого контракта записи: неправильные параметры, пустой SPEC, управляющие маркеры внутри пользовательского текста, выход за корень worktree.
-Также останавливают попытка создать существующий файл, изменение SPEC_LOCKED или APPROVED через submit_spec, устаревшая revision и конфликт mutation journal.
-В ответе MCP возвращает ошибку инструмента с причиной. Предыдущее содержимое файла сохраняется при отказе до записи.
-Невозможность записи или staging возвращается явно; обещание полной транзакционности существующего writer этим SPEC не добавляется.
-
-Проверка состояния выполняется до вызова модели. Права записи и ожидаемая версия повторно проверяются непосредственно перед сохранением.
-Один процесс MCP последовательно исполняет операции изменения плана. Он не меняет process.cwd между запросами.
-После model call нельзя записать результат поверх файла, изменённого за это время другим процессом.
-Межпроцессные блокировки для нескольких одновременно пишущих агентов в одном worktree не входят в первую поставку.
-
-### Проверки содержимого и мягкая обратная связь
-
-| Проверка | Что проверяется | Реакция |
+| Rule | Check | Feedback |
 |---|---|---|
-| Markdown и структура | Целостность блоков, наличие Goal, очевидно пустое описание | Замечание с местом; черновик можно сохранить и показать |
-| Mermaid | Реальный parser, номера строк ошибки | Однозначные разрешённые исправления; иначе конкретная диагностика, без придумывания схемы |
-| TypeScript | Синтаксис кода в блоках | Замечание; это не typecheck всего проекта и не доказательство правильности API |
-| Словарь | Общая таблица и существующая проектная таблица | Разрешённая замена или контекстное замечание |
-| Соответствие Goal | Цель относительно исходного запроса и ограничений | Модель цитирует расхождение и предлагает уточнение, но не переписывает цель |
-| Понятность | Неясный исполнитель, действие или результат | Короткое предложение исправления; отсутствие идеального стиля не запрещает запись |
-| Размер | Фактический размер документа | Информация, без минимального числа строк, файлов или стадий |
+| English | Authored plan prose is English. Verbatim owner quotations and code identifiers are exempt. | Quote the non-English passage and suggest an English correction. |
+| Goal | The SPEC starts with The Goal and states the intended outcome. The outcome respects the supplied request and constraints. | Quote the incorrect or expanded outcome and suggest a correction. |
+| Vocabulary | Prose uses the supplied terms for their defined meanings. | Return the exact inappropriate term in context and its canonical replacement. |
+| Structure | Required sections exist and contain relevant text; an unfinished section is identified precisely. | Name the missing or misplaced section and where it belongs. |
+| Clarity | A description names the action and intended result plainly. | Quote the unclear passage and give one concise alternative. |
+| Mermaid | The diagram parses with the renderer's pinned version. | Return parser location and error; suggest a repair only when meaningful. |
+| TypeScript | Code blocks parse as TypeScript. | Return syntax diagnostics; do not claim project type correctness. |
 
-Никакого отдельного вызова lint от агента не требуется. Существующие функции разбора используются внутри submit_spec.
-Для этого проверки получают структурированный вид замечания. Нельзя определять серьёзность через поиск английских слов в строках старого линтера.
-Существующий CLI gate остаётся совместимым; глобально менять его политику и все hooks этой поставкой не предполагается.
-Следствие: сохранённый MCP-черновик ещё может получить старые формальные отказы при последующем approve-spec. Этот разрыв обозначаем явно и разбираем отдельно после первой пробы.
+Local parsers check structure and syntax. The model checks English, Goal, contextual vocabulary and simple wording.
+It returns no general assessment, additional requirements, research tasks or new plan sections.
+The document starts with The Goal. The server appends the verbatim request in an Owner request block at the end of SPEC.
+This keeps the requested outcome first while retaining the exact input used for comparison.
 
-### Что исправляется автоматически
+Example of useful feedback:
 
-Первый набор исправлений узкий и проверяемый: нормализация переводов строк и замена термина по существующему словарю в обычной прозе.
-До вызова модели нормализуются только переводы строк. Термин заменяется по явному предложению модели после проверки контекста.
-Замена допускается только при точном совпадении с парой словаря и однозначном месте в тексте.
-Не затрагиваются Owner request, Goal, ограничения, non-goals, код, команды, пути, имена символов и идентификаторы.
-Одинаковое слово с несколькими возможными местами или значениями даёт предложение, а не массовую замену.
-Пробелы, обозначающие Markdown-перенос строки, нельзя безусловно обрезать.
+```json
+{
+  "rule": "vocabulary",
+  "line": 42,
+  "quote": "Create a new lane for this change.",
+  "message": "Use Delivery for one branch and one pull request.",
+  "replacement": "Create a new Delivery for this change."
+}
+```
 
-Модель возвращает замечания и предложения, а не целиком переписанный документ. Сервер сам проверяет допустимость каждого изменения.
-Он не удаляет разделы, не объединяет задачи и не добавляет стадии под видом исправления оформления.
-Автоматический ремонт произвольной сломанной Mermaid-схемы не обещается: изменение стрелки может менять смысл процесса.
-Для первой версии такой случай получает строку ошибки и предложение; новый вид безопасного исправления добавляется лишь по конкретному примеру.
-После разрешённых изменений синтаксические проверки повторяются без второго вызова модели.
-Совпадение со словарём само по себе не доказывает сохранение смысла всей прозы. Поэтому каждое применённое изменение возвращается явно и остаётся видимым в Git diff.
+The server verifies that a model quotation exists and computes its location. An invented quotation is not accepted as a finding.
+Remaining findings refer to the saved document. Correction locations refer to the submitted SPEC and include both original and replacement text.
+The ownerRequest argument is supplied by the agent; comparing against it cannot prove that the owner actually authorized the work.
 
-### Быстрая модель
+### Fast, bounded execution
 
-Первый исполнитель — Claude Haiku через существующую подписку и CLI. API key и переключение основной модели агента не используются.
-В PR #17 уже исследован запуск `claude -p --model haiku --safe-mode --tools "" --strict-mcp-config --no-session-persistence` с JSON-ответом.
-Из этой работы можно перенести узкий механизм вызова и разбора ошибки; весь PR с обязательным PASS не переносим.
-Окончательная команда сверяется с установленной версией Claude при реализации. Историческая проба доказала только отказ по лимиту.
+Use the existing Claude subscription through a lightweight model, initially Haiku. No API key or change to the main agent's model is involved.
+Make one call for a changed submission, with tools, hooks, plugins and session persistence disabled.
+The proposed deadline is five seconds including CLI startup. This is a target for the first real probe, not an observed performance claim.
+The old 45-second judge timeout is not the intended interactive behavior.
+Parse a strict JSON response containing findings only. Return empty findings when the check finds nothing.
+There are no automatic retries, additional reviewers or repeated calls until a PASS appears.
 
-Промпт получает исходный запрос, SPEC, две таблицы словаря и три вопроса: соответствие Goal, термины, ясность формулировок.
-Текст рассматривается как данные. Дочерний процесс не читает рабочие инструкции, не запускает hooks, MCP, tools и собственных агентов.
-У него один вызов, ограниченное время ожидания и JSON-схема ответа. Начальное ограничение ожидания — 45 секунд, как в изученной реализации.
-Каждое замечание содержит реальную цитату документа. Выдуманная цитата или неправильный JSON не принимаются как результат проверки.
-Строки вычисляет сервер по проверенной цитате; модели нельзя доверять произвольные номера строк.
+On timeout, 429, unavailable CLI or invalid output, save the draft and return checkStatus unavailable with its exact cause.
+Successful execution returns checked; that status means the check ran, not that every finding was fixed or the owner approved the document.
+show_plan does not call the model. An unchanged submission returns no_change before calling it.
+The first real probe records total submission latency and model latency separately. If the target is missed, report the result without silently relaxing it.
 
-При 429, timeout, недоступном CLI или неправильном ответе черновик сохраняется с reviewStatus unavailable и явной причиной.
-Это штатный частичный результат, видимый агенту и владельцу. Он не обозначается checked, не повторяется автоматически и не подменяется другой моделью.
-Повторная запись — только ради реального уточнения документа, а не автоматического цикла до похвалы модели.
-Повтор того же текста с той же ожидаемой revision после уже выполненной записи возвращает конфликт версии; ошибка доставки не означает право повторно потратить модель.
-Если revision актуальна, но итоговый SPEC дословно совпадает с существующим, сервер возвращает no_change до вызова модели.
-Кэш проверок, квоты, очереди внешних задач и система оценки моделей пока не нужны.
+### Automatic corrections and write errors
 
-### Показ плана и Mermaid
+Normalize line endings and apply an explicit vocabulary correction only when it matches a supplied vocabulary pair and one unambiguous prose location.
+Protect The Goal, Owner request, constraints, non-goals, code, commands, file paths and identifiers from automatic changes.
+Do not remove meaningful Markdown line-break spaces. Do not repair a diagram by inventing or redirecting its edges.
+For other issues, return the offending text and suggested correction to the writing agent.
+English translation of whole paragraphs and changes of requirements are suggestions, not automatic edits in the first delivery.
+Every applied edit is returned explicitly. A dictionary match alone cannot prove preservation of meaning in every context.
 
-show_plan использует существующую команду mdurl. Она публикует копию, поэтому каждый показ после изменения повторяет публикацию.
-Сервер не возвращает старую ссылку как доказательство обновления, если mdurl завершился с ошибкой.
-Имена публикаций должны различать репозитории и worktree с одинаковыми именами планов; используем стабильный slug из имени плана и короткого хеша его абсолютного пути.
-Результат включает revision именно опубликованных байтов. Если исходный файл изменился во время публикации, возвращается явная ошибка; успех с чужой версией недопустим.
-Показ не утверждает план, не вызывает модель и не пытается запустить задачи.
+Reject writing for invalid parameters, empty SPEC, injected plan control markers, paths outside the worktree, locked plans, stale revisions or journal conflicts.
+Resolve paths to prevent escape through symlinks. Validate these conditions before the model call and recheck the document immediately before writing.
+One MCP process sequences its writes and uses a fixed working directory. The model call happens outside the writer's transform function, which currently runs twice.
+Content findings do not prevent draft storage or display. They remain visible in the result.
+The existing writer does not promise a fully atomic file, index and journal transaction. Storage failures are returned explicitly; broader transaction changes are outside this delivery.
 
-Для parser и renderer требуется одна точная версия Mermaid из ветки 11, выбранная и проверенная при реализации.
-Её фиксируем в зависимостях planctl и в уже существующем URL скрипта markdown-server; новый renderer не пишем.
-Незакоммиченный локальный server.py сначала рассматривается как работа владельца. Его изменения нельзя затереть или забрать в этот PR целиком.
-Обновление работающего markdown-server выполняется отдельным явным действием после слияния и просмотра точного diff.
-На приёмке открываем одну опубликованную схему и проверяем её фактическое отображение. Один успешный parse этого не заменяет.
+### Display through mdurl
 
-### Следующие небольшие шаги
-
-После полезной первой пробы можно добавить put-delivery и put-stage к тому же MCP и механизму обратной связи.
-Для стадии проверяется один понятный результат и связь с Goal. Предлагается конкретное уточнение описания, объединение или разделение; сервер сам не меняет состав работ.
-Количество стадий и задач не служит автоматическим запретом. Один самостоятельный результат может быть одной задачей.
-Дальше можно подключить progress, start-task и complete-task, сохранив их существующие проверки и журнал.
-Это направление развития, а не дополнительные задачи первой поставки. Разрешение на него из этого SPEC не следует.
+show_plan invokes the existing mdurl command with argument arrays, never by interpolating document text into a shell command.
+Republish on every request because mdurl serves a copy. Use a stable slug that distinguishes identical filenames in different worktrees.
+Return the revision of the published bytes; if the source changes during publication, report an error instead of claiming a matching publication.
+A failed mdurl call does not return a previous URL as a successful update.
+Pin one exact Mermaid 11 release in planctl and the existing renderer script URL. Verify one rendered diagram in the real published page.
+The dirty local renderer file belongs to existing work and must not be overwritten or included wholesale.
 
 ### Interfaces
 
-Ниже предложены контракты первой поставки, а не уже реализованные API. PlanState импортируется из существующего plan-update.
-revision — SHA-256 точных байтов файла. Совпадение revision не является утверждением владельца.
+These are proposed contracts for the first delivery. PlanState comes from plan-update; revision is SHA-256 of the complete file.
 
 ```typescript
 import { z } from "zod";
@@ -227,11 +177,11 @@ interface PlanDocument {
 }
 
 interface SpecFeedback {
-  kind: "structure" | "mermaid" | "typescript" | "vocabulary" | "goal" | "clarity";
+  rule: "english" | "structure" | "mermaid" | "typescript" | "vocabulary" | "goal" | "clarity";
   line: number | null;
   quote: string;
   message: string;
-  suggestion: string | null;
+  replacement: string | null;
 }
 
 interface SpecCorrection {
@@ -244,8 +194,8 @@ interface SpecCorrection {
 interface SubmitSpecResult extends PlanDocument {
   corrections: SpecCorrection[];
   feedback: SpecFeedback[];
-  reviewStatus: "checked" | "unavailable";
-  reviewError: string | null;
+  checkStatus: "checked" | "unavailable";
+  checkError: string | null;
 }
 
 interface ShowPlanResult {
@@ -280,11 +230,11 @@ const planDocument = z.object({
   content: z.string(),
 }).strict() satisfies z.ZodType<PlanDocument>;
 const specFeedback: z.ZodType<SpecFeedback> = z.object({
-  kind: z.enum(["structure", "mermaid", "typescript", "vocabulary", "goal", "clarity"]),
+  rule: z.enum(["english", "structure", "mermaid", "typescript", "vocabulary", "goal", "clarity"]),
   line: z.number().int().positive().nullable(),
   quote: z.string(),
   message: z.string().min(1),
-  suggestion: z.string().nullable(),
+  replacement: z.string().nullable(),
 }).strict();
 const specCorrection: z.ZodType<SpecCorrection> = z.object({
   line: z.number().int().positive(),
@@ -295,8 +245,8 @@ const specCorrection: z.ZodType<SpecCorrection> = z.object({
 const submitSpecResult: z.ZodType<SubmitSpecResult> = planDocument.extend({
   corrections: z.array(specCorrection),
   feedback: z.array(specFeedback),
-  reviewStatus: z.enum(["checked", "unavailable"]),
-  reviewError: z.string().nullable(),
+  checkStatus: z.enum(["checked", "unavailable"]),
+  checkError: z.string().nullable(),
 }).strict();
 const showPlanResult: z.ZodType<ShowPlanResult> = z.object({
   plan: planPath,
@@ -311,179 +261,146 @@ const vocabularyEntry: z.ZodType<VocabularyEntry> = z.object({
 }).strict();
 ```
 
-Схемы проверяют форму, затем существующий writer проверяет состояние и адреса. Проверка realpath должна исключать выход через симлинк.
-Для reviewStatus checked поле reviewError равно null; для unavailable содержит причину. Это проверяется отдельным условием схемы результата.
-MCP возвращает structuredContent и совместимое текстовое представление того же результата. stdout содержит только сообщения протокола; диагностика процесса идёт в stderr.
-Реализация использует официальный TypeScript MCP SDK и требуемый им Zod. Версии фиксируются в lockfile; собственного JSON-RPC сервера не создаём.
-Основание: [документация SDK](https://github.com/modelcontextprotocol/typescript-sdk/tree/v1.x), изученная при подготовке SPEC.
+For checked, checkError is null; unavailable requires a nonempty cause. Validate that relationship in the result schema.
+The model receives the same feedback shape restricted to its four rules: English, Goal, vocabulary and clarity.
+The server validates quotations and recomputes line numbers. Structural findings may have a null location when the relevant section is absent.
+Use the official TypeScript MCP SDK and its required Zod dependency; pin versions in the lockfile.
+Return structuredContent and a text representation of the same result. Reserve stdout for MCP and write diagnostics to stderr.
 
 ### Code
 
-Алгоритм записи выбран здесь намеренно; детали подключения SDK не требуют нового слоя архитектуры.
-
 ```text
-check input, plan state and baseRevision
-build SPEC with the exact Owner request block
-run shared content checks
-apply only the finite set of allowed corrections
-call the fast reviewer once
-validate quoted feedback; apply only allowed vocabulary corrections
-run content checks again without calling the model
-recheck file revision and writer preconditions
-save through the existing journaled writer
-return saved bytes, revision, corrections, feedback and review status
+validate input, draft state and baseRevision
+return no_change if the submitted document is unchanged
+check structure and syntax; normalize line endings
+call the lightweight model once within the deadline
+validate exact quotations and allowed vocabulary replacements
+apply permitted corrections; repeat local checks without the model
+recheck the file revision and writer preconditions
+save through the existing writer
+return saved text, corrections, findings and check status
 ```
-
-Функция transform существующего mutatePlanFile должна оставаться чистой: сейчас writer вызывает её дважды.
-Вызов модели, mdurl и другие побочные эффекты выполняются вне transform; иначе один submit_spec мог бы дважды потратить модель.
-Не исправляем заодно всю реализацию writer. Проверяем этот конкретный контракт на одном счётчике вызовов в поведенческом тесте.
 
 ## What changes
 
-Первая реализация добавляет MCP-вход в пакет planctl, обработку submit_spec и небольшой адаптер публикации.
-Общие операции создания и записи используются CLI и MCP. Проверки содержимого извлекаются из существующего plan-gate, а не переписываются параллельно.
-Парсер словаря расширяется для выдачи значений и источников; существующие synonyms и vocabularyMatches продолжают использовать одну таблицу.
+Add the MCP entrypoint and the submission operation. Reuse the writer, content parsers, dictionary tables and mdurl command.
+Extract structured findings from existing checks; do not classify errors by parsing their English message text.
+Keep existing CLI behavior compatible. In particular, its approval gate is not silently replaced by the new soft submission check.
+Consequently, the old approve-spec may still reject a draft accepted for storage. Changing that policy is a separate, explicit decision.
 
-Не добавляются отдельный lint tool, обязательный PASS языковой модели, новое хранилище планов или автоматическая выдача задач.
-Скиллы, копы, глобальный rollout, Telegram, Magnis backend и массовое изменение CI не входят в первую поставку.
+The next candidate is put-stage with the same style of precise feedback on one useful result and its relation to Goal.
+It may suggest splitting or combining work, but does not do either automatically. Progress and task execution follow only if the first delivery proves useful.
+There are no additional implementation tasks hidden in that direction.
 
-### Старый план и незавершённая работа
+### Existing work and instructions
 
-| Объект | Предложенное решение |
-|---|---|
-| instructions-by-rule.md | Сохранить историю уже влитых изменений. При утверждении нового направления отдельно отметить прекращение оставшегося прежнего объёма. Не объявлять его выполненным. |
-| Draft PR #17 с обязательным judge | Не сливать целиком. После решения владельца закрыть как заменённый новым направлением. Использовать только подходящие части вызова Claude с новой семантикой. |
-| Focus | Остаётся удалённым. Ни MCP, ни новые инструкции его не возвращают. |
-| review-plan для Claude и Codex | Сохраняются версии из PR #19. Быстрая проверка простых правил не заменяет это ревью. |
-| Пять замороженных скиллов и копы | Не редактируются. Любое последующее изменение текста показывается и согласуется отдельно. |
-| Локальные изменения конфигурации и mdurl | Сохраняются. Их наличие отмечено, но они не включаются в новый PR автоматически. |
+Keep the completed history in instructions-by-rule.md. Propose stopping its unfinished remainder without marking it completed.
+Do not merge draft PR #17 wholesale; its narrow subscription-call mechanism may inform this implementation after approval.
+Closing that PR and recording the old plan's disposition remain explicit owner decisions.
+Focus stays removed, and both restored review-plan versions stay intact.
+The five frozen working skills and reviewer definitions are outside this change.
 
-Этот SPEC предлагает решение по старому хвосту, но пока не меняет его статусы и не закрывает PR #17.
-Утверждение SPEC не должно задним числом отмечать старые невыполненные критерии как выполненные.
-
-### Минимальная поправка маршрута работы
-
-Для обычной работы без плана остаётся отдельная предложенная правка AGENTS.md из этой беседы. Она пока не применена.
-Перед подключением MCP для повседневного использования нужно согласовать точный короткий текст в глобальном файле и условие в проектном AGENTS.md.
-Правило: выполнять выбранный владельцем утверждённый план; иначе следовать текущему запросу без требования создать план.
-Наличие tools и доступной проверки не является приказом их вызвать. Нет обязательного startup-вызова MCP.
-Правила Git и проверки реально изменённого кода продолжают действовать. Исследование без изменений не превращается в полный CI-прогон.
-Мы не переписываем одновременно законы, скиллы и инструкции всех репозиториев.
+Before routine use, agree the previously proposed short AGENTS.md wording: follow an approved plan chosen for this task; otherwise follow the current request directly.
+That wording is not applied by this documentation PR. Git and code-verification rules continue to apply to actual code changes.
+No startup MCP call or rollout across repositories is included.
 
 ## Target tree
 
-Это предполагаемые файлы первой поставки, а не разрешение редактировать их до утверждения SPEC и последующих задач.
-
-| Файл | Назначение изменения |
+| File | Purpose |
 |---|---|
-| planctl/src/cli/main.ts | Команда mcp и вызов общих операций создания/записи вместо их дублирования |
-| planctl/src/mcp/server.ts — новый | Stdio, четыре регистрации tools, входные и выходные схемы; фиксированный корень worktree |
-| planctl/src/core/spec-submission.ts — новый | Подготовка SPEC, один вызов Claude, разрешённые исправления и явный результат |
-| planctl/src/core/plan-update.ts | Повторное использование существующего writer и операции init из двух настоящих клиентов |
-| planctl/src/core/plan-gate.ts | Повторно используемые проверки содержимого со структурированными причинами; совместимость старого CLI |
-| shared/code-production/instruction-audit.ts | Один парсер словаря для проверки и выдачи vocabulary |
-| planctl/package.json и planctl/bun.lock | MCP SDK, Zod и согласованная точная версия Mermaid |
-| markdown-server/server.py | Только согласование версии Mermaid; никаких незапрошенных изменений renderer |
-| planctl/test/mcp.test.ts — новый | Три поведенческих сценария нового пути через настоящий stdio |
-| planctl/test/plan-gate.test.ts | Сохранение поведения существующих проверок после их повторного использования |
-| planctl/test/package-boundary.test.ts | Проверка запуска собранного MCP без зависимости от рабочего исходного дерева |
-| README.md | Одна инструкция запуска и пределы первой версии |
+| planctl/src/cli/main.ts | Add the mcp command and call shared writing operations. |
+| planctl/src/mcp/server.ts — new | Register four tools and their schemas over stdio for one worktree. |
+| planctl/src/core/spec-submission.ts — new | Coordinate the bounded model check, corrections and submission result. |
+| planctl/src/core/plan-update.ts | Expose the existing initialization and writing operations to both real callers. |
+| planctl/src/core/plan-gate.ts | Reuse content checks as structured findings while preserving the existing CLI. |
+| shared/code-production/instruction-audit.ts | Share one vocabulary parser between validation and vocabulary output. |
+| planctl/package.json and planctl/bun.lock | Add SDK and Zod dependencies and pin the renderer-compatible Mermaid version. |
+| markdown-server/server.py | Pin the agreed Mermaid release; preserve unrelated local changes. |
+| planctl/test/mcp.test.ts — new | Cover the three behavior scenarios below. |
+| planctl/test/plan-gate.test.ts | Retain existing parser behavior when exposing shared checks. |
+| planctl/test/package-boundary.test.ts | Verify the built MCP starts without the source tree. |
+| README.md | Document the one-worktree invocation and first-delivery limits. |
 
-Новый процесс не ставится во все проекты автоматически. Первый пробный клиент подключается к одному явно выбранному worktree.
-Один новый серверный файл нужен для MCP-транспорта, второй — для подготовки SPEC. Отдельных пакетов, интерфейсов провайдеров и plugin-системы нет.
-mdurl остаётся отдельной существующей командой. Её shell-вызов передаёт аргументы массивом, без интерполяции текста SPEC в командную строку.
+Only two production files are new: the transport and the submission operation. There is no provider framework or extra package.
+Installation and updating the running renderer follow review and merge; they are not side effects of drafting this plan.
 
 ## Verification
 
-Первая реализация проверяется тремя поведенческими сценариями, а не отдельным тестом на каждое предложение правил.
-
-| Сценарий | Шаги и проверяемый результат |
+| Scenario | Steps and expected behavior |
 |---|---|
-| tst_planctl_mcp_submit_001 | Через SDK-клиент подключить настоящий stdio, вызвать init, передать SPEC с исправимым термином и неясной целью. Проверить один model call, точное исправление, сохранение Goal и цитаты владельца, замечание и корректный журнал writer. |
-| tst_planctl_mcp_submit_002 | Передать устаревшую revision и утверждённый план: запись и model call не происходят. Для черновика вернуть 429 от подставного CLI: текст сохранён, reviewStatus unavailable, повторов нет. |
-| tst_planctl_mcp_show_003 | Показать документ, изменить через submit_spec и показать снова. Проверить, что публикация содержит новую revision. Ошибка mdurl и одинаковые имена файлов в двух worktree не должны давать ложный успех или подмену документа. |
+| tst_planctl_mcp_submit_001 | Connect an SDK client to real stdio, initialize a draft and submit a short English SPEC with a vocabulary error and an unclear Goal. Observe one model call, exact findings, one permitted correction, unchanged protected text and the existing writer journal. |
+| tst_planctl_mcp_submit_002 | Submit a stale revision and a locked plan: no write and no model call. Return 429 or exceed the deadline for a valid draft: save it with unavailable, the actual reason and no retry. |
+| tst_planctl_mcp_show_003 | Publish, update through submit_spec and publish again. Observe new content and the matching revision. Publication failure and equal filenames in different worktrees must not produce a false success. |
 
-Для существующих parser и writer используются уже имеющиеся тесты. Их не копируем в новый набор.
-Во время разработки запускаются только затронутые файлы через agent:test:backend. Перед публикацией реализации — предусмотренные проектом agent:verify:docs и agent:verify:pr.
-По умолчанию тесты не обращаются к подписке, Telegram, PostgreSQL или другому репозиторию. Ответ Claude подставляется на существующей границе дочернего процесса.
-
-Затем одна реальная проба: один запрос владельца, один SPEC, один submit_spec с настоящим Claude, один show_plan.
-Для пробы заранее записываем запрос, выбранный документ и ожидаемый результат. Автоматического расширения на коллекцию планов или 159 операций нет.
-Открываем опубликованную страницу и проверяем Mermaid глазами или имеющимся браузерным инструментом; номер версии renderer записываем рядом с результатом.
-Фиксируем число model calls, какие изменения применены и какие замечания владелец счёл полезными. Не объявляем экономию токенов без сравнения.
+Reuse existing parser and writer tests rather than copying them. Use agent:test:backend for affected files during implementation.
+Before publishing implementation, run the required agent:verify:docs and agent:verify:pr checks.
+Automated tests substitute the child-process result; they do not require a live subscription, Telegram, PostgreSQL or Magnis backend.
+One real acceptance probe uses one owner request, one SPEC and one submission. Check a vocabulary correction, response timing and the published Mermaid diagram.
+Record whether the owner finds the feedback useful. Do not expand this into a benchmark collection or claim unmeasured token savings.
 
 ## Invariants
 
-| Свойство | Чем доказывается |
+| Invariant | Proof |
 |---|---|
-| Один submit_spec вызывает модель не более одного раза | Счётчик дочерних вызовов в сценарии записи |
-| Автоисправление не меняет Goal и исходный запрос | Сравнение защищённых блоков до и после в сценарии записи |
-| Замечания о стиле не мешают сохранить черновик | Сохранённые байты и feedback в том же сценарии |
-| Ошибка модели не маскируется успешной проверкой | Явное unavailable и отсутствие повторов в сценарии отказов |
-| Несогласованный или устаревший вызов не меняет существующий план | Проверка состояния, revision и неизменных байтов в сценарии отказов |
-| Показ относится к текущему документу | Сравнение опубликованного содержимого и revision в сценарии показа |
-| Ни один tool не утверждает план и не начинает реализацию | Каталог первой поставки и неизменный SPEC_DRAFT после успешного пути |
+| At most one model call per changed submission | Invocation count in the submission scenario |
+| Precise, actionable standards feedback | Expected rule, quotation, source location and replacement in the submission scenario |
+| Automatic corrections preserve Goal, owner quotation and scope constraints | Protected-block comparison in the submission scenario |
+| Model failure is visible and bounded | Unavailable result, deadline and zero retries in the failure scenario |
+| Invalid writes do not consume the model or replace the document | Revision and state refusal cases |
+| Display shows the published version being reported | Published-byte comparison in the display scenario |
+| Submission does not approve a plan or start implementation | Draft state after the complete initial flow |
 
 ## Constraints and non-goals
 
-Цель этой поставки — помочь написать и прочитать один SPEC. Она не гарантирует управляемость любой модели или отсутствие всех ошибок агента.
-Нет автоматического выбора плана, рабочего задания, model switching, массового удаления правил или новых требований к каждой беседе.
-Нет обязательного количества стадий, минимального объёма документа, отдельного интерфейсного mock-коммита или бесконечных reviewer rounds.
-Нет БД для end-work, расписания задач, распределённого редактирования одного worktree, нового observer или реестра экспериментов.
-Нет общей миграции всех старых планов на новую форму. Legacy approval gate и изменение его требований — отдельный обсуждаемый шаг.
-Эта версия не сохраняет историю всех model responses в новой БД; историю текста хранит Git, результат обратной связи возвращается в разговор.
+This delivery assists specification writing. It cannot guarantee that any agent will always follow the owner's intent.
+The checker does not invent requirements, demand more stages or impose a document-length target.
+There is no full architecture review, autonomous approval, background execution or general rewrite of agent instructions.
+There is no database for end-work, new observer, distributed same-worktree editor, mandatory mock-only commit or experiment register.
+Plan files remain canonical. Feedback is returned to the conversation; model responses do not require a new persistent store.
 
 ## Reuse
 
-| Существующий механизм | Как используется |
+| Mechanism | Use |
 |---|---|
-| createDraftPlan, replaceDraftSpec, mutatePlanFile, journalCreatedPlan | Единственный формат и путь изменения плана |
-| protocolSpecHash и существующее SHA-256 представление | Основа проверки версий; revision всего файла имеет отдельно указанную область хеширования |
-| Markdown AST, TypeScript parser, Mermaid parser из plan-gate | Проверка фактического содержимого без второго линтера |
-| vocabulary.md и проектный docs/graph.md | Единственные таблицы терминов |
-| mdurl | Публикация и обновление существующей страницы |
-| Узкий вызов Claude из draft PR #17 | Основа subscription-вызова; обязательный PASS и блокировка SPEC не переносятся |
-| Официальный MCP TypeScript SDK | Протокол и stdio; собственного транспорта поверх JSON-RPC нет |
+| createDraftPlan, replaceDraftSpec, mutatePlanFile, journalCreatedPlan | One plan format and writer |
+| Markdown AST, TypeScript and Mermaid parsers in plan-gate | Existing content checks |
+| vocabulary.md and project docs/graph.md | Existing terms and meanings |
+| mdurl | Existing publication command and page |
+| Subscription CLI investigation in PR #17 | Reuse only the necessary invocation and response handling |
+| Official MCP TypeScript SDK | Standard stdio protocol and schema handling |
 
-Поиск в planctl/src и зависимостях не обнаружил готового MCP-сервера. Существующий Nest server обслуживает observer и progress, а не запись файлов планов.
-MCP в magnis-app относится к продуктовым tools; зависимость нового planctl от backend Magnis не вводится.
+Search of planctl/src and its dependencies found no existing MCP server. The Nest observer does not provide plan-file writing.
+The product MCP in magnis-app is not a dependency of this work.
 
 ## Deliveries
 
-Предлагается одна первая поставка: четыре tools, проверки при submit_spec, ограниченная обратная связь модели и показ через mdurl.
-Она проверяется на одном реальном запросе. Реализация и подключение ко всем сессиям не объединяются в один rollout.
-После разбора результата владелец решает, нужен ли следующий шаг со стадиями. Progress и выполнение задач рассматриваются после этого.
-Формальный Implementation contract пока пуст: стадии и задачи будут добавлены только после утверждения этого SPEC.
-
-### Пересечения с открытыми PR
-
-PR #17 пересекается с проверкой плана и вызовом модели; его целиком не сливаем и не продолжаем параллельно новому направлению.
-PR #8 касается архива сессий; PR #7 — переменных окружения; PR #2 — скиллов. Их изменения не требуются первой поставке.
-План подготовлен в 0_agents, где основная ветка main. Для него используется новая ветка в уже существующем освобождённом worktree, без дополнительного worktree.
+One initial delivery exposes the four tools and verifies the complete authoring path on one real request.
+Stage authoring and task execution remain later decisions. Formal implementation tasks are added after this SPEC is agreed.
+The document is prepared on a new branch in an existing available worktree; no additional worktree was created.
+PR #17 overlaps with checking and Claude invocation. Open PRs #8, #7 and #2 concern session archives, environment configuration and skills; they are not prerequisites.
 
 ## New names
 
 | Name | Reason |
 |---|---|
-| submit_spec | Выбранное владельцем имя единой операции записи SPEC с исправлениями и обратной связью |
-| show_plan | Явная публикация выбранного плана через существующий mdurl |
-| vocabulary | Чтение двух уже существующих словарей через MCP |
-| Owner request | Видимая точная цитата, с которой сравнивается Goal; хранится в том же SPEC |
-| revision, baseRevision | Хеш всего файла для отказа от записи поверх другой версии; не подменяет SPEC lock |
-| InitPlanInput, SubmitSpecInput, PlanDocument | Контракты двух операций записи и возвращаемого документа |
-| SpecFeedback, SpecCorrection, SubmitSpecResult | Различают замечания, уже применённые исправления и результат сохранения |
-| ShowPlanResult, VocabularyEntry | Результаты двух оставшихся tools |
-| reviewStatus, reviewError | Явно различают выполненную проверку моделью и недоступную проверку |
-| no_change | Ответ на повторную запись одинакового SPEC, чтобы повтор не тратил вызов модели |
+| submit_spec | Owner-selected name for writing a checked specification |
+| show_plan | Publish an explicitly selected plan through mdurl |
+| vocabulary | Expose the two existing term tables |
+| Owner request | Preserve the comparison input after the authored SPEC, keeping Goal first |
+| revision, baseRevision | Identify complete file versions without replacing SPEC approval locks |
+| InitPlanInput, SubmitSpecInput, PlanDocument | Contracts for creation, submission and the saved document |
+| SpecFeedback, SpecCorrection, SubmitSpecResult | Distinguish reported issues, applied edits and submission outcome |
+| ShowPlanResult, VocabularyEntry | Contracts for publication and existing dictionary entries |
+| checkStatus, checkError | Distinguish a completed standards check from an unavailable check |
+| no_change | Reject duplicate unchanged submissions before spending a model call |
 
 ## Not verified
 
-MCP ещё не реализован и не подключён. Схемы выше — предложение интерфейса; их компиляция с выбранной версией SDK не проверена.
-Полезность ответов Haiku, задержка и расход на реальном новом сценарии не измерены. Подписка ранее возвращала 429; новый платный или subscription-прогон здесь не запускался.
-Полная транзакционность существующего writer при ошибке staging не доказана. Первая версия не обещает межпроцессные блокировки.
-Подтверждено расхождение версий Mermaid в исходнике, локальном изменении и установленной странице. Автоматическая совместимость всех диаграмм не доказана.
-Точный текст поправок AGENTS.md, закрытие старого хвоста и PR #17 ещё требуют решения владельца. В рамках подготовки SPEC они не изменены.
-Изменения пяти замороженных скиллов, копов и правил других репозиториев не согласованы и не выполнялись.
+MCP is not implemented. The proposed interfaces have not been compiled against a selected SDK release.
+The five-second deadline is proposed and unmeasured. Actual Haiku quality and latency need the single real acceptance probe; no new subscription call was made while drafting.
+Full file/index/journal atomicity and simultaneous writes from independent processes are not promised.
+The Mermaid version mismatch is observed; rendering after version alignment is not yet verified.
+The AGENTS.md wording, old plan disposition and closure of PR #17 remain unapproved. Existing skills, reviewers and local configuration are unchanged.
 <!-- plan:spec:end -->
 
 <!-- plan:implementation:start -->
