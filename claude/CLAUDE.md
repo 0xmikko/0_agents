@@ -1,6 +1,6 @@
 # Working here
 
-Two modes and no third: /blueprint plans, /blueprint-start works by an approved plan.
+The owner's current request and limits govern the work. Use /blueprint for a plan and /blueprint-start for its approved implementation; questions and single probes need neither.
 
 IMPORTANT: little code that is understood and explained beats much code. One name per
 thing, the name the repository already uses: find it before you write one. A word that
