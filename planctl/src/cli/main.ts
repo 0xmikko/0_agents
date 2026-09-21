@@ -2,13 +2,13 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import type { DeliveryMeta, ParsedStageInput, TaskExecutionBrief } from "../core/plan-update";
+import type { TaskExecutionBrief } from "../core/plan-update";
 import type { OwnerWaitMarker, TaskRun, TaskRunV1 } from "../core/task-run";
 import type { GitWorktreeIdentity } from "../machine/sessions/session-source";
-import type { FocusView, ProgressPlanView } from "./render";
+import type { ProgressPlanView } from "./render";
 
 function portableRuntimeFile(name: "plan-gate.ts" | "plan-update.ts" | "retro-register.ts"): string {
   const layout = basename(import.meta.dir);
@@ -21,11 +21,9 @@ function portableRuntimeFile(name: "plan-gate.ts" | "plan-update.ts" | "retro-re
 const PLAN_UPDATE_FILE = portableRuntimeFile("plan-update.ts");
 const {
   createDraftPlan,
-  deliveryMetas,
   journalCreatedPlan,
   mutatePlanFile,
   replaceDraftSpec,
-  stageInputs,
   taskExecutionBrief,
   verifyStagedPlan,
 } = await import(PLAN_UPDATE_FILE);
@@ -52,7 +50,6 @@ Configuration:
 
 Execution:
   start-task         Validate one approved Task, print its scope and start timing
-  focus              Reprint the Goal, exact Task, next ready work and evidence
   progress           Show local progress or explicitly request the observer
   needs-owner        Mark one active Task as awaiting an owner response
   resume-task        Clear a structured owner-response wait
@@ -173,20 +170,6 @@ Reads the Task from the committed or journal-verified staged APPROVED Markdown
 source of truth, checks its Delivery and Stage dependencies, prints the exact
 story/writes/forecast/How/RED contract, and stores only a Git-local start
 receipt. It does not edit the plan. Run it before RED.
-`,
-  focus: `Usage: planctl focus <plan.md> [--task <Task-ID>] [--server] [--config <absolute.toml>]
-       planctl focus --brief [<plan.md>]
-
-Shows the locked Goal, current exact Task contract, next dependency-ready work,
-progress/forecast and the evidence behind focused, unassigned, drifted or
-owner-blocked status. Server comparison is attempted only with --server.
-
---brief prints where the agent is and what it may do now, in at most twelve
-lines, from the plan's own state: the plan and its status, the open Stage and
-the started Task, what is done and what waits, the next commands with their
-exact arguments, what is free without the owner and what needs the owner's
-word. Without a plan argument it takes the one plan whose branch matches, or
-says "no plan here" in one line. A session-start hook prints it.
 `,
   progress: `Usage: planctl progress <plan.md> [--server] [--config <absolute.toml>]
 
@@ -597,26 +580,6 @@ async function distributedTaskRun(
   return taskRuntime.decodeTaskRun(candidate);
 }
 
-function planGoal(body: string): string {
-  const spec = body.match(/<!-- plan:spec:start -->[\s\S]*?## The Goal\n\n([\s\S]*?)(?=\n## |\n<!-- plan:spec:end -->)/);
-  const value = spec?.[1]?.split("\n").map((line) => line.trim().replace(/^- /, "")).filter((line) => line !== "").join(" ");
-  if (value === undefined || value === "") throw new Error("plan SPEC has no Goal");
-  return value;
-}
-
-function readyTaskIds(body: string, currentTaskId?: string): readonly string[] {
-  const deliveries: readonly DeliveryMeta[] = deliveryMetas(body);
-  const activeDelivery = deliveries.find((delivery) => delivery.active);
-  if (activeDelivery === undefined) throw new Error("plan has no active Delivery");
-  const stages: readonly ParsedStageInput[] = stageInputs(body).filter(
-    (stage: ParsedStageInput) => stage.deliveryId === activeDelivery.id,
-  );
-  const completedStages = new Set(stages.filter((stage) => stage.tasks.every((task) => task.completed)).map((stage) => stage.id));
-  return stages
-    .filter((stage) => stage.depends.every((dependency) => completedStages.has(dependency)))
-    .flatMap((stage) => stage.tasks.filter((task) => !task.completed && task.id !== currentTaskId).map((task) => task.id));
-}
-
 async function existingTaskRun(rootPath: string, plan: string, taskId: string): Promise<TaskRun | null> {
   const path = taskRunPath(rootPath, plan, taskId);
   if (!existsSync(path)) return null;
@@ -673,185 +636,6 @@ async function serverProgress(args: readonly string[]): Promise<{
     fetch,
   });
   return { settings, response };
-}
-
-/** The plan this branch is about: the one whose file name matches the
- * branch's last segment, else the only plan in docs/plans, else none. */
-function planOfThisBranch(rootPath: string): string | null {
-  const dir = join(rootPath, "docs", "plans");
-  if (!existsSync(dir)) return null;
-  const plans = readdirSync(dir).filter((name) => name.endsWith(".md") && name !== "README.md");
-  const branch = spawnSync("git", ["-C", rootPath, "rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf8" }).stdout.trim();
-  const slug = branch.split("/").pop() ?? "";
-  const named = plans.find((name) => name === `${slug}.md`);
-  if (named !== undefined) return `docs/plans/${named}`;
-  return plans.length === 1 ? `docs/plans/${plans[0]}` : null;
-}
-
-/** Where the agent is and what it may do now: at most twelve lines from the
- * plan's own state, never stale, printed by the session-start hook. */
-async function focusBrief(args: readonly string[]): Promise<string> {
-  const rootPath = root();
-  const explicit = args.slice(1).find((arg) => !arg.startsWith("--"));
-  const planPath = explicit === undefined ? planOfThisBranch(rootPath) : addressedPath(rootPath, explicit).relative;
-  if (planPath === null || !existsSync(join(rootPath, planPath))) {
-    return "No plan here. Planning is /blueprint (a plan in docs/plans/<slug>.md on its own branch); a small fix is a commit and a PR.";
-  }
-  const body = readFileSync(join(rootPath, planPath), "utf8");
-  const state = body.match(/^Status:\s*(SPEC_DRAFT|SPEC_LOCKED|APPROVED)\b/m)?.[1] ?? "unknown";
-  const planctl = `planctl`;
-  if (state === "SPEC_DRAFT") {
-    return [
-      `Plan ${planPath} — SPEC_DRAFT: you are planning; the SPEC is yours to edit.`,
-      `Next: ${planctl} set-spec ${planPath} --from <spec.md>; then ${planctl} approve-spec ${planPath} --owner-word "<the owner's word>" — only on the owner's word.`,
-      `The linter and the judge run before the owner is asked.`,
-    ].join("\n");
-  }
-  if (state === "SPEC_LOCKED") {
-    return [
-      `Plan ${planPath} — SPEC_LOCKED: the SPEC is the owner's; you are writing Stages.`,
-      `Next: ${planctl} put-delivery ${planPath} --from <delivery.json>; ${planctl} put-stage ${planPath} --from <stage.json> per Stage;`,
-      `then ${planctl} approve-plan ${planPath} --owner-word "<the owner's word>" — only on the owner's word.`,
-    ].join("\n");
-  }
-  const deliveries: readonly DeliveryMeta[] = deliveryMetas(body);
-  const active = deliveries.find((delivery) => delivery.active);
-  const stages: readonly ParsedStageInput[] = stageInputs(body).filter((stage: ParsedStageInput) => active === undefined || stage.deliveryId === active.id);
-  const done = stages.filter((stage) => stage.tasks.every((task) => task.completed));
-  const doneIds = new Set(done.map((stage) => stage.id));
-  const open = stages.filter((stage) => !doneIds.has(stage.id));
-  const ready = open.filter((stage) => stage.depends.every((dependency) => doneIds.has(dependency)));
-  const waiting = open.filter((stage) => !ready.includes(stage));
-  // the started Task: a TaskRun receipt for an open Task of a ready Stage
-  let started: { readonly stage: ParsedStageInput; readonly taskId: string; readonly since: string } | null = null;
-  for (const stage of ready) {
-    for (const task of stage.tasks) {
-      if (task.completed) continue;
-      const path = taskRunPath(rootPath, planPath, task.id);
-      if (!existsSync(path)) continue;
-      const run = JSON.parse(readFileSync(path, "utf8")) as { startedAt?: string };
-      started = { stage, taskId: task.id, since: run.startedAt ?? "" };
-      break;
-    }
-    if (started !== null) break;
-  }
-  const current = started?.stage ?? ready[0] ?? null;
-  const lines: string[] = [];
-  lines.push(`Plan ${planPath} — APPROVED. Done: ${done.length} of ${stages.length} Stages${done.length === 0 ? "" : ` (${done.map((stage) => stage.id).join(", ")})`}. Waiting: ${waiting.length === 0 ? "none" : waiting.map((stage) => stage.id).join(", ")}.`);
-  if (current === null) {
-    lines.push(`Every Stage is closed. Next: /end-work once the owner has merged.`);
-    return lines.join("\n");
-  }
-  const title = current.title.length > 60 ? `${current.title.slice(0, 57)}…` : current.title;
-  if (started === null) {
-    const first = current.tasks.find((task) => !task.completed);
-    lines.push(`You are in Stage ${current.id} "${title}", no Task started.`);
-    if (first !== undefined) lines.push(`Now: ${planctl} start-task ${planPath} --task ${first.id}`);
-  } else {
-    const task = current.tasks.find((entry) => entry.id === started?.taskId);
-    lines.push(`You are in Stage ${current.id} "${title}", Task ${started.taskId} started ${started.since.slice(0, 16)}Z.`);
-    if (task !== undefined) lines.push(`RED for ${task.id}: ${task.red}`);
-    lines.push(`After the commit: ${planctl} complete-task ${planPath} --from <stage-result.json>`);
-  }
-  lines.push(`A shortfall: ${planctl} add-deviation ${planPath} --stage ${current.id} --reason "…"  (record it, do not stop)`);
-  lines.push(`Commands green: ${planctl} close-stage ${planPath} --stage ${current.id}`);
-  lines.push(`Without the owner: add a test, add a file the compiler names, touch one more file in this commit.`);
-  lines.push(`Owner's word only: the goal, the target tree, the meaning of a criterion.`);
-  return lines.join("\n");
-}
-
-async function focus(args: readonly string[]): Promise<void> {
-  dedicatedRuntime();
-  const { rootPath, target, body } = approvedPlan(args);
-  const taskId = optionalFlag(args, "--task");
-  const brief = taskId === undefined ? null : taskExecutionBrief(body, taskId);
-  const run = taskId === undefined ? null : await existingTaskRun(rootPath, target.relative, taskId);
-  const waits = await ownerWaitRuntime();
-  const wait = taskId === undefined
-    ? null
-    : waits.readOwnerWait(waits.ownerWaitPath(gitCommonDir(rootPath), target.relative, taskId));
-  const runIsAncestral = run === null
-    ? false
-    : spawnSync("git", ["-C", rootPath, "merge-base", "--is-ancestor", run.baseHead, "HEAD"]).status === 0;
-  const status: FocusView["status"] = brief === null || run === null
-    ? "unassigned"
-    : !runIsAncestral
-      ? "plan_drift"
-      : wait === null ? "focused" : "awaiting_owner";
-  const evidence = brief === null
-    ? "no Task was selected and no TaskRun receipt was addressed"
-    : run === null
-      ? `Task ${brief.id} has no TaskRun receipt; run start-task before RED`
-      : !runIsAncestral
-        ? `TaskRun base ${run.baseHead} is not ancestral to HEAD`
-        : wait === null
-          ? `TaskRun receipt matches HEAD ancestry and locked revision ${protocolImplementationHash(body)}`
-          : `structured owner-wait receipt started at ${wait.startedAt}`;
-  const now = new Date();
-  const analytics = await Promise.all([
-    import("../core/plan-progress"),
-    import("../core/delivery-forecast"),
-    import("./render"),
-  ]);
-  const progress = analytics[0].projectPlanProgress(body);
-  const activeTasks = brief === null || run === null || !runIsAncestral
-    ? []
-    : [{
-      taskId: brief.id,
-      state: wait === null ? "working" as const : "awaiting_owner" as const,
-      elapsedActiveMinutes: Math.max(0, (now.getTime() - Date.parse(run.startedAt)) / 60_000),
-    }];
-  const forecast = analytics[1].forecastDelivery(body, {
-    now: now.toISOString(),
-    activeTasks,
-    completedTaskSamples: [],
-  });
-  let view: FocusView = {
-    source: `local plan ${target.relative}`,
-    status,
-    evidence,
-    goal: planGoal(body),
-    currentTask: brief === null ? null : {
-      id: brief.id,
-      story: brief.story,
-      writes: brief.writes,
-      how: brief.how,
-      red: brief.red,
-    },
-    nextReadyTaskIds: readyTaskIds(body, brief?.id),
-    completionPercent: progress.completionPercent,
-    completedTasks: progress.tasks.completed,
-    totalTasks: progress.tasks.total,
-    remainingActiveMinutes: forecast.remainingActiveMinutes,
-    criticalPathMinutes: forecast.calibratedCriticalPathMinutes,
-    estimatedDeliveryAt: forecast.estimatedDeliveryAt,
-    ownerWaitReason: wait?.reason ?? null,
-  };
-  if (args.includes("--server")) {
-    try {
-      const remote = await serverProgress(args);
-      const identity = await repositoryIdentity(rootPath, remote.settings.repositoryIds);
-      const planId = `${identity.repositoryId}:${target.relative}`;
-      const serverPlan = remote.response.plans.find((plan) => plan.planId === planId);
-      if (serverPlan === undefined) throw new Error(`server has no progress for ${planId}`);
-      const localRevision = protocolImplementationHash(body);
-      view = serverPlan.planRevision === localRevision
-        ? { ...view, source: `server ${remote.settings.url} at ${remote.response.generatedAt}; local plan ${target.relative}` }
-        : {
-          ...view,
-          source: `server ${remote.settings.url} at ${remote.response.generatedAt}; local plan ${target.relative}`,
-          status: "plan_drift",
-          evidence: `local revision ${localRevision} differs from server revision ${serverPlan.planRevision}`,
-        };
-    } catch (error: unknown) {
-      view = {
-        ...view,
-        source: `local plan ${target.relative}; server offline`,
-        evidence: `server read unavailable (${message(error)}); local evidence: ${view.evidence}`,
-      };
-    }
-  }
-  console.log(analytics[2].renderFocus(view));
 }
 
 async function progress(args: readonly string[]): Promise<void> {
@@ -1109,14 +893,6 @@ async function run(args: readonly string[]): Promise<number> {
     const verdict = retroStatus(law);
     console.log(`retro-status: ${verdict.reason}`);
     return verdict.ok ? 0 : 1;
-  }
-  if (command === "focus") {
-    if (args.includes("--brief")) {
-      console.log(await focusBrief(args));
-      return 0;
-    }
-    await focus(args);
-    return 0;
   }
   if (command === "progress") {
     await progress(args);

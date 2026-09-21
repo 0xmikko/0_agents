@@ -6,7 +6,7 @@
   "scripts": {
     "agent:install": "bun install --frozen-lockfile --backend=copyfile",
     "agent:test:backend": "bun test",
-    "agent:test:frontend": "bun test test/focus.test.ts test/owner-wait.test.ts",
+    "agent:test:frontend": "bun test test/progress.test.ts test/owner-wait.test.ts",
     "agent:test:e2e": "bun test",
     "agent:verify:commit": "bun run typecheck && bun test",
     "agent:verify:pr": "bun run typecheck && bun run lint && bun test && bun run build",

@@ -126,7 +126,7 @@ function baseUrl(value: string): string {
 }
 
 /**
- * @tested-by: tst_cli_planctl_focus_001
+ * @tested-by: tst_cli_planctl_progress_001
  * @invariant: CTL-002 telemetry is read only on an explicit bounded request and cannot gate local commands.
  */
 export async function readServerProgress(
