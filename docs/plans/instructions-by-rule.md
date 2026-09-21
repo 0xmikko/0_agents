@@ -1,8 +1,8 @@
 # Agent instructions, rule by rule: memory becomes law, the rest is cut
 
 Status: APPROVED  
-Spec lock: sha256:874dd0ba76a59688d14d4ea5c5960524fb4fa60534c96f8dc6ace5cf626fa4b6 owner:owner 2026-09-20: давай второе — не принципиально (аудит печатает, не роняет гейт до последней стадии)  
-Implementation lock: sha256:875c240121d3e637716534a64c01ba009e03bd9a4d7fc0f31b9eb95560cd6887 owner:owner 2026-09-20: давай второе — не принципиально (аудит печатает, не роняет гейт до последней стадии)  
+Spec lock: sha256:f86887bc440fdcfaca29316a9e89c68d32418ffbb6ae4e20e19aca8c9f17439e owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21)  
+Implementation lock: sha256:c8d045fc8b1ce39e578a6f1e230796d73753432d98ba6324ab488ec0e9ad1083 owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) (re-approval after the SPEC amendment)  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -94,7 +94,7 @@ Today: 323 lines globally and three Magnis-specialised copies, all carrying Rust
 
 Today: about 3 400 lines; thirteen skills are from the cargo era and contradict the process (full suite per Stage, rebase and force-push, "proceed without an approved plan", a fourth plan format, Cyrus dispatch). Done: ten stay, `blueprint`, `blueprint-start`, `end-work`, `bug`, `rename`, `review-implementation`, `cleanup-worktrees`, `mdurl`, `dictate`, `nvim`, each of the four process skills under 60 lines; `rename` is new and small: rename the symbol at its definition, run the project's typecheck, fix every place the compiler names and nothing else, one commit, never grep for the old name; sixteen go: `start-work`, `test-protocol`, `completion-note`, `verify-app`, `verify-frontend`, `fast-precommit`, `fix-ci-cd`, `quick-fix`, `plan`, `review-plan`, `execute`, `finish-plan`, `git`, `dispatch-to-linear`, `execute-from-linear`, `launch-e2e`. The owner's business skills are untouched. What the four process skills say:
 
-`blueprint`: the plan is born in its own worktree from fresh `origin/staging`, with the list of open PRs into staging touching its files; the SPEC has the skeleton the owner approved in `account-sync-state`: The Goal (two or three lines or measures), Why now (the problem with its numbers and its `file:line` anchors), The target as detailed as the task is deep (the process as a flow with a diagram and a table of stages, the design as the screen will look, Interfaces in TypeScript, Code where the algorithm is the decision, What changes with what leaves, Target tree, Verification, Invariants, Constraints and non-goals, Reuse, Deliveries), Not verified, the pre-approval screen; names come from the repository, or from the project's vocabulary page where one exists; a new one is declared in a table with its reason and the pre-approval screen prints the count; every new or changed type is TypeScript, hand-written interfaces one field per line, zod decoding into them, never a sentence or "as elsewhere"; the Goal is the owner's currencies with today's number and the target, never "measure X"; sizes are printed, not capped: the pre-approval screen shows the SPEC's lines, the number of Stages and the longest Stage description next to the medians of the plans the owner approved in one round (150 to 300 lines of SPEC), because depth sets the size and the owner decides what depth a task needs; a Stage still reads as its commit message and a Task story stays under 200 characters; no minutes, no credits; review only on the owner's word, at most three rounds, fixing only what the plan cannot run without; the linter and the judge have passed before the owner is asked. An owner question about the plan is answered in the chat; the plan is not edited until the owner says "внеси". Stage 0 of a Delivery is the interface and its mock, committed first, so a second agent can build against it in parallel.
+`blueprint`: the plan is born in its own worktree from fresh `origin/staging`, with the list of open PRs into staging touching its files; the SPEC has the skeleton the owner approved in `account-sync-state`: The Goal (two or three lines or measures), Why now (the problem with its numbers and its `file:line` anchors), The target as detailed as the task is deep (the process as a flow with a diagram and a table of stages, the design as the screen will look, Interfaces in TypeScript, Code where the algorithm is the decision, What changes with what leaves, Target tree, Verification, Invariants, Constraints and non-goals, Reuse, Deliveries), Not verified, the pre-approval screen; names come from the repository, or from the project's vocabulary page where one exists; a new one is declared in a table with its reason and the pre-approval screen prints the count; every new or changed type is TypeScript, hand-written interfaces one field per line, zod decoding into them, never a sentence or "as elsewhere"; the Goal is the owner's currencies with today's number and the target, never "measure X"; sizes are printed, not capped: the pre-approval screen shows the SPEC's lines, the number of Stages and the longest Stage description next to the medians of the plans the owner approved in one round (150 to 300 lines of SPEC), because depth sets the size and the owner decides what depth a task needs; a Stage still reads as its commit message and is cut by the measure the law states, the pre-approval screen prints each Stage's writes and Tasks counts, and a change that is one commit is `/bug`, not a plan; a Task story stays under 200 characters; no minutes, no credits; review only on the owner's word, at most three rounds, fixing only what the plan cannot run without; the linter and the judge have passed before the owner is asked. An owner question about the plan is answered in the chat; the plan is not edited until the owner says "внеси". Stage 0 of a Delivery is the interface and its mock, committed first, so a second agent can build against it in parallel.
 
 `blueprint-start`: start and before the gate, merge `origin/staging`, run `agent:install`, dry-run the compiler, then the project's own post-merge checklist from its `CLAUDE.md` (for Magnis: build the SDK, grep raw SQL for renamed columns, `uniq -d` migration numbers, re-pin docs in the same commit that moves an anchor); the browser lane once at the start for its baseline; per Stage `start-task`, red, green, the Stage's one to three files, the three reviewers on the diff, one commit, `complete-task`, next Stage; the three tiers (below); the complete gate once through the pre-push hook, a push when someone needs the new state, the agent flips ready, the owner merges. A pull request exists at every Stage boundary and no later than a day after the Delivery starts; "done" is said with its proof in the same message: the URL, the probe, the CI run by SHA.
 
@@ -104,13 +104,13 @@ Today: about 3 400 lines; thirteen skills are from the cargo era and contradict 
 
 ### The process laws (0_agents): four files become two
 
-Today: 792 lines in four files that disagree on the Task format, require Predict minutes and credits, mention a scorecard that does not exist, and carry 85 lines of commit archaeology. Done: `development-process.md` (under 100 lines) holds the lifecycle with its two owner approvals, the sizes, the Stage cadence, the three tiers, git in one paragraph (worktree per branch from `origin/staging`, merge commits only, never rewrite, one commit per Stage, no wip, never push to staging or main, `git -C <abs>`), verification once per Delivery, the unattended rule, the handoff, and the retro register at its end. `plan-format.md` (under 80 lines) holds the skeleton, one Task template, what approval freezes, the linter's rules, the forbidden list. `plan-protocol.md` and `git-workflow.md` are deleted; every rule of theirs that survives is in those two.
+Today: 792 lines in four files that disagree on the Task format, require Predict minutes and credits, mention a scorecard that does not exist, and carry 85 lines of commit archaeology. Done: `development-process.md` (under 100 lines) holds the lifecycle with its two owner approvals, the sizes, the measure of a Stage (a commit a reviewer reads in one sitting, the tree green after it; two Stages one commit message would cover are one; a Stage whose description needs a second What-is-built paragraph, whose writes have two owners or which has more than three Tasks is two; a change that is one commit is not a plan but `/bug`), the Stage cadence, the three tiers, git in one paragraph (worktree per branch from `origin/staging`, merge commits only, never rewrite, one commit per Stage, no wip, never push to staging or main, `git -C <abs>`), verification once per Delivery, the unattended rule, the handoff, and the retro register at its end. `plan-format.md` (under 100 lines) holds how the agent makes the plan with planctl: the SPEC skeleton it hand-writes, then each command in order with the JSON it takes, `put-delivery`, `put-stage` with its Tasks, `complete-task` with the Stage result file, `amend` with its patch; what approval freezes, the linter's rules, the forbidden list. The rendered Markdown is planctl's output and is not described. `plan-protocol.md` and `git-workflow.md` are deleted; every rule of theirs that survives is in those two.
 
 The three tiers, as the law states them. Free, the agent does it and planctl records the difference in the result row: add a test, add a file the compiler names, touch a file beyond the writes but inside the Delivery's target tree in the same commit, close a Stage whose commands are green. Recorded, one Deviations line and on: a file outside the target tree, a deleted test, a criterion that became unreachable. Refused by planctl: a file another Stage or another plan declares in its writes; someone else's code is changed by its owner, and the caller adapts to the owner's API. The owner's word, and only here: the goal and its measure, removing a promised file from the tree, the meaning of an acceptance criterion, scope beyond the Delivery.
 
 ### planctl and plan-gate (0_agents `planctl/`)
 
-Today: planctl refuses a fifth write, a story that does not repeat its paths, a commit touching one file beyond the writes, a Task without minutes; plan-gate checks receipts and nothing about how the text reads. Done, in four parts. PR #12 (open): writes are files, directories or globs with no cap, extra files are recorded in the result row, minutes and credits accept zero. The linter, in plan-gate: the skeleton (the Goal as currencies with today's number and target, the target tree, the Types block when `.ts` sources change, the New names table, the Not verified list); every box a command with its exit code or the Commit box; mermaid parsed; synonyms of vocabulary terms and plan codes (D1-S4, INV-12) in prose refused; every `export interface` or `export type` a Stage commit adds must be named in the SPEC's Interfaces block, so a type the owner never saw never appears; sentences over thirty words refused; Predict fields refused. The judge, `plan-gate --judge`: a fixed rubric in `shared/code-production/plan-judge.md`, one question per rule a linter cannot answer (is the Goal a goal or a problem, does each Stage read as a commit, are the names existing ones, is the prose plain), answered by a small model through `claude -p --model haiku` on the owner's subscription with a quote from the plan for every answer; 1.4 seconds on a test call today; the verdict stored by SPEC hash so the same bytes are never judged twice; `lock-spec` refuses without a PASS and an unavailable judge refuses the lock. The brief, `focus --brief`, as above.
+Today: planctl refuses a fifth write, a story that does not repeat its paths, a commit touching one file beyond the writes, a Task without minutes; plan-gate checks receipts and nothing about how the text reads. Done, in four parts. PR #12 (open): writes are files, directories or globs with no cap, extra files are recorded in the result row, minutes and credits accept zero. The linter, in plan-gate: the skeleton (the Goal as currencies with today's number and target, the target tree, the Types block when `.ts` sources change, the New names table, the Not verified list); every box a command with its exit code or the Commit box; mermaid parsed; synonyms of vocabulary terms and plan codes (D1-S4, INV-12) in prose refused; every `export interface` or `export type` a Stage commit adds must be named in the SPEC's Interfaces block, so a type the owner never saw never appears; sentences over thirty words refused; Predict fields refused; a plan whose Stages together write two files or fewer refused, that is a commit, not a plan. The judge, `plan-gate --judge`: a fixed rubric in `shared/code-production/plan-judge.md`, one question per rule a linter cannot answer (is the Goal a goal or a problem, does each Stage read as a commit, would a history a human wrote have these Stages as separate commits and is there a Stage a human would split, are the names existing ones, is the prose plain), answered by a small model through `claude -p --model haiku` on the owner's subscription with a quote from the plan for every answer; 1.4 seconds on a test call today; the verdict stored by SPEC hash so the same bytes are never judged twice; `lock-spec` refuses without a PASS and an unavailable judge refuses the lock. The brief, `focus --brief`, as above.
 
 ### The instruction audit: `shared/code-production/instruction-audit.ts` (0_agents)
 
@@ -356,22 +356,24 @@ Commit. refactor(skills): nine skills, four of them the process — the cargo-er
 
 ##### Tasks
 
-- [ ] IBR_005 — Rewrite blueprint, blueprint-start, end-work and bug to the SPEC's texts, each under 60 lines; instruction-audit.test.ts pins the size and that none names a deleted skill.
+- [x] IBR_005 — Rewrite blueprint, blueprint-start, end-work and bug to the SPEC's texts, each under 60 lines; instruction-audit.test.ts pins the size and that none names a deleted skill. — 02a13f06561662e3260268309647b849182628e4
 <!-- plan:task-meta:{"writes":["shared/skills/blueprint/","shared/skills/blueprint-start/","shared/skills/end-work/","shared/skills/bug/","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"write the four SKILL.md files from the SPEC paragraphs; the test reads them","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills"} -->
-- [ ] IBR_006 — Delete the sixteen retired skills with their claude/ and codex/ symlinks; trim review-implementation and cleanup-worktrees; README.md and ONBOARDING.md list the nine.
+- [x] IBR_006 — Delete the sixteen retired skills with their claude/ and codex/ symlinks; trim review-implementation and cleanup-worktrees; README.md and ONBOARDING.md list the nine. — 02a13f06561662e3260268309647b849182628e4
 <!-- plan:task-meta:{"writes":["shared/skills/","claude/skills/","codex/skills/","README.md","ONBOARDING.md"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"git rm the directories and symlinks; replace the skill lists in the two documents; the audit's dead-reference check is the proof","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills"} -->
 
 ##### Acceptance criteria
 
-- [ ] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills` exits 0 — the four process skills are under 60 lines and no skill names a deleted one
-- [ ] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S4` exits 0 — the owner read what this Stage produced and said the word
-- [ ] Commit
+- [x] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills` exits 0 — the four process skills are under 60 lines and no skill names a deleted one — 3cff01f91d3661e6aeb80759f4f523bd3e987327
+- [x] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S4` exits 0 — the owner read what this Stage produced and said the word — 3cff01f91d3661e6aeb80759f4f523bd3e987327
+- [x] Commit — 3cff01f91d3661e6aeb80759f4f523bd3e987327
 
 ##### Results
 
 <!-- plan:results:D1-S4:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| IBR_005 | 02a13f06561662e3260268309647b849182628e4 | 2026-09-20T19:42:24.526Z–2026-09-20T19:54:04.000Z | 11.66 / 11.66 min | unavailable: runner did not expose usage | Ten skills remain, one text each under shared/skills; the four process skills are 54, 53, 26 and 24 lines; review-implementation is one shared text; sixteen retired skills and their links are gone; lib/doctor.sh spot-checks blueprint, mdurl, bug, rename instead of two retired names. — beyond writes: lib/doctor.sh |
+| IBR_006 | 02a13f06561662e3260268309647b849182628e4 | 2026-09-20T19:42:24.526Z–2026-09-20T19:54:04.000Z | 11.66 / 11.66 min | unavailable: runner did not expose usage | Ten skills remain, one text each under shared/skills; the four process skills are 54, 53, 26 and 24 lines; review-implementation is one shared text; sixteen retired skills and their links are gone; lib/doctor.sh spot-checks blueprint, mdurl, bug, rename instead of two retired names. — beyond writes: lib/doctor.sh |
 <!-- plan:results:D1-S4:end -->
 <!-- plan:stage:D1-S4:end -->
 
@@ -395,20 +397,21 @@ Commit. docs(laws): two laws — the process and the plan format — carry every
 
 ##### Tasks
 
-- [ ] IBR_007 — Rewrite development-process.md (under 100 lines, three tiers, retro register) and plan-format.md (under 80 lines); delete plan-protocol.md and git-workflow.md; the laws test pins it.
+- [x] IBR_007 — Rewrite development-process.md (under 100 lines, three tiers, retro register) and plan-format.md (under 80 lines); delete plan-protocol.md and git-workflow.md; the laws test pins it. — 629790178da90db909ef33bc1a1de814d5a19408
 <!-- plan:task-meta:{"writes":["shared/code-production/laws/","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"write the two laws from the SPEC's paragraphs; git rm the other two; the test reads sizes, tiers, register, banned words","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_laws"} -->
 
 ##### Acceptance criteria
 
-- [ ] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_laws` exits 0 — two laws, under 100 and 80 lines, three tiers, a register, no banned word
-- [ ] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S5` exits 0 — the owner read what this Stage produced and said the word
-- [ ] Commit
+- [x] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_laws` exits 0 — two laws, each under 100 lines, three tiers, a register, no banned word — 9e8517bfc0029b98d6884caeefdd802de1c33163
+- [x] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S5` exits 0 — the owner read what this Stage produced and said the word — 9e8517bfc0029b98d6884caeefdd802de1c33163
+- [x] Commit — 9e8517bfc0029b98d6884caeefdd802de1c33163
 
 ##### Results
 
 <!-- plan:results:D1-S5:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| IBR_007 | 629790178da90db909ef33bc1a1de814d5a19408 | 2026-09-20T20:14:12.270Z–2026-09-20T20:18:16.000Z | 4.06 / 4.06 min | unavailable: runner did not expose usage | Two laws: development-process.md 99 lines, plan-format.md 79 lines; plan-protocol.md and git-workflow.md deleted; the loaded set is under 900 lines and the instruction audit reports clean. |
 <!-- plan:results:D1-S5:end -->
 <!-- plan:stage:D1-S5:end -->
 
@@ -432,20 +435,21 @@ Commit. refactor(agents): three reviewers judge TypeScript by TypeScript rules; 
 
 ##### Tasks
 
-- [ ] IBR_008 — Trim typescript.md and rust.md to style under 40 lines; remove every Rust and cargo section from the three cops, each under 80 lines; the reviewers test pins it.
+- [x] IBR_008 — Trim typescript.md and rust.md to style under 40 lines; remove every Rust and cargo section from the three cops, each under 80 lines; the reviewers test pins it. — 886ab063306da5f3cdd71f6386023efeec2c2ac8
 <!-- plan:task-meta:{"writes":["shared/lang/","claude/agents/","codex/agents/","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"edit the five files; the test reads them for size and for the words cargo, clippy, serde, TestCore","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_reviewers"} -->
 
 ##### Acceptance criteria
 
-- [ ] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_reviewers` exits 0 — guides under 40 lines, reviewers under 80, no Rust words
-- [ ] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S6` exits 0 — the owner read what this Stage produced and said the word
-- [ ] Commit
+- [x] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_reviewers` exits 0 — guides under 40 lines, reviewers under 80, no Rust words — 886ab063306da5f3cdd71f6386023efeec2c2ac8
+- [x] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S6` exits 0 — the owner read what this Stage produced and said the word — 9e8517bfc0029b98d6884caeefdd802de1c33163
+- [x] Commit — 886ab063306da5f3cdd71f6386023efeec2c2ac8
 
 ##### Results
 
 <!-- plan:results:D1-S6:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| IBR_008 | 886ab063306da5f3cdd71f6386023efeec2c2ac8 | 2026-09-21T07:30:17.813Z–2026-09-21T07:34:39.568Z | 4.362583333333333 / 4.362583333333333 min | unavailable: runner did not expose usage | TypeScript guide 22 lines, Rust guide 17; reviewers 31/35/35 lines, Codex symbolic links reuse the same files. Acceptance test failed on the original 91-line TypeScript guide then passed 24 assertions. Scoped audit 10/10; commit gate typecheck and 95/95 tests; docs audit clean. Coherence, coverage and simplicity reviews PASS; removed runtime/library prescriptions after simplicity finding. Continuous measured task interval; no owner or external wait. |
 <!-- plan:results:D1-S6:end -->
 <!-- plan:stage:D1-S6:end -->
 
@@ -469,7 +473,7 @@ Commit. feat(plan-gate): a linter refuses the plan defects the owner used to cor
 
 ##### Tasks
 
-- [ ] IBR_009 — plan-gate --lint refuses the eight form defects on fixture plans and passes a clean one; lock-spec runs it; plan-gate.test.ts carries one fixture per refusal.
+- [x] IBR_009 — plan-gate --lint refuses the eight form defects on fixture plans and passes a clean one; lock-spec runs it; plan-gate.test.ts carries one fixture per refusal. — a9557d5c9c7677a3c104afe07044e6b40d5970f3
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-gate.ts","planctl/test/plan-gate.test.ts","planctl/test/fixtures/"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"add lint() with the eight checks; mermaid parsed with the mermaid parser already in the repo's Playwright or a pure parser; wire into lock-spec","red":"bun run agent:test:backend -- test/plan-gate.test.ts -t tst_gate_lint"} -->
 
 ##### Acceptance criteria
@@ -483,6 +487,7 @@ Commit. feat(plan-gate): a linter refuses the plan defects the owner used to cor
 <!-- plan:results:D1-S7:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| IBR_009 | a9557d5c9c7677a3c104afe07044e6b40d5970f3 | 2026-09-21T08:36:56.223Z–2026-09-21T11:04:13.000Z | 147.27961666666667 / 147.27961666666667 min | unavailable: runner did not expose usage | Plan form lint and SPEC lock refusal implemented, with real TypeScript and Mermaid parsing, shared vocabulary and commit paths, and a bundled consumer gate. New tests were RED on malformed approval, generated Predict, TypeScript syntax, Stage prose and install-directory drift; now GREEN. Full gate: typecheck, lint, 98 tests, build. After the final build-cwd fix, docs gate: 11 tests and clean audit. Three reviewers ran twice; all correctness findings fixed, including the final cwd finding proven by the consumer regression. Export checks require --lint --commit. No live consumer rollout; owner Stage acceptance remains open. — beyond writes: planctl/bun.lock, planctl/package.json, planctl/src/core/plan-update.ts, planctl/test/focus.test.ts, planctl/test/package-boundary.test.ts, planctl/test/plan-update.test.ts, planctl/test/planctl.test.ts, planctl/tsconfig.json, shared/code-production/agent-stack.ts, shared/code-production/instruction-audit.ts |
 <!-- plan:results:D1-S7:end -->
 <!-- plan:stage:D1-S7:end -->
 
@@ -681,4 +686,62 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - approve-stage D1-S3 owner:звучит разумно - но надо тестировать / давай это сделаем и дальше пойдём по нашему плану — owner, 2026-09-20
 
 - close D1-S3 closed commit:a1301020c1a1537a660dac65be2b970fd15972f4
+
+- record-result D1-S4 commit:02a13f06561662e3260268309647b849182628e4
+
+- approve-stage D1-S4 owner:nice — это уже применено; да (2026-09-20, on the PR #15 summary) — owner, 2026-09-20
+
+- close D1-S4 closed commit:3cff01f91d3661e6aeb80759f4f523bd3e987327
+
+- record-result D1-S5 commit:629790178da90db909ef33bc1a1de814d5a19408
+
+- amend spec owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) sha256:4767162a881af127bb22b125ded7aa573092048d465e4ad2bf07af64867bed42
+
+- approve sha256:875c240121d3e637716534a64c01ba009e03bd9a4d7fc0f31b9eb95560cd6887 owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) (re-approval after the SPEC amendment)
+
+- amend implementation owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) sha256:c8d045fc8b1ce39e578a6f1e230796d73753432d98ba6324ab488ec0e9ad1083
+
+- amend spec owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) sha256:b4b6e5c3a0818ffc1cb5813468b5600cf7ef72d1d4ac3b783ba3e405a4505fe1
+
+- approve sha256:c8d045fc8b1ce39e578a6f1e230796d73753432d98ba6324ab488ec0e9ad1083 owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) (re-approval after the SPEC amendment)
+
+- amend spec owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) sha256:e6c8e26b487d4b684e22f76c5309a1189beb3c1cab291e5ad56170886dc21819
+
+- approve sha256:c8d045fc8b1ce39e578a6f1e230796d73753432d98ba6324ab488ec0e9ad1083 owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) (re-approval after the SPEC amendment)
+
+- amend spec owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) sha256:758fc4a21d0c2b0bd65350c86fe9292fd48fc97c9db0622282fb051f169a2731
+
+- approve sha256:c8d045fc8b1ce39e578a6f1e230796d73753432d98ba6324ab488ec0e9ad1083 owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) (re-approval after the SPEC amendment)
+
+- amend spec owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) sha256:f86887bc440fdcfaca29316a9e89c68d32418ffbb6ae4e20e19aca8c9f17439e
+
+- approve sha256:c8d045fc8b1ce39e578a6f1e230796d73753432d98ba6324ab488ec0e9ad1083 owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) (re-approval after the SPEC amendment)
+
+- deviation D1-S5: Stage 5 carries two commits: the owner's reading of plan-format.md turned a file-format page into the way a plan is made with planctl, and added the measure of a Stage; both laws are under 100 lines by the amendment of 2026-09-21
+
+- deviation D1-S3: Resume on 2026-09-21 reproduced two gaps: the global instruction invokes vendored focus without --brief, which refuses outside the dedicated package; installed focus without a plan refuses too. focus --brief works, but reports a Stage done when Tasks are complete while acceptance boxes remain open. No runtime repair is claimed.
+
+- record-result D1-S6 commit:886ab063306da5f3cdd71f6386023efeec2c2ac8
+
+- close D1-S6 partial commit:886ab063306da5f3cdd71f6386023efeec2c2ac8
+
+- deviation D1-S6: Measured line counts corrected after the result text transcription: TypeScript 21, Rust 17; coherence 32, coverage 37, simplicity 37. All promised limits pass. The owner-approval criterion remains open.
+
+- approve-stage D1-S5 owner:давай продолжим работу над нашими правлами по плану — owner, 2026-09-21
+
+- close D1-S5 closed commit:9e8517bfc0029b98d6884caeefdd802de1c33163
+
+- approve-stage D1-S6 owner:давай продолжим работу над нашими правлами по плану — owner, 2026-09-21
+
+- close D1-S6 closed commit:9e8517bfc0029b98d6884caeefdd802de1c33163
+
+- deviation D1-S7: The linter needs the canonical writer for lock-spec and to stop rendering Predict; dependency manifests and TypeScript DOM types support the real Mermaid parser. Existing CLI fixture SPECs must satisfy the new lock gate. The vocabulary reader accepts the project glossary path so the parser has one implementation.
+
+- deviation D1-S7: Consumer runtimes need the same lint behavior without adding parser dependencies to every project. agent-stack now bundles plan-gate with its parsers and installs the vocabulary alongside it; the package-boundary test proves approval through the installed CLI. Hashes and criterion grammar moved to their writer owner to remove the import cycle; the gate re-exports the existing API. Historical Stage predictions remain readable.
+
+- deviation D1-S7: Review found that bundling depended on the caller directory and checkStack marked a fresh install stale. A consumer-directory regression was observed red; fixing the build cwd made the docs gate pass 11 tests and the instruction audit. The full planctl gate had passed 98 tests, typecheck, lint and build before this one-line fix; the affected installation flow was rerun afterward.
+
+- record-result D1-S7 commit:a9557d5c9c7677a3c104afe07044e6b40d5970f3
+
+- deviation D1-S7: Owner found that agent-stack check through the installed symlink looked for a module under ~/.local/shared. The previous verification called the TypeScript entrypoint directly and missed the launcher. The package test now runs check through absolute and relative symlinks from a directory with spaces: observed red, then green after resolving the launcher source path. The local entrypoint invokes its original main-checkout launcher by absolute path until the fix is merged; Magnis still reports two stale installed runtime files.
 <!-- plan:execution:end -->

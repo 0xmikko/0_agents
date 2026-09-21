@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,7 +18,6 @@ const REPOSITORY_ROOT = resolve(import.meta.dir, "../..");
 const CANONICAL_RUNTIME = [
   ["src/cli/main.ts", ".agents/code-production/runtime/planctl.ts"],
   ["src/core/plan-update.ts", ".agents/code-production/runtime/plan-update.ts"],
-  ["src/core/plan-gate.ts", ".agents/code-production/runtime/plan-gate.ts"],
   ["src/core/retro-register.ts", ".agents/code-production/runtime/retro-register.ts"],
 ] as const;
 
@@ -41,7 +41,7 @@ function consumerPackage(): string {
 /**
  * @test-id: tst_unit_planctl_package_001
  * @scenario: scn_planctl_package_001
- * @covers: planctl/src/cli/main.ts, shared/code-production/agent-stack.ts::managedFiles
+ * @covers: planctl/src/cli/main.ts, shared/code-production/agent-stack.ts::managedFiles, bin/agent-stack::symlink-resolution
  * @deterministic: yes
  * @fixtures: temporary Git consumer repository
  *
@@ -70,8 +70,8 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
 
     const installed = installStack(consumer);
 
-    // planctl, plan-update, plan-gate, retro-register, three hooks, the workflow
-    expect(installed.files).toHaveLength(8);
+    // Four runtime programs, vocabulary, three hooks, and the workflow.
+    expect(installed.files).toHaveLength(9);
     for (const [source, target] of CANONICAL_RUNTIME) {
       expect(readFileSync(join(consumer, target), "utf8")).toBe(
         readFileSync(join(REPOSITORY_ROOT, "planctl", source), "utf8"),
@@ -83,6 +83,22 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
       { cwd: consumer, encoding: "utf8" },
     );
     expect(installedHelp.status).toBe(0);
+    const run = (...args: string[]) => spawnSync("bun", [join(consumer, ".agents/code-production/runtime/planctl.ts"), ...args], { cwd: consumer, encoding: "utf8", timeout: 15_000 });
+    const plan = "docs/plans/lint.md";
+    expect(run("init", plan, "--title", "Lint").status).toBe(0);
+    git(consumer, "commit", "-qm", "open the plan");
+    writeFileSync(join(consumer, "spec.md"), readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8"));
+    expect(run("set-spec", plan, "--from", "spec.md").status).toBe(0);
+    const locked = run("approve-spec", plan, "--owner-word", "yes");
+    expect(locked.status, locked.stderr).toBe(0);
+    expect(readFileSync(join(consumer, plan), "utf8")).toContain("Status: SPEC_LOCKED");
+    const installedBin = join(consumer, "local bin");
+    mkdirSync(installedBin);
+    symlinkSync(join(REPOSITORY_ROOT, "bin/agent-stack"), join(installedBin, "agent-stack-target"));
+    symlinkSync("agent-stack-target", join(installedBin, "agent-stack"));
+    const checked = spawnSync(join(installedBin, "agent-stack"), ["check", consumer], { cwd: consumer, encoding: "utf8", timeout: 15_000 });
+    expect(checked.status, checked.stderr).toBe(0);
+
     expect(installedHelp.stdout).toContain("planctl <command>");
   } finally {
     rmSync(consumer, { recursive: true, force: true });
