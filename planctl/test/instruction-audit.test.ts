@@ -211,7 +211,7 @@ describe("the skills", () => {
    * directory carries its name and no living skill or page invokes it. */
   const RETIRED = [
     "start-work", "test-protocol", "completion-note", "verify-app", "verify-frontend", "fast-precommit",
-    "fix-ci-cd", "quick-fix", "plan", "review-plan", "execute", "finish-plan", "git",
+    "fix-ci-cd", "quick-fix", "plan", "execute", "finish-plan", "git",
     "dispatch-to-linear", "execute-from-linear", "launch-e2e",
   ];
   function skillFiles(dir: string): string[] {
@@ -224,9 +224,9 @@ describe("the skills", () => {
   // @covers: shared/skills/*/SKILL.md, claude/skills, codex/skills, README.md, ONBOARDING.md
   // @deterministic: yes
   // @invariant: the four process skills are each under 60 lines and say what
-  // the SPEC says they say; the sixteen retired skills have no directory and
+  // the SPEC says they say; the fifteen retired skills have no directory and
   // are named by no living skill, README or ONBOARDING.
-  it("tst_audit_skills_001 four process skills under 60 lines, sixteen retired skills gone and unnamed", () => {
+  it("tst_audit_skills_001 four process skills under 60 lines, fifteen retired skills gone and unnamed", () => {
     for (const [name, says] of Object.entries(PROCESS)) {
       const text = readFileSync(join(root, "shared/skills", name, "SKILL.md"), "utf8");
       const lines = text.trimEnd().split("\n").length;
