@@ -1,8 +1,8 @@
 # Agent instructions, rule by rule: memory becomes law, the rest is cut
 
-Status: APPROVED  
-Spec lock: sha256:f86887bc440fdcfaca29316a9e89c68d32418ffbb6ae4e20e19aca8c9f17439e owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21)  
-Implementation lock: sha256:c8d045fc8b1ce39e578a6f1e230796d73753432d98ba6324ab488ec0e9ad1083 owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) (re-approval after the SPEC amendment)  
+Status: SPEC_LOCKED  
+Spec lock: sha256:2278415ff55a65ee7f8f21c8609291ede07cefd570bbe4d2acf2784eb8f2651e owner:УДАЛИ НАХУЙ focus (2026-09-21)  
+Implementation lock: stale  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -30,8 +30,6 @@ Today: 85 lines that repeat the skills, and a Codex file of 21 lines with none o
 ```markdown
 # Working here
 
-Where you are and what you can do now is printed at session start by planctl. If it is
-missing, run `bun .agents/code-production/runtime/planctl.ts focus` before anything else.
 
 IMPORTANT: little code that is understood and explained beats much code. One name per
 thing, the name the repository already uses: find it before you write one. A word that
@@ -63,24 +61,9 @@ The owner is on a Claude subscription: no API key, ever.
 
 `codex/AGENTS.md` is byte-identical: a symbolic link to `claude/CLAUDE.md`, so the author and the reviewer can never read different rules; the audit counts one file as one home. Codex gets the brief from the same command, run by its own session hook.
 
-### The session brief: `planctl focus --brief` and the managed hook
+### No automatic work instructions
 
-Today: an agent starts a session, re-reads the plan, loses its place after a compaction, and the owner explains which Stage is open. Done: Claude Code adds a hook's stdout to the model's context at session start, after a resume, after a compaction and on every prompt ([hooks reference](https://code.claude.com/docs/en/hooks)). `planctl focus` exists; it gets `--brief`, and the managed `.claude/settings.json` runs it at `SessionStart` (startup, resume, compact) and prints one line at `UserPromptSubmit`. About ten lines, generated from the plan's own state, never stale:
-
-```text
-Plan docs/plans/unified-launch.md — APPROVED, implementation locked.
-You are in Stage D1-S6 "package.json is the whole launch surface", Task UL_011 started 21:44Z.
-Done: S1–S5. Waiting on you: S7, S8 (they depend on S6).
-Now you can:
-  RED for UL_011:   bun run agent:test:backend -- ../scripts/tests/launch-surface.test.ts
-  after the commit: planctl complete-task docs/plans/unified-launch.md --from stage-result.json
-  a shortfall:      planctl add-deviation … --stage D1-S6 --reason "…"   (record it, do not stop)
-  commands green:   planctl close-stage … --stage D1-S6
-Without the owner: add a test, add a file the compiler names, touch one more file in this commit.
-Owner's word only: the goal, the target tree, the meaning of a criterion.
-```
-
-A `SPEC_DRAFT` plan gets "you are planning; the SPEC is yours to edit; next `set-spec`, then `lock-spec` on the owner's word; the judge runs before the owner sees it". A branch without a plan gets one line: "no plan here; planning is /blueprint, a small fix is a commit and a PR". Codex runs the same command from its own session hook.
+Owner amendment, 2026-09-21: remove `focus`, its global startup requirement and its hook template. Plans must not inject task-selection instructions at session start, resume, compaction or on user prompts.
 
 ### The language guides: `shared/lang/typescript.md`, `rust.md` (0_agents)
 
@@ -110,7 +93,7 @@ The three tiers, as the law states them. Free, the agent does it and planctl rec
 
 ### planctl and plan-gate (0_agents `planctl/`)
 
-Today: planctl refuses a fifth write, a story that does not repeat its paths, a commit touching one file beyond the writes, a Task without minutes; plan-gate checks receipts and nothing about how the text reads. Done, in four parts. PR #12 (open): writes are files, directories or globs with no cap, extra files are recorded in the result row, minutes and credits accept zero. The linter, in plan-gate: the skeleton (the Goal as currencies with today's number and target, the target tree, the Types block when `.ts` sources change, the New names table, the Not verified list); every box a command with its exit code or the Commit box; mermaid parsed; synonyms of vocabulary terms and plan codes (D1-S4, INV-12) in prose refused; every `export interface` or `export type` a Stage commit adds must be named in the SPEC's Interfaces block, so a type the owner never saw never appears; sentences over thirty words refused; Predict fields refused; a plan whose Stages together write two files or fewer refused, that is a commit, not a plan. The judge, `plan-gate --judge`: a fixed rubric in `shared/code-production/plan-judge.md`, one question per rule a linter cannot answer (is the Goal a goal or a problem, does each Stage read as a commit, would a history a human wrote have these Stages as separate commits and is there a Stage a human would split, are the names existing ones, is the prose plain), answered by a small model through `claude -p --model haiku` on the owner's subscription with a quote from the plan for every answer; 1.4 seconds on a test call today; the verdict stored by SPEC hash so the same bytes are never judged twice; `lock-spec` refuses without a PASS and an unavailable judge refuses the lock. The brief, `focus --brief`, as above.
+Today: planctl refuses a fifth write, a story that does not repeat its paths, a commit touching one file beyond the writes, a Task without minutes; plan-gate checks receipts and nothing about how the text reads. Done, in four parts. PR #12 (open): writes are files, directories or globs with no cap, extra files are recorded in the result row, minutes and credits accept zero. The linter, in plan-gate: the skeleton (the Goal as currencies with today's number and target, the target tree, the Types block when `.ts` sources change, the New names table, the Not verified list); every box a command with its exit code or the Commit box; mermaid parsed; synonyms of vocabulary terms and plan codes (D1-S4, INV-12) in prose refused; every `export interface` or `export type` a Stage commit adds must be named in the SPEC's Interfaces block, so a type the owner never saw never appears; sentences over thirty words refused; Predict fields refused; a plan whose Stages together write two files or fewer refused, that is a commit, not a plan. The judge, `plan-gate --judge`: a fixed rubric in `shared/code-production/plan-judge.md`, one question per rule a linter cannot answer (is the Goal a goal or a problem, does each Stage read as a commit, would a history a human wrote have these Stages as separate commits and is there a Stage a human would split, are the names existing ones, is the prose plain), answered by a small model through `claude -p --model haiku` on the owner's subscription with a quote from the plan for every answer; 1.4 seconds on a test call today; the verdict stored by SPEC hash so the same bytes are never judged twice; `lock-spec` refuses without a PASS and an unavailable judge refuses the lock.
 
 ### The instruction audit: `shared/code-production/instruction-audit.ts` (0_agents)
 
@@ -153,7 +136,7 @@ Today: the page exists on the `feat/graph-reading-pipeline` branch, unpushed, wi
 
 ### Project rules, skills, agents and hooks: Magnis `.claude/` and `.agents/` (Magnis plan)
 
-Today: six path-scoped rule files of which four describe Rust or paths that no longer exist; fifteen repo copies of skills and nine Codex copies with different bodies under the same names; three cops; twelve hooks plus three inline, one for cargo; a `permissions.yml` nobody reads. Done: rules become `testing.md`, `logging.md` and two three-line files (backend types; never hand-roll UI); every repo skill copy is deleted, the global ones serve; the cops stay, trimmed; the cargo hook and the inline prettier hook go, the `focus` hook and the CI-only checks (`check:rename`, the client-react typecheck) join the pre-push; `permissions.yml` is deleted.
+Today: six path-scoped rule files of which four describe Rust or paths that no longer exist; fifteen repo copies of skills and nine Codex copies with different bodies under the same names; three cops; twelve hooks plus three inline, one for cargo; a `permissions.yml` nobody reads. Done: rules become `testing.md`, `logging.md` and two three-line files (backend types; never hand-roll UI); every repo skill copy is deleted, the global ones serve; the cops stay, trimmed; the cargo hook and the inline prettier hook go, the CI-only checks (`check:rename`, the client-react typecheck) join the pre-push; `permissions.yml` is deleted.
 
 ### The process pages: Magnis `docs/` (Magnis plan)
 
@@ -178,7 +161,7 @@ Today: 93 files plus 16 twins, 56 of them lessons the agent recalls by chance. D
 - `vocabulary`: the instruction files use no synonym of a term in `shared/code-production/vocabulary.md`, one table of term, what it names, and the words not used for it; the audit names the term to say instead; a project's vocabulary page has the same shape and a plan's names are checked against both.
 - `language-by-file`: a language guide is named only in a rule that routes by file extension.
 - `free-tier`: a Task with five writes, a story naming none of them and a commit touching one more file is accepted and recorded (PR #12).
-- `focus-at-start`: a session opened in a worktree with a plan gets the brief from the SessionStart hook, on startup, resume and after a compaction; `planctl focus --brief` prints the plan, the open Stage, the started Task, the next commands and the tiers in at most twelve lines, in under two seconds.
+- `no-focus`: the installed CLI rejects `focus` and `focus --brief`; global rules and managed hook templates never invoke them.
 - `three-tiers-stated`: the process law names the three tiers and the owner's word appears only in the third.
 - `boxes-are-commands`: plan-gate refuses a plan whose acceptance box is neither `` `cmd` exits N `` nor `Commit`.
 - `strict-skeleton`: plan-gate refuses a plan missing a block of the skeleton.
@@ -744,4 +727,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - record-result D1-S7 commit:a9557d5c9c7677a3c104afe07044e6b40d5970f3
 
 - deviation D1-S7: Owner found that agent-stack check through the installed symlink looked for a module under ~/.local/shared. The previous verification called the TypeScript entrypoint directly and missed the launcher. The package test now runs check through absolute and relative symlinks from a directory with spaces: observed red, then green after resolving the launcher source path. The local entrypoint invokes its original main-checkout launcher by absolute path until the fix is merged; Magnis still reports two stale installed runtime files.
+
+- amend spec owner:УДАЛИ НАХУЙ focus (2026-09-21) sha256:2278415ff55a65ee7f8f21c8609291ede07cefd570bbe4d2acf2784eb8f2651e
 <!-- plan:execution:end -->
