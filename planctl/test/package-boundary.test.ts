@@ -70,8 +70,8 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
 
     const installed = installStack(consumer);
 
-    // Four runtime programs, vocabulary, three hooks, and the workflow.
-    expect(installed.files).toHaveLength(9);
+    // Four runtime programs, vocabulary, judge rubric, three hooks, and the workflow.
+    expect(installed.files).toHaveLength(10);
     for (const [source, target] of CANONICAL_RUNTIME) {
       expect(readFileSync(join(consumer, target), "utf8")).toBe(
         readFileSync(join(REPOSITORY_ROOT, "planctl", source), "utf8"),
@@ -83,7 +83,7 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
       { cwd: consumer, encoding: "utf8" },
     );
     expect(installedHelp.status).toBe(0);
-    const run = (...args: string[]) => spawnSync("bun", [join(consumer, ".agents/code-production/runtime/planctl.ts"), ...args], { cwd: consumer, encoding: "utf8", timeout: 15_000 });
+    const run = (...args: string[]) => spawnSync("bun", [join(consumer, ".agents/code-production/runtime/planctl.ts"), ...args], { cwd: consumer, encoding: "utf8", timeout: 15_000, env: { ...process.env, PATH: `${join(import.meta.dir, "fixtures/bin")}:${process.env.PATH}` } });
     const plan = "docs/plans/lint.md";
     expect(run("init", plan, "--title", "Lint").status).toBe(0);
     git(consumer, "commit", "-qm", "open the plan");

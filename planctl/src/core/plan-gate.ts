@@ -6,7 +6,7 @@
 // didn't finish and decided it was fine" a red check instead of a review
 // finding (docs/development-process.md §Cadence).
 //
-//   bun planctl/src/core/plan-gate.ts <plan.md> [--lint [--commit <sha>]] [--closure] [--root <repo>]
+//   bun planctl/src/core/plan-gate.ts <plan.md> [--lint [--commit <sha>]] [--judge] [--closure] [--root <repo>]
 
 import { readFileSync } from "node:fs";
 import { execSync, spawnSync } from "node:child_process";
@@ -787,7 +787,7 @@ if (import.meta.main && ["plan-gate.ts", "plan-gate.js"].includes(basename(impor
   const noExec = args.includes("--no-exec");
   const plan = args.find((a) => a.endsWith(".md"));
   if (plan === undefined) {
-    console.error("usage: bun planctl/src/core/plan-gate.ts <plan.md> [--closure] [--start] [--no-exec] [--root <repo>]");
+    console.error("usage: bun planctl/src/core/plan-gate.ts <plan.md> [--lint] [--judge] [--closure] [--start] [--no-exec] [--root <repo>]");
     process.exit(64);
   }
   const rootFlag = args.indexOf("--root");
@@ -795,7 +795,7 @@ if (import.meta.main && ["plan-gate.ts", "plan-gate.js"].includes(basename(impor
     ? execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).trim()
     : args[rootFlag + 1];
   if (!root) {
-    console.error("usage: bun planctl/src/core/plan-gate.ts <plan.md> [--closure] [--start] [--no-exec] [--root <repo>]");
+    console.error("usage: bun planctl/src/core/plan-gate.ts <plan.md> [--lint] [--judge] [--closure] [--start] [--no-exec] [--root <repo>]");
     process.exit(64);
   }
   if (args.includes("--lint")) {
@@ -805,7 +805,17 @@ if (import.meta.main && ["plan-gate.ts", "plan-gate.js"].includes(basename(impor
     const report = await lint(readFileSync(plan, "utf8"), root, commit);
     for (const metric of report.metrics) console.log(metric);
     for (const violation of report.violations) console.log(`VIOLATION [${violation.kind}] line ${violation.line}: ${violation.text}`);
-    process.exit(report.violations.length === 0 ? 0 : 1);
+    if (report.violations.length > 0) process.exit(1);
+    if (!args.includes("--judge")) process.exit(0);
+  }
+  if (args.includes("--judge")) {
+    try {
+      const { judgePlan } = await import("./plan-judge");
+      process.exit(judgePlan(readFileSync(plan, "utf8"), root) ? 0 : 1);
+    } catch (error) {
+      console.error(`plan-judge: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
   }
   const report = gatePlan(plan, { root, closure, start, noExec });
   console.log(`boxes: ${report.closedBoxes} closed / ${report.openBoxes} open; machinable criteria re-run: ${report.checkedCriteria}`);
