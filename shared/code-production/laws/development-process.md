@@ -81,10 +81,10 @@ of an unchanged head. Only the project's `agent:*` scripts, ever.
 
 ## Unattended, and the handoff
 
-A shortfall is a Deviations line and the work continues; a question the plan
-cannot answer gets the smallest reversible decision, recorded, and the work
-continues. Only irreversible data loss, security damage or the destruction of
-unmerged work stops a run. Time overrun stops nothing. "Done" is said with
+Continue within the owner's current task and explicit limits. Resolve missing
+implementation details there with the smallest reversible decision and record it.
+A Deviation does not authorize extra work. If those limits prevent completion,
+report the conflict instead of expanding the task. "Done" is said with
 its proof in the same message: the pull request as a Markdown link, the
 plan's mdurl, the head SHA and its CI run, what was not verified and why. A
 branch name or "pushed" is not a handoff. A Delivery's temp root,
