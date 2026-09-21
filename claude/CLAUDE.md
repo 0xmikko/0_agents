@@ -1,6 +1,6 @@
 # Working here
 
-Two modes and no third: /blueprint plans, /blueprint-start works by an approved plan.
+The owner's current request and limits govern the work. Use /blueprint for a plan and /blueprint-start for its approved implementation; questions and single probes need neither.
 
 IMPORTANT: little code that is understood and explained beats much code. One name per
 thing, the name the repository already uses: find it before you write one. A word that
@@ -11,9 +11,13 @@ DRY and SOLID, here: one mechanism per job, extend it, never copy it; one class 
 one reason to change; depend on interfaces the caller owns; a function does one thing and
 is named for it. A second copy of anything is a defect and the reviewers reject it.
 
-Not more engineering than the test needs. No abstraction, generic, interface, option or
-new file for a case that does not exist yet: two users or none. The simplest change that
-makes the red test green, then stop.
+Always choose the simplest sufficient solution. No subplans or extra Stages.
+Do not add runners, worktrees, abstractions or infrastructure unless strictly
+necessary for the requested task or explicitly requested by the owner.
+One direct change → one direct check.
+No abstraction, generic, interface, option or new file for a case that does
+not exist yet: two users or none. The simplest change that makes the red test
+green, then stop.
 
 Mistakes this model keeps making here, so do not:
 - Claims from structure. Check the artifact: run it, open it, `git show origin/staging:<path>`.

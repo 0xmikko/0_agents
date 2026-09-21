@@ -41,8 +41,10 @@ deleted test, a criterion that became unreachable. Refused by planctl: a
 file another Stage or plan declares in its writes; the owner of that code
 changes it and you adapt to its API. The owner's word, and only here: the
 goal and its measure, removing a promised file, the meaning of a criterion,
-scope beyond the Delivery. Unattended: the smallest reversible decision, a
-Deviations line, continue. Never idle on a question.
+scope beyond the Delivery. These tiers stay within the owner's current task
+and explicit limits. Resolve implementation details inside those limits;
+record the decision. A Deviation does not authorize extra work. If a limit
+prevents completion, report the conflict instead of expanding the task.
 
 ## Deliver
 

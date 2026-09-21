@@ -10,8 +10,10 @@ effort: high
 
 The diff under review is `origin/staging..HEAD` or the one commit the
 caller names. The plan in the conversation says what it was meant to do.
-This skill reports; the caller fixes and calls it again, two rounds at
-most. After the second round what remains is filed, not fixed.
+Run at most two review rounds. This skill reports; the caller fixes.
+The round limit does not stop corrections. The caller fixes real defects
+within the authorized task and verifies those fixes without requesting
+another approval merely because the second review round has ended.
 
 1. The three reviewers, in parallel, each on its one metric:
    coherence-cop (reuse and layers), coverage-cop (the state graph, one
