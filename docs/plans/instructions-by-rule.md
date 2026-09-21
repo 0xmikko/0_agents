@@ -435,20 +435,21 @@ Commit. refactor(agents): three reviewers judge TypeScript by TypeScript rules; 
 
 ##### Tasks
 
-- [ ] IBR_008 — Trim typescript.md and rust.md to style under 40 lines; remove every Rust and cargo section from the three cops, each under 80 lines; the reviewers test pins it.
+- [x] IBR_008 — Trim typescript.md and rust.md to style under 40 lines; remove every Rust and cargo section from the three cops, each under 80 lines; the reviewers test pins it. — 886ab063306da5f3cdd71f6386023efeec2c2ac8
 <!-- plan:task-meta:{"writes":["shared/lang/","claude/agents/","codex/agents/","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"edit the five files; the test reads them for size and for the words cargo, clippy, serde, TestCore","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_reviewers"} -->
 
 ##### Acceptance criteria
 
-- [ ] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_reviewers` exits 0 — guides under 40 lines, reviewers under 80, no Rust words
+- [x] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_reviewers` exits 0 — guides under 40 lines, reviewers under 80, no Rust words — 886ab063306da5f3cdd71f6386023efeec2c2ac8
 - [ ] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S6` exits 0 — the owner read what this Stage produced and said the word
-- [ ] Commit
+- [x] Commit — 886ab063306da5f3cdd71f6386023efeec2c2ac8
 
 ##### Results
 
 <!-- plan:results:D1-S6:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| IBR_008 | 886ab063306da5f3cdd71f6386023efeec2c2ac8 | 2026-09-21T07:30:17.813Z–2026-09-21T07:34:39.568Z | 4.362583333333333 / 4.362583333333333 min | unavailable: runner did not expose usage | TypeScript guide 22 lines, Rust guide 17; reviewers 31/35/35 lines, Codex symbolic links reuse the same files. Acceptance test failed on the original 91-line TypeScript guide then passed 24 assertions. Scoped audit 10/10; commit gate typecheck and 95/95 tests; docs audit clean. Coherence, coverage and simplicity reviews PASS; removed runtime/library prescriptions after simplicity finding. Continuous measured task interval; no owner or external wait. |
 <!-- plan:results:D1-S6:end -->
 <!-- plan:stage:D1-S6:end -->
 
@@ -716,4 +717,12 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - approve sha256:c8d045fc8b1ce39e578a6f1e230796d73753432d98ba6324ab488ec0e9ad1083 owner:плохое описание — я не вижу здесь, как агент создаёт план с помощью тулы; стадии иногда слишком коротки (два строки в 4 стадии) и напротив объёмные; давай дальше, сделаем штуку и протестируем на реальной истории — поехали (2026-09-21) (re-approval after the SPEC amendment)
 
 - deviation D1-S5: Stage 5 carries two commits: the owner's reading of plan-format.md turned a file-format page into the way a plan is made with planctl, and added the measure of a Stage; both laws are under 100 lines by the amendment of 2026-09-21
+
+- deviation D1-S3: Resume on 2026-09-21 reproduced two gaps: the global instruction invokes vendored focus without --brief, which refuses outside the dedicated package; installed focus without a plan refuses too. focus --brief works, but reports a Stage done when Tasks are complete while acceptance boxes remain open. No runtime repair is claimed.
+
+- record-result D1-S6 commit:886ab063306da5f3cdd71f6386023efeec2c2ac8
+
+- close D1-S6 partial commit:886ab063306da5f3cdd71f6386023efeec2c2ac8
+
+- deviation D1-S6: Measured line counts corrected after the result text transcription: TypeScript 21, Rust 17; coherence 32, coverage 37, simplicity 37. All promised limits pass. The owner-approval criterion remains open.
 <!-- plan:execution:end -->
