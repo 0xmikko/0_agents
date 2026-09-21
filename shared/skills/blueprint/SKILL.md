@@ -5,10 +5,11 @@ description: Write one plan the owner approves twice — the SPEC, then the Stag
 
 # Blueprint
 
-The plan is `docs/plans/<slug>.md` on `feat/<slug>`, born in its own worktree
-from fresh `origin/staging`, next to the list of open PRs into staging that
-touch the same files. `planctl init <plan> --title "…"` creates it; from then
-on planctl is the only pen.
+A change that is one commit is not a plan: `/bug`, a red test, a fix, a pull
+request. The plan is `docs/plans/<slug>.md` on `feat/<slug>`, born in its own
+worktree from fresh `origin/staging`, next to the list of open PRs into
+staging that touch the same files. `planctl init <plan> --title "…"` creates
+it; from then on planctl is the only pen.
 
 ## The SPEC
 
@@ -43,12 +44,14 @@ three review rounds, fixing only what the plan cannot run without.
 ## The Stages
 
 One Delivery is one PR; Stage 0 of a Delivery is the interface and its mock,
-committed first, so a second agent can build against it. Each Stage is one
-commit and reads as its commit message: what is built, how it is proven,
-its writes (files, directories, globs). A Task story names one change in
-under 200 characters. No minutes, no credits. `planctl put-delivery` and
-`planctl put-stage` from their `--help` JSON; never hand-write Stage
-Markdown. Check that every Goal line, flow and invariant has a Stage, then
-publish and ask again. Hard stop. `planctl approve-plan` with the owner's
-words. After that the plan changes only through `amend`, `start-task`,
-`complete-task`, `add-deviation`, `approve-stage` and `close-stage`.
+committed first, so a second agent can build against it. A Stage is a commit
+a reviewer reads in one sitting, green after it: two Stages one commit
+message would cover are one; a Stage with a second "What is built"
+paragraph, writes of two owners or more than three Tasks is two. A Task
+story names one change in under 200 characters. No minutes, no credits.
+`planctl put-delivery` and `planctl put-stage` from their `--help` JSON;
+never hand-write Stage Markdown. Check that every Goal line, flow and
+invariant has a Stage; the screen prints each Stage's writes and Tasks
+counts; publish and ask again. Hard stop. `planctl approve-plan` with the
+owner's words. After that the plan changes only through `amend`,
+`start-task`, `complete-task`, `add-deviation`, `approve-stage`, `close-stage`.

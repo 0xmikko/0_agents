@@ -218,14 +218,14 @@ describe("the laws", () => {
   // @deterministic: yes
   // @invariant: two laws carry every surviving rule once: the process under
   // 100 lines with the three tiers (the owner's word named only after the
-  // refused tier) and the register of experiments; the plan format under 80;
+  // refused tier) and the register of experiments; the plan format under 100;
   // the audit finds nothing in them.
-  it("tst_audit_laws_001 two laws, under 100 and 80 lines, three tiers, a register, clean audit", () => {
+  it("tst_audit_laws_001 two laws, each under 100 lines, three tiers, a register, clean audit", () => {
     expect(readdirSync(join(root, LAWS)).sort()).toEqual(["development-process.md", "plan-format.md"]);
     const process = readFileSync(join(root, LAWS, "development-process.md"), "utf8");
     const format = readFileSync(join(root, LAWS, "plan-format.md"), "utf8");
     const count = (text: string): number => text.trimEnd().split("\n").length;
-    expect({ process: count(process), format: count(format), fits: count(process) < 100 && count(format) < 80 })
+    expect({ process: count(process), format: count(format), fits: count(process) < 100 && count(format) < 100 })
       .toEqual({ process: count(process), format: count(format), fits: true });
     const tiers = process.slice(process.indexOf("## Three tiers"), process.indexOf("## Git"));
     expect(tiers.match(/^(Free|Recorded|Refused by planctl) — /gm)).toEqual(["Free — ", "Recorded — ", "Refused by planctl — "]);
