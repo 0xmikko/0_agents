@@ -6,14 +6,14 @@ focused on the approved Goal and Task, show evidence-backed delivery progress
 and ETA, distinguish stale work from an offline host or an owner wait, and
 notify the owner without uploading transcript content.
 
-The observer is optional. Local `planctl focus`, `progress`, and execution
+The observer is optional. Local `planctl progress` and execution
 commands keep working when the server cannot be reached.
 
 ## Processes
 
 | Process | Runs on | Responsibility |
 |---|---|---|
-| `planctl` | every agent worktree | Owns the approved plan lifecycle and gives agents a focused next action |
+| `planctl` | every agent worktree | Owns the approved plan lifecycle |
 | `planctld` | every coding machine | Discovers worktrees and Codex/Claude JSONL sessions, computes local idle state, and queues privacy-safe snapshots |
 | `planctl-server` | one central host | Authenticates machines, persists observations, computes progress/ETA and records attention transitions |
 | Telegram module | central host | Serves `/progress`, `/agents`, `/stale`, `/waiting` and sends transition alerts |
@@ -166,7 +166,6 @@ Inside an approved plan worktree:
 
 ```bash
 planctl start-task docs/plans/example.md --task EXAMPLE_001 --agent codex:session-id --config /absolute/machine.toml
-planctl focus docs/plans/example.md
 planctl progress docs/plans/example.md
 planctl progress docs/plans/example.md --server --config /absolute/machine.toml
 planctl needs-owner docs/plans/example.md --task EXAMPLE_001 --reason "Approve the production hostname"

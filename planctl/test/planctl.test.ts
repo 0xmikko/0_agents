@@ -5,6 +5,33 @@ import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
 import type { DeliveryInput, StageInput, StageResultReceipt } from "../src/core/plan-update";
+import { ownerWaitPath, readOwnerWait } from "../src/core/task-run";
+
+/**
+ * @test-id: tst_scripts_planctl_010
+ * @scenario: scn_planctl_no_automatic_task_001
+ * @covers: planctl/src/cli/main.ts::run
+ * @deterministic: yes
+ * @fixtures: isolated Git repository
+ * The retired focus command must not select a plan or issue work instructions.
+ */
+it("tst_scripts_planctl_010 rejects focus instead of issuing work instructions", () => {
+  const fixture = fixtureRepository();
+  try {
+    for (const args of [["focus", "--brief"], ["focus", fixture.plan], ["focus", "--help"]]) {
+      const result = run(fixture.root, ...args);
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stderr).toContain("unknown command focus");
+      expect(result.stdout).toBe("");
+    }
+    const help = run(fixture.root, "--help");
+    expect(help.status).toBe(0);
+    expect(help.stdout).not.toMatch(/^\s+focus\s/m);
+    expect(help.stdout).toContain("progress");
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
 
 const DELIVERY: DeliveryInput = {
   id: "D1",
@@ -396,7 +423,7 @@ describe("planctl", () => {
   /*
    * @test-id: tst_scripts_planctl_006
    * @scenario: scn_plan_control_006
-   * @covers: planctl/src/cli/main.ts::focus,progress,needs-owner,resume-task
+   * @covers: planctl/src/cli/main.ts::progress,needs-owner,resume-task
    * @deterministic: yes
    * @fixtures: temporary approved plan and Git-owned structured receipts
    * Test environment: isolated local Git repository
@@ -404,7 +431,7 @@ describe("planctl", () => {
    * Mocks: none
    * Data: one active Task with an owner-wait transition
    */
-  it("tst_scripts_planctl_006 keeps one Task focused through a structured owner wait", () => {
+  it("tst_scripts_planctl_006 records and clears a structured owner wait without selecting work", () => {
     const fixture = fixtureRepository();
     try {
       expect(run(fixture.root, "init", fixture.plan, "--title", "Fixture plan").status).toBe(0);
@@ -418,18 +445,7 @@ describe("planctl", () => {
       const approvedCommit = git(fixture.root, "rev-parse", "HEAD");
       expect(run(fixture.root, "clear-transaction", fixture.plan, "--commit", approvedCommit).status).toBe(0);
 
-      const unassigned = run(fixture.root, "focus", fixture.plan);
-      expect(unassigned.status, `${unassigned.stdout}\n${unassigned.stderr}`).toBe(0);
-      expect(unassigned.stdout).toContain("Status: unassigned");
-      expect(unassigned.stdout).toContain("Goal: Ship one observable result.");
-      expect(unassigned.stdout).toContain("Next ready: PLANCTL_001");
-
       expect(run(fixture.root, "start-task", fixture.plan, "--task", "PLANCTL_001").status).toBe(0);
-      const focused = run(fixture.root, "focus", fixture.plan, "--task", "PLANCTL_001");
-      expect(focused.status, `${focused.stdout}\n${focused.stderr}`).toBe(0);
-      expect(focused.stdout).toContain("Status: focused");
-      expect(focused.stdout).toContain("Current Task: PLANCTL_001");
-
       const waiting = run(
         fixture.root,
         "needs-owner",
@@ -440,12 +456,10 @@ describe("planctl", () => {
         "Choose the public hostname",
       );
       expect(waiting.status, `${waiting.stdout}\n${waiting.stderr}`).toBe(0);
-      const blocked = run(fixture.root, "focus", fixture.plan, "--task", "PLANCTL_001");
-      expect(blocked.stdout).toContain("Status: awaiting_owner");
-      expect(blocked.stdout).toContain("Owner response needed: Choose the public hostname");
-
+      const waitPath = ownerWaitPath(join(fixture.root, ".git"), "docs/plans/fixture.md", "PLANCTL_001");
+      expect(readOwnerWait(waitPath)?.reason).toBe("Choose the public hostname");
       expect(run(fixture.root, "start-task", fixture.plan, "--task", "PLANCTL_001").status).toBe(0);
-      expect(run(fixture.root, "focus", fixture.plan, "--task", "PLANCTL_001").stdout).toContain("Status: focused");
+      expect(readOwnerWait(waitPath)).toBeNull();
       expect(run(
         fixture.root,
         "needs-owner",
@@ -457,7 +471,7 @@ describe("planctl", () => {
       ).status).toBe(0);
       const resumed = run(fixture.root, "resume-task", fixture.plan, "--task", "PLANCTL_001");
       expect(resumed.status, `${resumed.stdout}\n${resumed.stderr}`).toBe(0);
-      expect(run(fixture.root, "focus", fixture.plan, "--task", "PLANCTL_001").stdout).toContain("Status: focused");
+      expect(readOwnerWait(waitPath)).toBeNull();
 
       const progress = run(fixture.root, "progress", fixture.plan);
       expect(progress.status, `${progress.stdout}\n${progress.stderr}`).toBe(0);

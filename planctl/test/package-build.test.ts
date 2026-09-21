@@ -74,15 +74,14 @@ it("tst_cert_planctl_build_001 bundles every production entrypoint without optio
 });
 
 /**
- * @test-id: tst_cert_planctl_built_focus_001
- * @scenario: scn_planctl_built_focus_001
- * @covers: planctl/src/cli/main.ts::focus
- * @covers: planctl/src/machine/discovery/git-worktree.source.ts::discoverGitWorktrees
+ * @test-id: tst_cert_planctl_built_progress_001
+ * @scenario: scn_planctl_built_progress_001
+ * @covers: planctl/src/cli/main.ts::progress
  * @deterministic: yes
  * @fixtures: isolated built artifacts, approved plan, Git remote and in-process progress server
  */
-it("tst_cert_planctl_built_focus_001 runs remote focus from the built CLI with Git-remote-only identity", async () => {
-  const output = mkdtempSync(join(tmpdir(), "planctl-built-focus-"));
+it("tst_cert_planctl_built_progress_001 runs authenticated remote progress from the built CLI", async () => {
+  const output = mkdtempSync(join(tmpdir(), "planctl-built-progress-"));
   roots.push(output);
   const [executable, ...args] = buildArguments(output);
   if (executable === undefined) throw new Error("planctl build executable is missing");
@@ -101,7 +100,7 @@ it("tst_cert_planctl_built_focus_001 runs remote focus from the built CLI with G
     ["config", "user.email", "fixture@example.test"],
     ["config", "user.name", "Fixture"],
     ["add", plan],
-    ["commit", "-qm", "test: built focus fixture"],
+    ["commit", "-qm", "test: built progress fixture"],
     ["remote", "add", "origin", "git@github.com:fixture/repository.git"],
   ]) {
     const result = spawnSync("git", gitArgs, { cwd: repository, encoding: "utf8" });
@@ -161,7 +160,7 @@ it("tst_cert_planctl_built_focus_001 runs remote focus from the built CLI with G
     const child = Bun.spawn([
       "bun",
       join(output, "cli/main.js"),
-      "focus",
+      "progress",
       plan,
       "--server",
       "--config",

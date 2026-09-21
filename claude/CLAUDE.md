@@ -1,7 +1,5 @@
 # Working here
 
-Where you are and what you can do now is printed at session start by planctl. If it is
-missing, run `bun .agents/code-production/runtime/planctl.ts focus` before anything else.
 Two modes and no third: /blueprint plans, /blueprint-start works by an approved plan.
 
 IMPORTANT: little code that is understood and explained beats much code. One name per
