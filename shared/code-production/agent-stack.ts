@@ -152,6 +152,12 @@ function managedFiles(sourceRoot: string, ci: CiContract): readonly ManagedFile[
       guarded: false,
     },
     {
+      source: join(sourceRoot, "plan-judge.md"),
+      target: ".agents/code-production/runtime/plan-judge.md",
+      executable: false,
+      guarded: false,
+    },
+    {
       source: join(planctlSource, "core/plan-gate.ts"),
       target: ".agents/code-production/runtime/plan-gate.ts",
       executable: true,

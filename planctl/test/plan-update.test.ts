@@ -170,7 +170,7 @@ describe("plan-update", () => {
       git("add", "plan.md");
       git("commit", "-qm", "draft");
 
-      execFileSync("bun", [writer, "plan.md", "lock-spec", "--owner-word", "spec"], { cwd: root });
+      execFileSync("bun", [writer, "plan.md", "lock-spec", "--owner-word", "spec"], { cwd: root, env: { ...process.env, PATH: `${join(import.meta.dir, "fixtures/bin")}:${process.env.PATH}` } });
       execFileSync("bun", [writer, "plan.md", "put-delivery", "--from", deliveryJson], { cwd: root });
       execFileSync("bun", [writer, "plan.md", "verify-staged"], { cwd: root });
 

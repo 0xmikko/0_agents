@@ -8,8 +8,12 @@ import { execFileSync, spawnSync } from "node:child_process";
 // Shared by the writer and the acceptance gate. The command opens the box.
 export const MACHINABLE = /^`([^`]+)`\s+exits\s+(\d+)/;
 
+export function protocolSpec(body: string): string {
+  return region(body, SPEC_START, SPEC_END).text;
+}
+
 export function protocolSpecHash(body: string): string {
-  return digest(region(body, SPEC_START, SPEC_END).text);
+  return digest(protocolSpec(body));
 }
 
 export function protocolImplementationHash(body: string): string {
@@ -1641,11 +1645,15 @@ if (import.meta.main && ["plan-update.ts", "plan-update.js"].includes(basename(i
   try {
     switch (command) {
       case "lock-spec": {
+        const checkedBody = readFileSync(plan, "utf8");
         const gate = resolve(import.meta.dir, import.meta.path.endsWith(".js") ? "plan-gate.js" : "plan-gate.ts");
-        const checked = spawnSync("bun", [gate, plan, "--lint", "--root", process.cwd()], { encoding: "utf8", timeout: 30_000 });
+        const checked = spawnSync("bun", [gate, plan, "--lint", "--judge", "--root", process.cwd()], { encoding: "utf8", timeout: 60_000 });
         if (checked.status !== 0) throw new Error(checked.error?.message ?? `${checked.stdout}${checked.stderr}`.trim());
         process.stdout.write(checked.stdout);
-        mutatePlanFile(plan, command, (body) => lockPlanSpec(body, requiredFlag(args, "--owner-word")));
+        mutatePlanFile(plan, command, (body) => {
+          if (body !== checkedBody) throw new Error("plan changed while lint or judge was running; review the current SPEC again");
+          return lockPlanSpec(body, requiredFlag(args, "--owner-word"));
+        });
         break;
       }
       case "put-delivery":

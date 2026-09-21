@@ -101,7 +101,7 @@ function fixtureRepository(): {
 }
 
 function run(root: string, ...args: readonly string[]) {
-  return spawnSync("bun", [join(import.meta.dir, "../src/cli/main.ts"), ...args], { cwd: root, encoding: "utf8" });
+  return spawnSync("bun", [join(import.meta.dir, "../src/cli/main.ts"), ...args], { cwd: root, encoding: "utf8", env: { ...process.env, PATH: `${join(import.meta.dir, "fixtures/bin")}:${process.env.PATH}` } });
 }
 
 describe("planctl", () => {

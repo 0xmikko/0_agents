@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -291,4 +291,27 @@ describe("the audit as a command", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+});
+
+// @test-id: tst_audit_008
+// @covers: the audit invocation in agent:verify:docs rejects a broken instruction tree.
+it("tst_audit_008 enforces findings in the project docs command", () => {
+  const root = tree({ "claude/CLAUDE.md": "See `claude/agents/missing.md`.\n" });
+  try {
+    const repo = join(import.meta.dir, "../..");
+    const pkg: unknown = JSON.parse(readFileSync(join(repo, "planctl/package.json"), "utf8"));
+    if (typeof pkg !== "object" || pkg === null || !("scripts" in pkg)) throw new Error("missing scripts");
+    const scripts = pkg.scripts;
+    if (typeof scripts !== "object" || scripts === null || !("agent:verify:docs" in scripts)) throw new Error("missing docs command");
+    const command = scripts["agent:verify:docs"];
+    if (typeof command !== "string") throw new Error("invalid docs command");
+    // Run the configured audit after the test portion, without recursively running this test.
+    const auditCommand = command.split(" && ").find(part => part.includes("instruction-audit.ts"));
+    if (auditCommand === undefined) throw new Error("docs command does not invoke the audit");
+    copyFileSync(join(repo, "shared/code-production/instruction-audit.ts"), join(root, "shared/code-production/instruction-audit.ts"));
+    mkdirSync(join(root, "planctl"));
+    const result = Bun.spawnSync(["sh", "-c", auditCommand], { cwd: join(root, "planctl"), stdout: "pipe", stderr: "pipe" });
+    expect(result.stdout.toString()).toContain("dead-reference claude/agents/missing.md");
+    expect(result.exitCode).toBe(1);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
