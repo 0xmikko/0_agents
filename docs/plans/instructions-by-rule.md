@@ -473,7 +473,7 @@ Commit. feat(plan-gate): a linter refuses the plan defects the owner used to cor
 
 ##### Tasks
 
-- [ ] IBR_009 — plan-gate --lint refuses the eight form defects on fixture plans and passes a clean one; lock-spec runs it; plan-gate.test.ts carries one fixture per refusal.
+- [x] IBR_009 — plan-gate --lint refuses the eight form defects on fixture plans and passes a clean one; lock-spec runs it; plan-gate.test.ts carries one fixture per refusal. — a9557d5c9c7677a3c104afe07044e6b40d5970f3
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-gate.ts","planctl/test/plan-gate.test.ts","planctl/test/fixtures/"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"add lint() with the eight checks; mermaid parsed with the mermaid parser already in the repo's Playwright or a pure parser; wire into lock-spec","red":"bun run agent:test:backend -- test/plan-gate.test.ts -t tst_gate_lint"} -->
 
 ##### Acceptance criteria
@@ -487,6 +487,7 @@ Commit. feat(plan-gate): a linter refuses the plan defects the owner used to cor
 <!-- plan:results:D1-S7:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| IBR_009 | a9557d5c9c7677a3c104afe07044e6b40d5970f3 | 2026-09-21T08:36:56.223Z–2026-09-21T11:04:13.000Z | 147.27961666666667 / 147.27961666666667 min | unavailable: runner did not expose usage | Plan form lint and SPEC lock refusal implemented, with real TypeScript and Mermaid parsing, shared vocabulary and commit paths, and a bundled consumer gate. New tests were RED on malformed approval, generated Predict, TypeScript syntax, Stage prose and install-directory drift; now GREEN. Full gate: typecheck, lint, 98 tests, build. After the final build-cwd fix, docs gate: 11 tests and clean audit. Three reviewers ran twice; all correctness findings fixed, including the final cwd finding proven by the consumer regression. Export checks require --lint --commit. No live consumer rollout; owner Stage acceptance remains open. — beyond writes: planctl/bun.lock, planctl/package.json, planctl/src/core/plan-update.ts, planctl/test/focus.test.ts, planctl/test/package-boundary.test.ts, planctl/test/plan-update.test.ts, planctl/test/planctl.test.ts, planctl/tsconfig.json, shared/code-production/agent-stack.ts, shared/code-production/instruction-audit.ts |
 <!-- plan:results:D1-S7:end -->
 <!-- plan:stage:D1-S7:end -->
 
@@ -739,4 +740,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - deviation D1-S7: Consumer runtimes need the same lint behavior without adding parser dependencies to every project. agent-stack now bundles plan-gate with its parsers and installs the vocabulary alongside it; the package-boundary test proves approval through the installed CLI. Hashes and criterion grammar moved to their writer owner to remove the import cycle; the gate re-exports the existing API. Historical Stage predictions remain readable.
 
 - deviation D1-S7: Review found that bundling depended on the caller directory and checkStack marked a fresh install stale. A consumer-directory regression was observed red; fixing the build cwd made the docs gate pass 11 tests and the instruction audit. The full planctl gate had passed 98 tests, typecheck, lint and build before this one-line fix; the affected installation flow was rerun afterward.
+
+- record-result D1-S7 commit:a9557d5c9c7677a3c104afe07044e6b40d5970f3
 <!-- plan:execution:end -->
