@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,7 +41,7 @@ function consumerPackage(): string {
 /**
  * @test-id: tst_unit_planctl_package_001
  * @scenario: scn_planctl_package_001
- * @covers: planctl/src/cli/main.ts, shared/code-production/agent-stack.ts::managedFiles
+ * @covers: planctl/src/cli/main.ts, shared/code-production/agent-stack.ts::managedFiles, bin/agent-stack::symlink-resolution
  * @deterministic: yes
  * @fixtures: temporary Git consumer repository
  *
@@ -91,7 +92,11 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
     const locked = run("approve-spec", plan, "--owner-word", "yes");
     expect(locked.status, locked.stderr).toBe(0);
     expect(readFileSync(join(consumer, plan), "utf8")).toContain("Status: SPEC_LOCKED");
-    const checked = spawnSync("bun", [join(REPOSITORY_ROOT, "shared/code-production/agent-stack.ts"), "check", consumer], { cwd: consumer, encoding: "utf8", timeout: 15_000 });
+    const installedBin = join(consumer, "local bin");
+    mkdirSync(installedBin);
+    symlinkSync(join(REPOSITORY_ROOT, "bin/agent-stack"), join(installedBin, "agent-stack-target"));
+    symlinkSync("agent-stack-target", join(installedBin, "agent-stack"));
+    const checked = spawnSync(join(installedBin, "agent-stack"), ["check", consumer], { cwd: consumer, encoding: "utf8", timeout: 15_000 });
     expect(checked.status, checked.stderr).toBe(0);
 
     expect(installedHelp.stdout).toContain("planctl <command>");

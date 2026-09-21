@@ -742,4 +742,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - deviation D1-S7: Review found that bundling depended on the caller directory and checkStack marked a fresh install stale. A consumer-directory regression was observed red; fixing the build cwd made the docs gate pass 11 tests and the instruction audit. The full planctl gate had passed 98 tests, typecheck, lint and build before this one-line fix; the affected installation flow was rerun afterward.
 
 - record-result D1-S7 commit:a9557d5c9c7677a3c104afe07044e6b40d5970f3
+
+- deviation D1-S7: Owner found that agent-stack check through the installed symlink looked for a module under ~/.local/shared. The previous verification called the TypeScript entrypoint directly and missed the launcher. The package test now runs check through absolute and relative symlinks from a directory with spaces: observed red, then green after resolving the launcher source path. The local entrypoint invokes its original main-checkout launcher by absolute path until the fix is merged; Magnis still reports two stale installed runtime files.
 <!-- plan:execution:end -->
