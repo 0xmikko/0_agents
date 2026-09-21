@@ -461,9 +461,9 @@ Commit. feat(plan-gate): a linter refuses the plan defects the owner used to cor
 
 ##### Acceptance criteria
 
-- [ ] `bun run --cwd planctl agent:test:backend -- test/plan-gate.test.ts -t tst_gate_lint` exits 0 — each form defect is refused with its line and the clean fixture passes
-- [ ] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S7` exits 0 — the owner read what this Stage produced and said the word
-- [ ] Commit
+- [x] `bun run --cwd planctl agent:test:backend -- test/plan-gate.test.ts -t tst_gate_lint` exits 0 — each form defect is refused with its line and the clean fixture passes — baaa8b61b5faa30a9352a7592a88e93c2fe4fddb
+- [x] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S7` exits 0 — the owner read what this Stage produced and said the word — baaa8b61b5faa30a9352a7592a88e93c2fe4fddb
+- [x] Commit — baaa8b61b5faa30a9352a7592a88e93c2fe4fddb
 
 ##### Results
 
@@ -731,4 +731,8 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - amend spec owner:УДАЛИ НАХУЙ focus (2026-09-21) sha256:2278415ff55a65ee7f8f21c8609291ede07cefd570bbe4d2acf2784eb8f2651e
 
 - approve sha256:c8d045fc8b1ce39e578a6f1e230796d73753432d98ba6324ab488ec0e9ad1083 owner:2026-09-21: owner removed focus; retain the already approved implementation for all other work
+
+- approve-stage D1-S7 owner:Owner merged Stage 7 and its follow-up, deployed them, then said: тогда пошли дальше по плану (2026-09-21) — owner, 2026-09-21
+
+- close D1-S7 closed commit:baaa8b61b5faa30a9352a7592a88e93c2fe4fddb
 <!-- plan:execution:end -->
