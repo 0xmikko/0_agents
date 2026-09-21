@@ -1,8 +1,8 @@
 # Agent instructions, rule by rule: memory becomes law, the rest is cut
 
-Status: SPEC_LOCKED  
+Status: APPROVED  
 Spec lock: sha256:2278415ff55a65ee7f8f21c8609291ede07cefd570bbe4d2acf2784eb8f2651e owner:УДАЛИ НАХУЙ focus (2026-09-21)  
-Implementation lock: stale  
+Implementation lock: sha256:c8d045fc8b1ce39e578a6f1e230796d73753432d98ba6324ab488ec0e9ad1083 owner:2026-09-21: owner removed focus; retain the already approved implementation for all other work  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -729,4 +729,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - deviation D1-S7: Owner found that agent-stack check through the installed symlink looked for a module under ~/.local/shared. The previous verification called the TypeScript entrypoint directly and missed the launcher. The package test now runs check through absolute and relative symlinks from a directory with spaces: observed red, then green after resolving the launcher source path. The local entrypoint invokes its original main-checkout launcher by absolute path until the fix is merged; Magnis still reports two stale installed runtime files.
 
 - amend spec owner:УДАЛИ НАХУЙ focus (2026-09-21) sha256:2278415ff55a65ee7f8f21c8609291ede07cefd570bbe4d2acf2784eb8f2651e
+
+- approve sha256:c8d045fc8b1ce39e578a6f1e230796d73753432d98ba6324ab488ec0e9ad1083 owner:2026-09-21: owner removed focus; retain the already approved implementation for all other work
 <!-- plan:execution:end -->
