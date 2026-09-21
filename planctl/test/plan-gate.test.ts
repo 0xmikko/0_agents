@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
+
+import { lockPlanSpec, putDelivery, putStage, stageInputs, type StageInput } from "../src/core/plan-update";
 
 import { checkPlanFreeze, gatePlan, planItems } from "../src/core/plan-gate";
 
@@ -51,6 +53,188 @@ function makeRepo(): { root: string; sha: string } {
 function planWith(body: string): string {
   return `# A plan\n\n## Stages\n\n${body}\n`;
 }
+
+describe("plan form", () => {
+  const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8");
+  const gate = join(import.meta.dir, "../src/core/plan-gate.ts");
+  const cli = join(import.meta.dir, "../src/cli/main.ts");
+
+  // @test-id: tst_gate_lint_001
+  // @scenario: scn_plan_form_001
+  // @covers: planctl/src/core/plan-gate.ts --lint
+  // @deterministic: yes
+  // @fixtures: plan-lint.md, changed once per form defect
+  it("tst_gate_lint_001 refuses each form defect with its source line and accepts valid syntax", () => {
+    const { root } = makeRepo();
+    try {
+      const plan = join(root, "plan.md");
+      const cases = [
+        [spec.replace("## Why now", "## Background"), "Why now"],
+        [spec.replace("### Target tree", "### Files"), "Target tree"],
+        [spec.replace("export interface Change {\n  readonly name: string;\n  readonly accepted: boolean;\n}", "const value = 1;"), "Interfaces"],
+        [spec.replace("  readonly name: string;\n  readonly accepted: boolean;", "  readonly name: string; readonly accepted: boolean;"), "field"],
+        [spec.replace("readonly name: string;", "readonly name: ;"), "TypeScript"],
+        [spec.replace("Input[\"Change (input)\"]", "Input[Change (input)]"), "mermaid"],
+        [spec.replace("The current parser accepts empty names.", "This phase accepts empty names."), "Stage"],
+        [spec.replace("The current parser accepts empty names.", "Continue D1-S4 before INV-12."), "code"],
+        [spec.replace("The current parser accepts empty names.", `${"word ".repeat(31)}ends.`), "thirty"],
+        [spec.replace("The current parser accepts empty names.", `${"word ".repeat(16)}\n${"word ".repeat(16)}ends.`), "thirty"],
+        [spec + "\n- Predict: 12 active min / 4 credits.\n", "Predict"],
+        [spec + "\n##### Acceptance criteria\n\n- [ ] Works correctly\n", "criterion"],
+        [spec.replace("| Name | Reason |\n|---|---|\n| Change | Names the existing public input. |", "No names."), "table"],
+      ];
+      for (const [body, reason] of cases) {
+        if (body === undefined || reason === undefined) throw new Error("invalid defect fixture");
+        writeFileSync(plan, body);
+        const run = spawnSync("bun", [gate, plan, "--lint", "--root", root], { encoding: "utf8", env: CLEAN_GIT_ENV, timeout: 15_000 });
+        expect(run.status, `${reason}: ${run.stdout}\n${run.stderr}`).toBe(1);
+        expect(run.stdout).toContain(reason);
+        expect(run.stdout).toMatch(/line [1-9]\d*:/);
+        const locations: Readonly<Record<string, string>> = { field: "readonly name:", mermaid: "Input[Change", TypeScript: "readonly name:", Stage: "This phase", code: "Continue D1-S4", thirty: "word word", Predict: "- Predict:", criterion: "- [ ] Works" };
+        const location = locations[reason];
+        if (location !== undefined) expect(run.stdout).toContain(`line ${body.split("\n").findIndex((line) => line.includes(location)) + 1}:`);
+      }
+      writeFileSync(plan, spec + "\n##### Acceptance criteria\n\n- [ ] `true` exits 0 — valid result\n- [ ] Commit\n");
+      const clean = spawnSync("bun", [gate, plan, "--lint", "--root", root], { encoding: "utf8", env: CLEAN_GIT_ENV, timeout: 15_000 });
+      expect(clean.status, `${clean.stdout}\n${clean.stderr}`).toBe(0);
+      expect(clean.stdout).toContain("SPEC lines:");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  // @test-id: tst_gate_lint_002
+  // @scenario: scn_plan_spec_approval_001
+  // @covers: planctl/src/core/plan-update.ts::lock-spec
+  // @deterministic: yes
+  // @fixtures: a draft plan; malformed SPEC followed by the complete SPEC
+  it("tst_gate_lint_002 refuses to lock malformed SPEC without changing the draft, then locks a valid SPEC", () => {
+    const { root } = makeRepo();
+    const plan = "docs/plans/fixture.md";
+    const run = (...args: string[]) => spawnSync("bun", [cli, ...args], { cwd: root, encoding: "utf8", env: CLEAN_GIT_ENV, timeout: 15_000 });
+    try {
+      expect(run("init", plan, "--title", "Fixture").status).toBe(0);
+      git(root, 'commit -qm "draft"');
+      writeFileSync(join(root, "spec.md"), "## The Goal\n\nA result.\n");
+      expect(run("set-spec", plan, "--from", "spec.md").status).toBe(0);
+      const before = readFileSync(join(root, plan), "utf8");
+      const refused = run("approve-spec", plan, "--owner-word", "yes");
+      expect(refused.status, `${refused.stdout}\n${refused.stderr}`).toBe(1);
+      expect(refused.stderr).toContain("Why now");
+      expect(readFileSync(join(root, plan), "utf8")).toBe(before);
+      writeFileSync(join(root, "spec.md"), spec);
+      expect(run("set-spec", plan, "--from", "spec.md").status).toBe(0);
+      const accepted = run("approve-spec", plan, "--owner-word", "yes");
+      expect(accepted.status, `${accepted.stdout}\n${accepted.stderr}`).toBe(0);
+      expect(readFileSync(join(root, plan), "utf8")).toContain("Status: SPEC_LOCKED");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  // @test-id: tst_gate_lint_003
+  // @scenario: scn_plan_commit_form_001
+  // @covers: plan-gate --lint --commit; canonical writer roundtrip
+  // @deterministic: yes
+  // @fixtures: rendered plan and a real commit adding an undocumented type
+  it("tst_gate_lint_003 checks generated plans, task size, write scope and types from the work commit", () => {
+    const { root } = makeRepo();
+    const plan = join(root, "plan.md");
+    const check = (body: string, ...args: string[]) => {
+      writeFileSync(plan, body);
+      return spawnSync("bun", [gate, plan, "--lint", "--root", root, ...args], { encoding: "utf8", env: CLEAN_GIT_ENV, timeout: 15_000 });
+    };
+    try {
+      const draft = `Status: SPEC_DRAFT
+Spec lock: unlocked
+Implementation lock: unlocked
+Active Delivery: none
+<!-- plan:spec:start -->
+${spec}<!-- plan:spec:end -->
+<!-- plan:implementation:start -->
+## Implementation contract
+<!-- plan:implementation:end -->
+<!-- plan:execution:start -->
+## Execution log
+<!-- plan:execution:end -->
+`;
+      const base = putDelivery(lockPlanSpec(draft, "yes").body, {
+        id: "D1", title: "Validate input", branch: "feat/input", depends: [], gate: ["backend"], active: true,
+        stageGraph: "D1-S1", predictedExternalWaitMinutes: 0,
+        description: "What changed for people. Empty names fail.\n\nWhat changed in the code. One parser.\n\nHow it was proven. Tests.",
+      });
+      const writes = ["src/change.ts", "src/save.ts", "test/change.test.ts"] as const;
+      const input: StageInput = {
+        id: "D1-S1", deliveryId: "D1", title: "Validate input", owner: "agent", profile: "fast", depends: [], parallelWith: [],
+        writes, tempRoot: ".tmp/code-production/fixture/D1-S1", predictedActiveMinutes: 0, predictedCredits: 0, verifyActiveMinutes: 0, verifyCredits: 0,
+        description: "What this Stage solves. Empty names.\n\nWhat is built. Validation.\n\nHow it is proven. Tests.\n\nCommit. feat: validate names",
+        tasks: [{ id: "INPUT_001", story: "Reject empty names before storage", writes, predictedActiveMinutes: 0, predictedCredits: 0, how: "extend the parser", red: "bun run agent:test:backend -- test/change.test.ts" }],
+        criteria: ["`true` exits 0 — validated", "Commit"],
+      };
+      const body = putStage(base.body, input).body;
+      const predicted = putStage(base.body, { ...input, predictedActiveMinutes: 12, verifyActiveMinutes: 12 }).body;
+      const legacy = predicted.replace(/<!-- plan:stage-meta:(\{[^\n]*\}) -->/, (_all, raw: string) => {
+        const meta = JSON.parse(raw);
+        delete meta.predictedActiveMinutes;
+        delete meta.predictedCredits;
+        return `<!-- plan:stage-meta:${JSON.stringify(meta)} -->`;
+      }).replace("- Of which verification:", "- Predict: 12 active min / 0 credits.\n- Of which verification:");
+      const legacyStage = stageInputs(legacy)[0];
+      if (legacyStage === undefined) throw new Error("legacy Stage was lost");
+      expect(legacyStage.predictedActiveMinutes).toBe(12);
+      const rewritten = putStage(legacy, legacyStage).body;
+      expect(stageInputs(rewritten)[0]?.predictedActiveMinutes).toBe(12);
+      expect(rewritten).not.toContain("- Predict:");
+      const clean = check(body);
+      expect(clean.status, `${clean.stdout}\n${clean.stderr}`).toBe(0);
+      expect(clean.stdout).toContain("Stages: 1");
+      for (const [changed, reason] of [
+        [body.replace("Reject empty names before storage", "x".repeat(201)), "200 characters"],
+        [body.replace("#### Stage D1-S1 — Validate input", "#### Stage D1-S1 — Validate phase"), "say Stage"],
+        [body.replace("What this Stage solves. Empty names.", "What this phase solves. Empty names."), "say Stage"],
+        [body.replace("Reject empty names before storage", "Reject names from INV-12 before storage"), "plan code"],
+      ]) {
+        if (changed === undefined || reason === undefined) throw new Error("missing fixture");
+        const rejected = check(changed);
+        expect(rejected.status, rejected.stdout).toBe(1);
+        expect(rejected.stdout).toContain(reason);
+      }
+      const small = putStage(base.body, { ...input, writes: writes.slice(0, 2), tasks: input.tasks.map((task) => ({ ...task, writes: writes.slice(0, 2) })) });
+      const smallResult = check(small.body);
+      expect(smallResult.status).toBe(1);
+      expect(smallResult.stdout).toContain("two files or fewer");
+      mkdirSync(join(root, "src"));
+      writeFileSync(join(root, writes[0]), "export interface Change { name: string; }\nexport type Surprise = string;\n");
+      git(root, "add src/change.ts");
+      git(root, 'commit -qm "introduce public input"');
+      const refused = check(body, "--commit", "HEAD");
+      expect(refused.status).toBe(1);
+      expect(refused.stdout).toContain("src/change.ts: exported type Surprise is missing");
+      const documented = body.replace("export interface Change {", "export type Surprise = string;\nexport interface Change {");
+      expect(check(documented, "--commit", "HEAD").status).toBe(0);
+      git(root, "checkout -qb extra");
+      writeFileSync(join(root, "src/extra.ts"), "export type Outside = boolean;\n");
+      git(root, "add src/extra.ts");
+      git(root, 'commit -qm "add an allowed extra file"');
+      const extra = check(documented, "--commit", "HEAD");
+      expect(extra.status).toBe(1);
+      expect(extra.stdout).toContain("exported type Outside is missing");
+      git(root, "checkout -q -");
+      git(root, 'merge --no-ff -qm "merge the extra input" extra');
+      const merge = check(documented, "--commit", "HEAD");
+      expect(merge.status).toBe(1);
+      expect(merge.stdout).toContain("exported type Outside is missing");
+      mkdirSync(join(root, "docs"));
+      writeFileSync(join(root, "docs/graph.md"), "| Term | Meaning | Not |\n|---|---|---|\n| name | input name | label |\n");
+      const glossary = check(body.replace("empty names", "empty label"));
+      expect(glossary.status).toBe(1);
+      expect(glossary.stdout).toContain("say name instead of label");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+});
 
 describe("plan-gate", () => {
   // @invariant: the shared box grammar is the foundation every other rule

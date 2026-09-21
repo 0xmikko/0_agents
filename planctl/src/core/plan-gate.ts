@@ -6,12 +6,14 @@
 // didn't finish and decided it was fine" a red check instead of a review
 // finding (docs/development-process.md §Cadence).
 //
-//   bun planctl/src/core/plan-gate.ts <plan.md> [--closure] [--root <repo>]
+//   bun planctl/src/core/plan-gate.ts <plan.md> [--lint [--commit <sha>]] [--closure] [--root <repo>]
 
 import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { execSync, spawnSync } from "node:child_process";
-import { basename } from "node:path";
+import { basename, resolve } from "node:path";
+import type { Content, Root } from "mdast";
+import { stageInputs, stageResultCommitPaths, MACHINABLE, protocolSpecHash, protocolImplementationHash } from "./plan-update";
+export { MACHINABLE, protocolSpecHash, protocolImplementationHash } from "./plan-update";
 
 export interface GateViolation {
   kind: "missing-receipt" | "unknown-receipt" | "stray-receipt" | "criterion-failed" | "open-box"
@@ -39,40 +41,8 @@ export const RECEIPT = /—\s*([0-9a-f]{7,40})\s*$/;
 // plan-close's own ceiling for the same reason — two sessions, one measured
 // fact.
 const DEFAULT_CRITERION_TIMEOUT_MS = 12 * 60_000;
-// A criterion is machinable only when the command OPENS the item — prose
-// that quotes the form mid-sentence is not an instruction to execute it.
-export const MACHINABLE = /^`([^`]+)`\s+exits\s+(\d+)/;
-
 const PROTOCOL_SPEC_START = "<!-- plan:spec:start -->";
 const PROTOCOL_SPEC_END = "<!-- plan:spec:end -->";
-const PROTOCOL_IMPLEMENTATION_START = "<!-- plan:implementation:start -->";
-const PROTOCOL_IMPLEMENTATION_END = "<!-- plan:implementation:end -->";
-
-function protocolRegion(body: string, start: string, end: string): string {
-  const from = body.indexOf(start);
-  const to = body.indexOf(end);
-  if (from === -1 || to === -1 || to <= from) throw new Error(`missing ordered markers ${start} and ${end}`);
-  return body.slice(from, to + end.length);
-}
-
-function sha256(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-export function protocolSpecHash(body: string): string {
-  return sha256(protocolRegion(body, PROTOCOL_SPEC_START, PROTOCOL_SPEC_END));
-}
-
-export function protocolImplementationHash(body: string): string {
-  const normalized = protocolRegion(body, PROTOCOL_IMPLEMENTATION_START, PROTOCOL_IMPLEMENTATION_END)
-    .replace(/^- \[[ x]\]/gm, "- [ ]")
-    .replace(/^(\s*- \[ \].*?) — [0-9a-f]{7,40}$/gm, "$1")
-    .replace(
-      /<!-- plan:results:(D[1-9]\d*-S[1-9]\d*):start -->[\s\S]*?<!-- plan:results:\1:end -->/g,
-      "<!-- plan:results:$1:start -->\n<!-- plan:results:$1:end -->",
-    );
-  return sha256(normalized);
-}
 
 export function protocolLockViolations(body: string): readonly string[] {
   if (!body.includes(PROTOCOL_SPEC_START)) return [];
@@ -124,8 +94,8 @@ export interface PlanItem {
 }
 
 const STAGE_HEADING = /^###\s+Stage\s+(\d+)/i;
-const TASKS_HEADING = /^####\s+Tasks\s*$/i;
-const CRITERIA_HEADING = /^####\s+Acceptance criteria\s*$/i;
+const TASKS_HEADING = /^#{4,5}\s+Tasks\s*$/i;
+const CRITERIA_HEADING = /^#{4,5}\s+Acceptance criteria\s*$/i;
 
 /** Every box in the document, in order — the one place box grammar lives:
  * the checkbox, the wrapped continuation, the normalized text. Both the gate
@@ -194,6 +164,206 @@ function collectItems(lines: string[], stage: number | null): PlanItem[] {
   return items;
 }
 
+
+function markdownNodes(tree: Root | Content): (Root | Content)[] {
+  return [tree, ...("children" in tree ? tree.children.flatMap(markdownNodes) : [])];
+}
+
+function sourceLine(node: Root | Content): number {
+  if (node.position === undefined) throw new Error("Markdown parser returned a node without a source position");
+  return node.position.start.line;
+}
+
+function proseText(node: Root | Content): string {
+  if (node.type === "text") return node.value;
+  return "children" in node ? node.children.map(proseText).join("") : "";
+}
+
+function lintProse(
+  nodes: readonly (Root | Content)[],
+  matches: (text: string) => { word: string; term: string }[],
+  add: (line: number, text: string) => void,
+): void {
+  for (const node of nodes) {
+    if (node.type !== "paragraph" && node.type !== "heading") continue;
+    const text = proseText(node).replace(/^(?:Stage D\d+-S\d+|PR Delivery D\d+|\[[ x]\] [A-Z][A-Z0-9_-]*) — /, "");
+    // The writer owns these structural fields, including dependency IDs.
+    if (/^(?:\||Owner:|Writes:|Temp root:|Stage graph:|Branch:|Of which verification:)/.test(text.trimStart())) continue;
+    if (/\b(?:D\d+-S\d+|INV-\d+)\b/.test(text)) add(sourceLine(node), "plan code in prose");
+    for (const match of matches(text)) add(sourceLine(node), `say ${match.term} instead of ${match.word}`);
+    for (const sentence of new Intl.Segmenter("en", { granularity: "sentence" }).segment(text.replace(/\s+/g, " "))) {
+      if (sentence.segment.trim().split(/\s+/).length > 30) add(sourceLine(node), "sentence exceeds thirty words");
+    }
+  }
+}
+
+function lintTypes(
+  nodes: readonly (Root | Content)[],
+  interfaces: { text: string; line: number } | null,
+  ts: typeof import("typescript"),
+  add: (line: number, text: string) => void,
+): Set<string> {
+  const types = new Set<string>();
+  for (const node of nodes) {
+    if (node.type !== "code" || !["ts", "tsx", "typescript"].includes(node.lang ?? "")) continue;
+    const source = ts.createSourceFile("plan.ts", node.value, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const parsed = ts.transpileModule(node.value, { reportDiagnostics: true });
+    for (const diagnostic of parsed.diagnostics ?? []) {
+      if (diagnostic.category !== ts.DiagnosticCategory.Error) continue;
+      const row = diagnostic.start === undefined ? 0 : source.getLineAndCharacterOfPosition(diagnostic.start).line;
+      add(sourceLine(node) + row + 1, `TypeScript: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, " ")}`);
+    }
+    const visit = (syntax: import("typescript").Node): void => {
+      if (ts.isInterfaceDeclaration(syntax) || ts.isTypeAliasDeclaration(syntax)) {
+        if (interfaces !== null && sourceLine(node) > interfaces.line && sourceLine(node) <= interfaces.line + interfaces.text.split("\n").length) types.add(syntax.name.text);
+      }
+      if (ts.isInterfaceDeclaration(syntax) || ts.isTypeLiteralNode(syntax)) {
+        const seen = new Set<number>();
+        for (const member of syntax.members) {
+          const row = source.getLineAndCharacterOfPosition(member.getStart(source)).line;
+          if (seen.has(row)) add(sourceLine(node) + row + 1, "put each TypeScript field on its own line");
+          seen.add(row);
+        }
+      }
+      ts.forEachChild(syntax, visit);
+    };
+    visit(source);
+  }
+  return types;
+}
+
+async function lintMermaid(nodes: readonly (Root | Content)[], add: (line: number, text: string) => void): Promise<void> {
+  const diagrams = nodes.filter((node) => node.type === "code" && node.lang === "mermaid");
+  if (diagrams.length === 0) return;
+  const { Window } = await import("happy-dom");
+  const original = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const window = new Window();
+  Object.defineProperty(globalThis, "window", { value: window, configurable: true });
+  try {
+    const { default: mermaid } = await import("mermaid");
+    mermaid.initialize({ startOnLoad: false });
+    for (const node of diagrams) {
+      if (node.type !== "code") continue;
+      try { await mermaid.parse(node.value); }
+      catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        const row = Number(message.match(/line (\d+)/)?.[1] ?? 1);
+        add(sourceLine(node) + row, `mermaid: ${message.split("\n")[0]}`);
+      }
+    }
+  } finally {
+    if (original === undefined) Reflect.deleteProperty(globalThis, "window");
+    else Object.defineProperty(globalThis, "window", original);
+    await window.happyDOM.close();
+  }
+}
+
+function exportedTypes(text: string, path: string, ts: typeof import("typescript")): Map<string, string> {
+  const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
+  const result = new Map<string, string>();
+  for (const node of source.statements) {
+    if ((ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) && node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) result.set(node.name.text, node.getText(source));
+  }
+  return result;
+}
+
+function lintCommit(root: string, commit: string, types: ReadonlySet<string>, line: number, ts: typeof import("typescript"), add: (line: number, text: string) => void): void {
+  for (const path of stageResultCommitPaths(commit, root).filter((path) => /\.tsx?$/.test(path))) {
+    const current = spawnSync("git", ["-C", root, "show", `${commit}:${path}`], { encoding: "utf8" });
+    if (current.status !== 0) continue; // deleted files introduce no types
+    const previous = spawnSync("git", ["-C", root, "show", `${commit}^1:${path}`], { encoding: "utf8" });
+    const before = exportedTypes(previous.status === 0 ? previous.stdout : "", path, ts);
+    for (const [name, text] of exportedTypes(current.stdout, path, ts)) {
+      if (before.get(name) !== text && !types.has(name)) add(line, `${path}: exported type ${name} is missing from SPEC Interfaces`);
+    }
+  }
+}
+
+/** Check the authored plan without executing its criteria or changing its locks.
+ * @tested-by: tst_gate_lint_001, tst_gate_lint_002, tst_gate_lint_003
+ */
+export async function lint(body: string, root: string, commit?: string): Promise<{
+  violations: GateViolation[];
+  metrics: string[];
+}> {
+  if (!["core", "runtime"].includes(basename(import.meta.dir))) throw new Error("unsupported plan-gate runtime layout");
+  const [{ fromMarkdown }, ts, { synonyms, vocabularyMatches }] = await Promise.all([
+    import("mdast-util-from-markdown"),
+    import("typescript"),
+    import("../../../shared/code-production/instruction-audit"),
+  ]);
+  const violations: GateViolation[] = [];
+  const add = (line: number, text: string): void => { violations.push({ kind: "protocol-shape", line, text }); };
+  const lines = body.split("\n");
+  const specStart = lines.indexOf(PROTOCOL_SPEC_START);
+  const specEnd = lines.indexOf(PROTOCOL_SPEC_END);
+  if ((specStart >= 0 || specEnd >= 0) && (specStart < 0 || specEnd <= specStart)) {
+    return { violations: [{ kind: "protocol-shape", line: 1, text: "missing ordered SPEC markers" }], metrics: [] };
+  }
+  const specLines = specStart < 0 ? lines : lines.map((line, index) => index > specStart && index < specEnd ? line : "");
+  const spec = specLines.join("\n");
+  const nodes = markdownNodes(fromMarkdown(spec));
+  const headings = nodes.filter((node) => node.type === "heading");
+  const required = ["The Goal", "Why now", "The target", "What changes", "Target tree", "Invariants", "Reuse", "New names", "Not verified"];
+  for (const name of required) {
+    if (!headings.some((node) => proseText(node).toLowerCase() === name.toLowerCase())) add(specStart + 2, `missing SPEC section: ${name}`);
+  }
+  const section = (name: string): { text: string; line: number } | null => {
+    const heading = headings.find((node) => proseText(node).toLowerCase() === name.toLowerCase());
+    if (heading === undefined) return null;
+    const start = sourceLine(heading);
+    const next = headings.find((node) => sourceLine(node) > start && node.depth <= heading.depth);
+    return { text: specLines.slice(start, next === undefined ? specLines.length : sourceLine(next) - 1).join("\n"), line: start };
+  };
+  for (const name of required) {
+    const block = section(name);
+    if (block !== null && (block.text.trim() === "" || /^<[^>]+>$/.test(block.text.trim()))) add(block.line, `empty SPEC section: ${name}`);
+  }
+  const names = section("New names");
+  if (names !== null && !/^\|\s*-{3,}\s*\|\s*-{3,}/m.test(names.text)) add(names.line, "New names needs a name/reason table");
+  const vocabulary = new Map([
+    ...(basename(import.meta.dir) === "runtime" ? synonyms(import.meta.dir, "vocabulary.md") : synonyms(resolve(import.meta.dir, "../../.."))),
+    ...synonyms(root, "docs/graph.md"),
+  ]);
+  const fullNodes = markdownNodes(fromMarkdown(body));
+  const implementationEnd = lines.indexOf("<!-- plan:implementation:end -->");
+  const authored = fullNodes.filter((node) => specStart < 0 || (sourceLine(node) > specStart && (implementationEnd < 0 ? sourceLine(node) < specEnd : sourceLine(node) < implementationEnd)));
+  lintProse(authored, (text) => vocabularyMatches(text, vocabulary), add);
+  const interfaces = section("Interfaces");
+  const types = lintTypes(nodes, interfaces, ts, add);
+  const target = section("Target tree");
+  if (target !== null && /\.tsx?\b/.test(target.text) && types.size === 0) add(target.line, "Interfaces must show the TypeScript types changed by this plan");
+  await lintMermaid(authored, add);
+  // The common checkbox parser is also used by execution and closure.
+  const contentLines = [...lines];
+  for (const node of fullNodes) {
+    if ((node.type === "code" || node.type === "html") && node.position !== undefined) {
+      for (let row = node.position.start.line - 1; row < node.position.end.line; row++) contentLines[row] = "";
+    }
+  }
+  for (const item of allPlanItems(contentLines)) {
+    const text = item.text.replace(RECEIPT, "").trim();
+    if (item.section === "criteria" && text !== "Commit" && !MACHINABLE.test(text)) add(item.line + 1, "criterion must be a command with its exit code or Commit");
+  }
+  contentLines.forEach((line, index) => {
+    if (/^\s*(?:-\s+)?Predict:/.test(line)) add(index + 1, "Predict fields are not part of the plan");
+  });
+  const stages = stageInputs(body);
+  for (const stage of stages) for (const task of stage.tasks) {
+    if (task.story.length > 200) add(lines.findIndex((line) => line.includes(`${task.id} — `)) + 1, "Task story exceeds 200 characters");
+  }
+  const writes = [...new Set(stages.flatMap((stage) => stage.tasks.flatMap((task) => task.writes)))];
+  if (stages.length > 0 && writes.length <= 2 && writes.every((path) => /\.[a-z]+$/i.test(path) && !/[*?{}]/.test(path))) {
+    add(1, "two files or fewer: this is a commit, not a plan");
+  }
+  if (commit !== undefined) lintCommit(root, commit, types, interfaces?.line ?? 1, ts, add);
+  const metrics = [
+    `SPEC lines: ${spec.trim().split("\n").length}; reference range for one-round plans: 150–300 lines.`,
+    `Stages: ${stages.length}; longest description: ${Math.max(0, ...stages.map((stage) => stage.description.split("\n").length))} lines.`,
+    ...stages.map((stage) => `${stage.title}: ${stage.writes.length} writes, ${stage.tasks.length} Tasks.`),
+  ];
+  return { violations, metrics };
+}
 
 export function gatePlan(
   planPath: string,
@@ -627,6 +797,15 @@ if (import.meta.main && ["plan-gate.ts", "plan-gate.js"].includes(basename(impor
   if (!root) {
     console.error("usage: bun planctl/src/core/plan-gate.ts <plan.md> [--closure] [--start] [--no-exec] [--root <repo>]");
     process.exit(64);
+  }
+  if (args.includes("--lint")) {
+    const commitIndex = args.indexOf("--commit");
+    const commit = commitIndex < 0 ? undefined : args[commitIndex + 1];
+    if (commitIndex >= 0 && commit === undefined) throw new Error("--commit requires a Git revision");
+    const report = await lint(readFileSync(plan, "utf8"), root, commit);
+    for (const metric of report.metrics) console.log(metric);
+    for (const violation of report.violations) console.log(`VIOLATION [${violation.kind}] line ${violation.line}: ${violation.text}`);
+    process.exit(report.violations.length === 0 ? 0 : 1);
   }
   const report = gatePlan(plan, { root, closure, start, noExec });
   console.log(`boxes: ${report.closedBoxes} closed / ${report.openBoxes} open; machinable criteria re-run: ${report.checkedCriteria}`);

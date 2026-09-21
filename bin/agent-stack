@@ -2,5 +2,7 @@
 # Managed entrypoint for installing/checking the private code-production stack.
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# @tested-by: tst_unit_planctl_package_001
+SOURCE_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+REPO_DIR="$(cd "$(dirname "$SOURCE_PATH")/.." && pwd)"
 exec bun "$REPO_DIR/shared/code-production/agent-stack.ts" "$@"

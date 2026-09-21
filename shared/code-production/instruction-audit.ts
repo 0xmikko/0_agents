@@ -89,8 +89,8 @@ function deadReferences(root: string, all: readonly Line[], skills: readonly str
 
 /** The vocabulary table: term → the words that mean the same thing here and
  * are therefore not used. Read from the "Not" column of every row. */
-export function synonyms(root: string): Map<string, string> {
-  const path = join(root, VOCABULARY);
+export function synonyms(root: string, file = VOCABULARY): Map<string, string> {
+  const path = join(root, file);
   if (!existsSync(path)) return new Map();
   const map = new Map<string, string>();
   for (const line of readFileSync(path, "utf8").split("\n")) {
@@ -104,17 +104,27 @@ export function synonyms(root: string): Map<string, string> {
   return map;
 }
 
-function vocabulary(root: string, all: readonly Line[]): Finding[] {
-  const map = synonyms(root);
+/** The same word matching serves instruction prose and plan prose. */
+export function vocabularyMatches(text: string, map: ReadonlyMap<string, string>): { word: string; term: string }[] {
   if (map.size === 0) return [];
   const words = [...map.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp);
   const pattern = new RegExp(`\\b(${words.join("|")})(?:s|es)?\\b`, "gi");
+  return [...text.matchAll(pattern)].map((match) => {
+    const word = match[1];
+    if (word === undefined) throw new Error("vocabulary match has no word");
+    const term = map.get(word.toLowerCase());
+    if (term === undefined) throw new Error(`vocabulary match has no term: ${word}`);
+    return { word: match[0], term };
+  });
+}
+
+function vocabulary(root: string, all: readonly Line[]): Finding[] {
+  const map = synonyms(root);
   const findings: Finding[] = [];
   for (const line of all) {
     if (!line.prose || line.file === VOCABULARY) continue;
-    for (const match of line.text.matchAll(pattern)) {
-      const word = (match[1] ?? "").toLowerCase();
-      findings.push({ kind: "vocabulary", file: line.file, line: line.number, subject: word, message: `not a term here; say "${map.get(word) ?? ""}"` });
+    for (const match of vocabularyMatches(line.text, map)) {
+      findings.push({ kind: "vocabulary", file: line.file, line: line.number, subject: match.word.toLowerCase(), message: `not a term here; say "${match.term}"` });
     }
   }
   return findings;

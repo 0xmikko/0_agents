@@ -25,11 +25,11 @@ A repo of opinionated configs and helpers for two coding agents — **Claude Cod
 ```
 0_agents/
 ├── claude/                         # Claude Code config (CLAUDE.md, agents, skills)
-│   └── skills/                     # User-invocable slash commands (/spec, /plan, ...)
+│   └── skills/                     # symlinks into shared/skills, plus nvim
 ├── codex/                          # Codex config (skills, rules, agents, config.toml)
 ├── shared/                         # Skills + lang docs reachable from BOTH tools
-│   └── skills/                     # bug, completion-note, dictate, fast-precommit,
-│                                   # markdown-view, quick-fix, start-work, test-protocol
+│   └── skills/                     # blueprint, blueprint-start, end-work, bug, rename,
+│                                   # review-implementation, cleanup-worktrees, mdurl, dictate
 ├── server/                         # Server-only profiles (wide-permission settings)
 │   ├── claude/settings.json        # SOURCE OF TRUTH for server-side Claude permissions
 │   └── codex/config.toml           # Codex workspace-write profile
@@ -254,19 +254,19 @@ Each component installer can be called directly when you only need a slice.
 
 ## Skills layout (Claude + Codex)
 
-Skills are user-invocable slash commands like `/spec`, `/plan`, `/dispatch-to-linear`. They live in three places:
+Ten skills, one text each, in `shared/skills/<name>/SKILL.md`; `claude/skills/<name>`
+and `codex/skills/<name>` are symlinks to it, so the two tools can never read
+different instructions. The one exception is `claude/skills/nvim`, Claude only.
 
-- **`shared/skills/<name>/SKILL.md`** — canonical for skills both tools should see. `claude/skills/<name>` and `codex/skills/<name>` are symlinks to here.
-- **`claude/skills/<name>/SKILL.md`** — Claude-only. Either Claude-specific behavior, or a copy that intentionally diverges from the Codex twin.
-- **`codex/skills/<name>/SKILL.md`** — Codex-only.
+- the process — `/blueprint` writes the plan the owner approves twice, `/blueprint-start`
+  works it Stage by Stage, `/end-work` closes the merged Delivery, `/bug` turns a report
+  into a red test and a fix;
+- the tools — `/rename` (the compiler as the only guide), `/review-implementation` (the
+  three reviewers and a verdict), `/cleanup-worktrees`, `/mdurl` (publish Markdown, get a
+  URL), `/dictate`, `/nvim`.
 
-When you change a skill, check both directories before assuming you're done. There are 5 deliberately-divergent pairs (`spec`, `plan`, `review-plan`, `review-implementation`, `verify-frontend`) — they share most of the body but reference `CLAUDE.md` vs `AGENTS.md` and use Codex via MCP vs directly. Future cleanup may merge them with parameter substitution; for now, sync manually.
-
-Notable skills:
-- **`/mdurl`** (Claude + Codex) — publish Markdown and return a browser URL
-- **`/markdown-view`** (Claude only) — open Markdown in a separate Zellij pane
-- **`/start-work`** — implement an approved plan locally with worktree + TDD discipline
-- **`/dispatch-to-linear`** + **`/execute-from-linear`** — handoff a plan to Cyrus's bot for autonomous implementation
+The owner's business skills (`startup-pressure-test`, `icp-pain`, `investor`) are content,
+not process, and the instruction audit does not judge them.
 
 ---
 
