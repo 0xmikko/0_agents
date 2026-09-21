@@ -165,7 +165,7 @@ describe("planctl focus --brief", () => {
    * with the exact commands; without a plan it says so in one line.
    */
   it("tst_focus_brief_001 prints the position and the next commands for a draft, an approved plan and no plan", async () => {
-    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+    const { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
     const { execFileSync, spawnSync } = await import("node:child_process");
@@ -202,7 +202,7 @@ describe("planctl focus --brief", () => {
       expect(draft.stdout).toContain("owner's word");
 
       // approved, one Task started
-      writeFileSync(join(root, "spec.md"), "## The Goal\n\nShip one observable result.\n\n## The target\n\nOne active Delivery.\n");
+      writeFileSync(join(root, "spec.md"), readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result."));
       expect(run("set-spec", plan, "--from", "spec.md").status).toBe(0);
       git("commit", "-qam", "spec");
       expect(run("approve-spec", plan, "--owner-word", "yes").status).toBe(0);

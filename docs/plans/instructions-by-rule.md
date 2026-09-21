@@ -402,9 +402,9 @@ Commit. docs(laws): two laws — the process and the plan format — carry every
 
 ##### Acceptance criteria
 
-- [ ] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_laws` exits 0 — two laws, each under 100 lines, three tiers, a register, no banned word
-- [ ] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S5` exits 0 — the owner read what this Stage produced and said the word
-- [ ] Commit
+- [x] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_laws` exits 0 — two laws, each under 100 lines, three tiers, a register, no banned word — 9e8517bfc0029b98d6884caeefdd802de1c33163
+- [x] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S5` exits 0 — the owner read what this Stage produced and said the word — 9e8517bfc0029b98d6884caeefdd802de1c33163
+- [x] Commit — 9e8517bfc0029b98d6884caeefdd802de1c33163
 
 ##### Results
 
@@ -441,7 +441,7 @@ Commit. refactor(agents): three reviewers judge TypeScript by TypeScript rules; 
 ##### Acceptance criteria
 
 - [x] `bun run --cwd planctl agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_reviewers` exits 0 — guides under 40 lines, reviewers under 80, no Rust words — 886ab063306da5f3cdd71f6386023efeec2c2ac8
-- [ ] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S6` exits 0 — the owner read what this Stage produced and said the word
+- [x] `bun planctl/src/cli/main.ts stage-approved docs/plans/instructions-by-rule.md --stage D1-S6` exits 0 — the owner read what this Stage produced and said the word — 9e8517bfc0029b98d6884caeefdd802de1c33163
 - [x] Commit — 886ab063306da5f3cdd71f6386023efeec2c2ac8
 
 ##### Results
@@ -725,4 +725,18 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - close D1-S6 partial commit:886ab063306da5f3cdd71f6386023efeec2c2ac8
 
 - deviation D1-S6: Measured line counts corrected after the result text transcription: TypeScript 21, Rust 17; coherence 32, coverage 37, simplicity 37. All promised limits pass. The owner-approval criterion remains open.
+
+- approve-stage D1-S5 owner:давай продолжим работу над нашими правлами по плану — owner, 2026-09-21
+
+- close D1-S5 closed commit:9e8517bfc0029b98d6884caeefdd802de1c33163
+
+- approve-stage D1-S6 owner:давай продолжим работу над нашими правлами по плану — owner, 2026-09-21
+
+- close D1-S6 closed commit:9e8517bfc0029b98d6884caeefdd802de1c33163
+
+- deviation D1-S7: The linter needs the canonical writer for lock-spec and to stop rendering Predict; dependency manifests and TypeScript DOM types support the real Mermaid parser. Existing CLI fixture SPECs must satisfy the new lock gate. The vocabulary reader accepts the project glossary path so the parser has one implementation.
+
+- deviation D1-S7: Consumer runtimes need the same lint behavior without adding parser dependencies to every project. agent-stack now bundles plan-gate with its parsers and installs the vocabulary alongside it; the package-boundary test proves approval through the installed CLI. Hashes and criterion grammar moved to their writer owner to remove the import cycle; the gate re-exports the existing API. Historical Stage predictions remain readable.
+
+- deviation D1-S7: Review found that bundling depended on the caller directory and checkStack marked a fresh install stale. A consumer-directory regression was observed red; fixing the build cwd made the docs gate pass 11 tests and the instruction audit. The full planctl gate had passed 98 tests, typecheck, lint and build before this one-line fix; the affected installation flow was rerun afterward.
 <!-- plan:execution:end -->

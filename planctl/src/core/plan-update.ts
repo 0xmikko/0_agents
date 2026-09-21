@@ -5,7 +5,23 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
-import { MACHINABLE, protocolImplementationHash, protocolSpecHash } from "./plan-gate";
+// Shared by the writer and the acceptance gate. The command opens the box.
+export const MACHINABLE = /^`([^`]+)`\s+exits\s+(\d+)/;
+
+export function protocolSpecHash(body: string): string {
+  return digest(region(body, SPEC_START, SPEC_END).text);
+}
+
+export function protocolImplementationHash(body: string): string {
+  const normalized = region(body, IMPLEMENTATION_START, IMPLEMENTATION_END).text
+    .replace(/^- \[[ x]\]/gm, "- [ ]")
+    .replace(/^(\s*- \[ \].*?) — [0-9a-f]{7,40}$/gm, "$1")
+    .replace(
+      /<!-- plan:results:(D[1-9]\d*-S[1-9]\d*):start -->[\s\S]*?<!-- plan:results:\1:end -->/g,
+      "<!-- plan:results:$1:start -->\n<!-- plan:results:$1:end -->",
+    );
+  return digest(normalized);
+}
 
 export type PlanState = "SPEC_DRAFT" | "SPEC_LOCKED" | "APPROVED";
 
@@ -564,6 +580,8 @@ function renderStage(input: StageInput): string {
     parallelWith: input.parallelWith,
     writes: input.writes,
     tempRoot: input.tempRoot,
+    predictedActiveMinutes: input.predictedActiveMinutes,
+    predictedCredits: input.predictedCredits,
     verifyActiveMinutes: input.verifyActiveMinutes,
     verifyCredits: input.verifyCredits,
   });
@@ -593,7 +611,6 @@ function renderStage(input: StageInput): string {
       `Parallel with: ${input.parallelWith.length === 0 ? "none" : input.parallelWith.join(", ")}.`,
     `- Writes: ${input.writes.map((path) => `\`${path}\``).join(", ")}.`,
     `- Temp root: \`${input.tempRoot}\` (must be absent at handoff).`,
-    `- Predict: ${input.predictedActiveMinutes} active min / ${input.predictedCredits} credits.`,
     `- Of which verification: ${input.verifyActiveMinutes} active min / ${input.verifyCredits} credits.`,
     "",
     ...proseLines(input.description),
@@ -647,11 +664,21 @@ function capture(match: RegExpMatchArray, index: number, name: string): string {
 
 export function stageInputs(body: string): readonly ParsedStageInput[] {
   const inputs: ParsedStageInput[] = [];
-  const expression = /<!-- plan:stage:(D[1-9]\d*-S[1-9]\d*):start -->\n<!-- plan:stage-meta:(\{[^\n]*\}) -->[\s\S]*?Predict: (\d+(?:\.\d+)?) active min \/ (\d+(?:\.\d+)?) credits\.[\s\S]*?<!-- plan:stage:\1:end -->/g;
+  const expression = /<!-- plan:stage:(D[1-9]\d*-S[1-9]\d*):start -->\n<!-- plan:stage-meta:(\{[^\n]*\}) -->[\s\S]*?<!-- plan:stage:\1:end -->/g;
   for (const match of body.matchAll(expression)) {
     const block = capture(match, 0, "Stage block");
     const id = capture(match, 1, "Stage ID");
     const meta = parseMetaObject(`<!-- plan:stage-meta:${capture(match, 2, "Stage metadata")} -->`, "<!-- plan:stage-meta:");
+    // The old renderer stored these numbers in prose. New plans keep them
+    // in metadata; absence from both formats is an invalid Stage.
+    const legacyPrediction = block.match(/Predict: (\d+(?:\.\d+)?) active min \/ (\d+(?:\.\d+)?) credits\./);
+    const predictedActiveMinutes = typeof meta.predictedActiveMinutes === "number"
+      ? meta.predictedActiveMinutes : Number(legacyPrediction?.[1]);
+    const predictedCredits = typeof meta.predictedCredits === "number"
+      ? meta.predictedCredits : Number(legacyPrediction?.[2]);
+    if (!Number.isFinite(predictedActiveMinutes) || !Number.isFinite(predictedCredits)) {
+      throw new Error(`Stage ${id} is missing prediction metadata`);
+    }
     const heading = block.match(/^#### Stage [^\n]+ — (.+)$/m);
     const ownerLine = block.match(/^(?:- )?Owner: ([^;]+); Profile: (fast|strong);/m);
     if (heading === null || ownerLine === null) throw new Error(`Stage ${match[1]} has incomplete rendered metadata`);
@@ -723,17 +750,17 @@ export function stageInputs(body: string): readonly ParsedStageInput[] {
       parallelWith: stringArray(meta.parallelWith, "Stage parallel set"),
       writes: stringArray(meta.writes, "Stage writes"),
       tempRoot: typeof meta.tempRoot === "string" ? meta.tempRoot : "",
-      predictedActiveMinutes: Number(capture(match, 3, "Stage active minutes")),
-      predictedCredits: Number(capture(match, 4, "Stage credits")),
+      predictedActiveMinutes: predictedActiveMinutes,
+      predictedCredits: predictedCredits,
       // Legacy plans carry no verification share: it derives as the gap
       // between the stage forecast and the task sum, which is its meaning.
       verifyActiveMinutes: typeof meta.verifyActiveMinutes === "number"
         ? meta.verifyActiveMinutes
-        : Math.max(0, Number(capture(match, 3, "Stage active minutes"))
+        : Math.max(0, predictedActiveMinutes
           - taskMatches.reduce((sum, task) => sum + task.input.predictedActiveMinutes, 0)),
       verifyCredits: typeof meta.verifyCredits === "number"
         ? meta.verifyCredits
-        : Math.max(0, Number(capture(match, 4, "Stage credits"))
+        : Math.max(0, predictedCredits
           - taskMatches.reduce((sum, task) => sum + task.input.predictedCredits, 0)),
       description: descriptionBlock === null ? "" : capture(descriptionBlock, 1, "Stage description").trim(),
       tasks: taskMatches.map((task) => ({
@@ -1613,9 +1640,14 @@ if (import.meta.main && ["plan-update.ts", "plan-update.js"].includes(basename(i
   if (plan === undefined || command === undefined) usage();
   try {
     switch (command) {
-      case "lock-spec":
+      case "lock-spec": {
+        const gate = resolve(import.meta.dir, import.meta.path.endsWith(".js") ? "plan-gate.js" : "plan-gate.ts");
+        const checked = spawnSync("bun", [gate, plan, "--lint", "--root", process.cwd()], { encoding: "utf8", timeout: 30_000 });
+        if (checked.status !== 0) throw new Error(checked.error?.message ?? `${checked.stdout}${checked.stderr}`.trim());
+        process.stdout.write(checked.stdout);
         mutatePlanFile(plan, command, (body) => lockPlanSpec(body, requiredFlag(args, "--owner-word")));
         break;
+      }
       case "put-delivery":
         mutatePlanFile(plan, command, (body) => putDelivery(body, deliveryFrom(readJson(requiredFlag(args, "--from")))));
         break;

@@ -67,7 +67,7 @@ function fixtureRepository(): {
   const spec = join(root, "spec.md");
   const delivery = join(root, "delivery.json");
   const stage = join(root, "stage.json");
-  writeFileSync(spec, "## The Goal\n\nShip one observable result.\n\n## The target\n\nOne active Delivery.\n");
+  writeFileSync(spec, readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result."));
   writeFileSync(delivery, `${JSON.stringify(DELIVERY)}\n`);
   writeFileSync(stage, `${JSON.stringify(STAGE)}\n`);
   return { root, plan, spec, delivery, stage };

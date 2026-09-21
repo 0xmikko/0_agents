@@ -3,13 +3,15 @@
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
-  copyFileSync,
+  mkdtempSync,
+  rmSync,
   existsSync,
   mkdirSync,
   readFileSync,
   lstatSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 const MANAGED_MARKER = "Managed by 0_agents code-production";
@@ -35,6 +37,7 @@ type CiContract =
 
 interface ManagedFile {
   readonly source: string;
+  readonly content: string;
   readonly target: string;
   readonly executable: boolean;
   readonly guarded: boolean;
@@ -120,9 +123,22 @@ function assertRepository(root: string): void {
   if (resolve(top) !== root) throw new Error(`${root} is not the Git repository root`);
 }
 
+// Consumers do not install planctl's parser dependencies. Ship the gate as
+// one Bun bundle; the writer and the other runtime files remain plain source.
+function bundleGate(source: string): string {
+  const temporary = mkdtempSync(join(tmpdir(), "planctl-gate-bundle-"));
+  try {
+    const output = join(temporary, "plan-gate.ts");
+    execFileSync("bun", ["build", source, "--target", "bun", "--outfile", output], { cwd: dirname(source), stdio: "pipe", timeout: 30_000 });
+    return readFileSync(output, "utf8");
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
 function managedFiles(sourceRoot: string, ci: CiContract): readonly ManagedFile[] {
   const planctlSource = resolve(sourceRoot, "../../planctl/src");
-  const files: readonly ManagedFile[] = [
+  const files = [
     {
       source: join(planctlSource, "cli/main.ts"),
       target: ".agents/code-production/runtime/planctl.ts",
@@ -139,6 +155,12 @@ function managedFiles(sourceRoot: string, ci: CiContract): readonly ManagedFile[
       source: join(planctlSource, "core/plan-gate.ts"),
       target: ".agents/code-production/runtime/plan-gate.ts",
       executable: true,
+      guarded: false,
+    },
+    {
+      source: join(sourceRoot, "vocabulary.md"),
+      target: ".agents/code-production/runtime/vocabulary.md",
+      executable: false,
       guarded: false,
     },
     {
@@ -172,16 +194,18 @@ function managedFiles(sourceRoot: string, ci: CiContract): readonly ManagedFile[
       guarded: true,
     },
   ];
-  return ci.kind === "external"
-    ? files.filter((file) => file.target !== ".github/workflows/code-production.yml")
-    : files;
+  const selected = ci.kind === "external" ? files.filter((file) => file.target !== ".github/workflows/code-production.yml") : files;
+  return selected.map((file) => ({
+    ...file,
+    content: file.target === ".agents/code-production/runtime/plan-gate.ts" ? bundleGate(file.source) : readFileSync(file.source, "utf8"),
+  }));
 }
 
 function assertSafeTarget(root: string, file: ManagedFile): void {
   const target = join(root, file.target);
   if (!existsSync(target)) return;
   const current = readFileSync(target, "utf8");
-  const expected = readFileSync(file.source, "utf8");
+  const expected = file.content;
   if (current === expected) return;
   if (file.guarded && !current.includes(MANAGED_MARKER)) {
     throw new Error(`refusing to overwrite unmanaged ${file.target}`);
@@ -192,7 +216,7 @@ function installFile(root: string, file: ManagedFile): void {
   assertSafeTarget(root, file);
   const target = join(root, file.target);
   mkdirSync(dirname(target), { recursive: true });
-  copyFileSync(file.source, target);
+  writeFileSync(target, file.content);
   if (file.executable) chmodSync(target, 0o755);
 }
 
@@ -253,7 +277,7 @@ export function checkStack(rootArg: string, sourceRoot = import.meta.dir): Stack
   const mismatches: string[] = [];
   for (const file of files) {
     const target = join(root, file.target);
-    if (!existsSync(target) || readFileSync(target, "utf8") !== readFileSync(file.source, "utf8")) {
+    if (!existsSync(target) || readFileSync(target, "utf8") !== file.content) {
       mismatches.push(file.target);
     }
   }
