@@ -494,9 +494,9 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 
 ##### Tasks
 
-- [ ] IBR_010 — plan-gate --judge sends SPEC and rubric to claude -p, stores the verdict by SPEC hash, and lock-spec refuses without PASS; plan-judge.test.ts uses a fake claude on PATH.
+- [x] IBR_010 — plan-gate --judge sends SPEC and rubric to claude -p, stores the verdict by SPEC hash, and lock-spec refuses without PASS; plan-judge.test.ts uses a fake claude on PATH. — 99db4478647d2b80a08dfc2a491c11fc3908d332
 <!-- plan:task-meta:{"writes":["planctl/src/","planctl/test/plan-judge.test.ts","shared/code-production/plan-judge.md"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"write the rubric; spawn claude -p with --output-format json; cache by sha256 of the SPEC region; refuse on missing binary; wire lock-spec","red":"bun run agent:test:backend -- test/plan-judge.test.ts"} -->
-- [ ] IBR_011 — The audit exits 0 on the whole tree and README.md lists the set that remains: the screen, two laws, nine skills, three reviewers, the audit, the linter and the judge.
+- [x] IBR_011 — The audit exits 0 on the whole tree and README.md lists the set that remains: the screen, two laws, nine skills, three reviewers, the audit, the linter and the judge. — 99db4478647d2b80a08dfc2a491c11fc3908d332
 <!-- plan:task-meta:{"writes":["shared/code-production/instruction-audit.ts","README.md"],"predictedActiveMinutes":0,"predictedCredits":0,"how":"fix whatever the audit still names; rewrite the README's skill and law lists","red":"bun run agent:test:backend -- test/instruction-audit.test.ts"} -->
 
 ##### Acceptance criteria
@@ -512,6 +512,8 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 <!-- plan:results:D1-S8:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| IBR_010 | 99db4478647d2b80a08dfc2a491c11fc3908d332 | 2026-09-21T15:13:56.096Z–2026-09-21T15:28:39.543Z | 14.724128400000001 / 14.724128400000001 min | unavailable: runner did not expose usage | Subscription Claude judge, quoted JSON verdicts and Git-local cache implemented; lock binds the exact reviewed document. Strict docs audit and portable rubric installation pass. Initial judge/audit tests were RED; review race and startup diagnostic regressions were RED, then GREEN. Cache-context and mixed-verdict mutations were caught. Final gate: typecheck, lint, 104 tests / 917 assertions, build. Docs gate: 12 tests / 87 assertions, clean strict audit. Three reviewers ran twice; all findings fixed, including the remaining live-provider test invocation, verified by the final full gate. Full gate ran twice: first found that invocation, second passed. Live Claude returned HTTP 429 weekly limit in 1.9s, so real judgement quality is not verified. No rollout. Owner acceptance remains open; mandatory judge behavior follows the approved plan pending the owner decision requested during this turn. — beyond writes: planctl/package.json, planctl/test/fixtures/bin/claude, planctl/test/instruction-audit.test.ts, planctl/test/package-boundary.test.ts, planctl/test/plan-gate.test.ts, planctl/test/plan-update.test.ts, planctl/test/planctl.test.ts, shared/code-production/agent-stack.ts |
+| IBR_011 | 99db4478647d2b80a08dfc2a491c11fc3908d332 | 2026-09-21T15:13:56.096Z–2026-09-21T15:28:39.543Z | 14.724128400000001 / 14.724128400000001 min | unavailable: runner did not expose usage | Subscription Claude judge, quoted JSON verdicts and Git-local cache implemented; lock binds the exact reviewed document. Strict docs audit and portable rubric installation pass. Initial judge/audit tests were RED; review race and startup diagnostic regressions were RED, then GREEN. Cache-context and mixed-verdict mutations were caught. Final gate: typecheck, lint, 104 tests / 917 assertions, build. Docs gate: 12 tests / 87 assertions, clean strict audit. Three reviewers ran twice; all findings fixed, including the remaining live-provider test invocation, verified by the final full gate. Full gate ran twice: first found that invocation, second passed. Live Claude returned HTTP 429 weekly limit in 1.9s, so real judgement quality is not verified. No rollout. Owner acceptance remains open; mandatory judge behavior follows the approved plan pending the owner decision requested during this turn. — beyond writes: planctl/package.json, planctl/test/fixtures/bin/claude, planctl/test/instruction-audit.test.ts, planctl/test/package-boundary.test.ts, planctl/test/plan-gate.test.ts, planctl/test/plan-update.test.ts, planctl/test/planctl.test.ts, shared/code-production/agent-stack.ts |
 <!-- plan:results:D1-S8:end -->
 <!-- plan:stage:D1-S8:end -->
 <!-- plan:delivery:D1:end -->
@@ -735,4 +737,6 @@ Commit. feat(plan-gate): a cheap judge reads the plan before the owner does; the
 - approve-stage D1-S7 owner:Owner merged Stage 7 and its follow-up, deployed them, then said: тогда пошли дальше по плану (2026-09-21) — owner, 2026-09-21
 
 - close D1-S7 closed commit:baaa8b61b5faa30a9352a7592a88e93c2fe4fddb
+
+- record-result D1-S8 commit:99db4478647d2b80a08dfc2a491c11fc3908d332
 <!-- plan:execution:end -->
