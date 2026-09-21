@@ -162,6 +162,41 @@ describe("the global screen", () => {
   });
 });
 
+describe("the language guides and reviewers", () => {
+  // @test-id: tst_audit_reviewers_001
+  // @scenario: scn_instruction_reviewers_001
+  // @covers: shared/lang/, claude/agents/, codex/agents/
+  // @deterministic: yes
+  // @fixtures: the instruction set in this worktree
+  // @invariant: style guides carry no verification commands; both agents
+  // read the same three short reviewers, judging flows rather than functions.
+  it("tst_audit_reviewers_001 keeps style guides short and reviewers identical without obsolete tooling", () => {
+    const root = join(import.meta.dir, "../..");
+    for (const file of ["shared/lang/typescript.md", "shared/lang/rust.md"]) {
+      const body = readFileSync(join(root, file), "utf8");
+      expect(body.trimEnd().split("\n").length, file).toBeLessThan(40);
+      expect(body, file).not.toMatch(/\b(?:cargo|clippy|serde|TestCore)\b/);
+      expect(body, file).not.toMatch(/bun run|tsc --|## (?:Verification|Tooling)/);
+    }
+    for (const name of ["coherence", "coverage", "simplicity"]) {
+      const file = `claude/agents/${name}-cop.md`;
+      const body = readFileSync(join(root, file), "utf8");
+      expect(body.trimEnd().split("\n").length, file).toBeLessThan(80);
+      expect(body, file).not.toMatch(/\b(?:Rust|cargo|clippy|serde|TestCore|unwrap_or)\b|\*\.rs/);
+      expect(body, file).toContain("REJECT");
+      expect(readFileSync(join(root, `codex/agents/${name}-cop.md`), "utf8"), file).toBe(body);
+    }
+    const coverage = readFileSync(join(root, "claude/agents/coverage-cop.md"), "utf8");
+    expect(coverage).toContain("state graph");
+    expect(coverage).toContain("one detailed integration test per flow");
+    expect(coverage).not.toMatch(/Every (?:new |modified |new public )?function|Coverage thresholds/);
+    const simplicity = readFileSync(join(root, "claude/agents/simplicity-cop.md"), "utf8");
+    expect(simplicity).toContain("symbol renames");
+    expect(simplicity).toContain("Interfaces");
+    expect(audit(root).filter((finding) => finding.kind === "language-by-file")).toEqual([]);
+  });
+});
+
 describe("the skills", () => {
   const root = join(import.meta.dir, "../..");
   /** The four skills that are the process, and the words each must say
