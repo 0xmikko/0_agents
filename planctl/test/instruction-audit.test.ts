@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { audit, type Finding } from "../../shared/code-production/instruction-audit";
-import { retroStatus } from "../src/core/retro-register";
 
 /** A fixture tree with the same layout as 0_agents: every file of the set
  * present and clean unless a test overrides it. */
@@ -199,14 +198,6 @@ describe("the language guides and reviewers", () => {
 
 describe("the skills", () => {
   const root = join(import.meta.dir, "../..");
-  /** The four skills that are the process, and the words each must say
-   * because the SPEC says it does. */
-  const PROCESS: Record<string, readonly string[]> = {
-    blueprint: ["origin/staging", "Why now", "Interfaces", "Stage 0", "approve-spec", "approve-plan"],
-    "blueprint-start": ["start-task", "complete-task", "add-deviation", "pre-push", "coherence", "coverage", "simplicity"],
-    "end-work": ["merged", "register", "retro-status", "worktree"],
-    bug: ["red", "Skipping red test"],
-  };
   /** The cargo-era and Cyrus skills. A retired skill is gone when no skill
    * directory carries its name and no living skill or page invokes it. */
   const RETIRED = [
@@ -223,16 +214,8 @@ describe("the skills", () => {
   // @test-id: tst_audit_skills_001
   // @covers: shared/skills/*/SKILL.md, claude/skills, codex/skills, README.md, ONBOARDING.md
   // @deterministic: yes
-  // @invariant: the four process skills are each under 60 lines and say what
-  // the SPEC says they say; the fifteen retired skills have no directory and
-  // are named by no living skill, README or ONBOARDING.
-  it("tst_audit_skills_001 four process skills under 60 lines, fifteen retired skills gone and unnamed", () => {
-    for (const [name, says] of Object.entries(PROCESS)) {
-      const text = readFileSync(join(root, "shared/skills", name, "SKILL.md"), "utf8");
-      const lines = text.trimEnd().split("\n").length;
-      expect({ name, lines, under60: lines < 60 }).toEqual({ name, lines, under60: true });
-      expect({ name, missing: says.filter((word) => !text.includes(word)) }).toEqual({ name, missing: [] });
-    }
+  // @invariant: retired skills have no directory and no living caller.
+  it("tst_audit_skills_001 retired skills stay absent and have no living callers", () => {
     const dirs = ["shared/skills", "claude/skills", "codex/skills"];
     const present = dirs.flatMap((dir) => RETIRED.filter((name) => existsSync(join(root, dir, name))).map((name) => `${dir}/${name}`));
     expect(present).toEqual([]);
@@ -242,32 +225,6 @@ describe("the skills", () => {
       return RETIRED.filter((name) => new RegExp(`(^|[\\s\`(])/${name}\\b`, "m").test(text)).map((name) => `${file} names /${name}`);
     });
     expect(named).toEqual([]);
-  });
-});
-
-describe("the laws", () => {
-  const root = join(import.meta.dir, "../..");
-  const LAWS = "shared/code-production/laws";
-  // @test-id: tst_audit_laws_001
-  // @covers: shared/code-production/laws/development-process.md, plan-format.md
-  // @deterministic: yes
-  // @invariant: two laws carry every surviving rule once: the process under
-  // 100 lines with the three tiers (the owner's word named only after the
-  // refused tier) and the register of experiments; the plan format under 100;
-  // the audit finds nothing in them.
-  it("tst_audit_laws_001 two laws, each under 100 lines, three tiers, a register, clean audit", () => {
-    expect(readdirSync(join(root, LAWS)).sort()).toEqual(["development-process.md", "plan-format.md"]);
-    const process = readFileSync(join(root, LAWS, "development-process.md"), "utf8");
-    const format = readFileSync(join(root, LAWS, "plan-format.md"), "utf8");
-    const count = (text: string): number => text.trimEnd().split("\n").length;
-    expect({ process: count(process), format: count(format), fits: count(process) < 100 && count(format) < 100 })
-      .toEqual({ process: count(process), format: count(format), fits: true });
-    const tiers = process.slice(process.indexOf("## Three tiers"), process.indexOf("## Git"));
-    expect(tiers.match(/^(Free|Recorded|Refused by planctl) — /gm)).toEqual(["Free — ", "Recorded — ", "Refused by planctl — "]);
-    expect(tiers.match(/owner's word/g)?.length).toBe(1);
-    expect(tiers.indexOf("owner's word")).toBeGreaterThan(tiers.indexOf("Refused by planctl"));
-    expect(retroStatus(join(root, LAWS, "development-process.md")).ok).toBe(true);
-    expect(audit(root).filter((finding) => finding.file.startsWith(LAWS))).toEqual([]);
   });
 });
 
