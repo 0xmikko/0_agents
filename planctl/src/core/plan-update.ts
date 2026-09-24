@@ -1186,14 +1186,18 @@ function amendRegion(body: string, patch: ExactReplacement): string {
 }
 
 export function applyOwnerAmendment(body: string, ownerWord: string, patch: ExactReplacement): MutationResult {
-  if (planState(body) !== "APPROVED") throw new Error("owner amendment requires APPROVED plan");
+  const state = planState(body);
+  // @tested-by: tst_scripts_planupdate_020
+  if (state !== "APPROVED" && !(state === "SPEC_LOCKED" && patch.section === "spec")) {
+    throw new Error("owner amendment requires APPROVED plan or a SPEC amendment in SPEC_LOCKED");
+  }
   assertSafeInline(ownerWord, "owner word");
   let next = amendRegion(body, patch);
   if (patch.section === "spec") {
     const specHash = protocolSpecHash(next);
     next = replaceHeader(next, "Status", "SPEC_LOCKED");
     next = replaceHeader(next, "Spec lock", `sha256:${specHash} owner:${ownerWord}`);
-    next = replaceHeader(next, "Implementation lock", "stale");
+    if (state === "APPROVED") next = replaceHeader(next, "Implementation lock", "stale");
     next = appendExecution(next, `amend spec owner:${ownerWord} sha256:${specHash}`);
     return { body: next, specHash };
   }
