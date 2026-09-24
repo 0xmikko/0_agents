@@ -10,15 +10,15 @@ effort: high
 
 # Review Implementation
 
-Run once, only at the user's request, at the end of the entire implemented
-plan, when local checks and CI are green and the PR is ready to merge.
-Reuse that verification, enforce project rules via 3 cops, run Codex code
-review, triage findings and report a structured verdict.
+Run only at the user's request; that request starts it, and nothing here
+refuses it. Do not start another round on your own after fixes or a new SHA:
+fix real defects within the authorized task and check them with typecheck and
+tests covering changed files. Never invoke this skill for an individual Stage
+or commit.
 
-This skill does NOT fix. The caller fixes the reported defects and checks
-them with typecheck and tests covering the changed files, without another
-review round. For each intermediate commit, inspect the diff, run typecheck
-and only tests covering changed files; never a full suite or this skill.
+Reuse the Delivery verification, enforce project rules via 3 cops, run Codex
+code review, triage findings and report a structured verdict. This skill does
+NOT fix.
 
 ## Anti-patterns (do not do)
 
@@ -32,9 +32,6 @@ and only tests covering changed files; never a full suite or this skill.
 
 ## Stop conditions (hard)
 
-- **One review round for the entire plan.** The caller fixes real defects
-  within the authorized task and verifies those fixes without repeating
-  this skill or requesting approval merely because the review has ended.
 - **Wording-only suggestions are OUT OF SCOPE.** Naming, doc phrasing,
   log message text, comment tone — drop them; do not surface.
 - Only these comment classes can block APPROVAL when triaged as REAL:
@@ -61,12 +58,10 @@ test "$(sed -n '1p' "$(git rev-parse --path-format=absolute --git-path code-prod
 ```
 
 - Receipt matches HEAD and required CI is green for that SHA → proceed to Phase 2.
-- Receipt missing or stale → STOP and ask the caller to run the Delivery gate.
-- CI pending or failed → the final review is not ready to run.
+- CI still running for HEAD → wait for it. Receipt stale or CI red → name the
+  gap in the report's Goal slot and proceed.
 
 The receipt proves checks for the SHA it names; it does not cover later fixes.
-Verify fixes with typecheck and tests covering the changed files. A changed
-SHA does not trigger another review round. Publication hooks still apply.
 
 ## Phase 2: COP REVIEW
 
