@@ -286,7 +286,11 @@ export async function lint(body: string, root: string, commit?: string): Promise
   violations: GateViolation[];
   metrics: string[];
 }> {
-  if (!["core", "runtime"].includes(basename(import.meta.dir))) throw new Error("unsupported plan-gate runtime layout");
+  // Lint parses Markdown, TypeScript and Mermaid with the source checkout's
+  // dependencies. The copy installed in a consumer has none: hooks and CI call
+  // it with --freeze and --no-exec only, and approval lints through the
+  // planctl launcher from the source checkout.
+  if (basename(import.meta.dir) !== "core") throw new Error("plan lint runs from the planctl source checkout; approve through the planctl launcher");
   const [{ fromMarkdown }, ts, { synonyms, vocabularyMatches }] = await Promise.all([
     import("mdast-util-from-markdown"),
     import("typescript"),
@@ -322,7 +326,7 @@ export async function lint(body: string, root: string, commit?: string): Promise
   const names = section("New names");
   if (names !== null && !/^\|\s*-{3,}\s*\|\s*-{3,}/m.test(names.text)) add(names.line, "New names needs a name/reason table");
   const vocabulary = new Map([
-    ...(basename(import.meta.dir) === "runtime" ? synonyms(import.meta.dir, "vocabulary.md") : synonyms(resolve(import.meta.dir, "../../.."))),
+    ...synonyms(resolve(import.meta.dir, "../../..")),
     ...synonyms(root, "docs/graph.md"),
   ]);
   const fullNodes = markdownNodes(fromMarkdown(body));

@@ -9,6 +9,47 @@ import { checkStack, installStack } from "./agent-stack";
 
 const roots: string[] = [];
 
+const LINTED_SPEC = `## The Goal
+
+A concrete user goal.
+
+## Why now
+
+The fixture needs a locked plan.
+
+## The target
+
+One locked plan under the installed hooks.
+
+## What changes
+
+Nothing outside this fixture.
+
+## Target tree
+
+| Action | File | Purpose |
+|---|---|---|
+| CREATE | docs/plans/example.md | The fixture plan. |
+
+## Invariants
+
+A raw edit of a locked plan is refused.
+
+## Reuse
+
+The installed hooks and the source planctl.
+
+## New names
+
+| Name | Reason |
+|---|---|
+| fixture | This test only. |
+
+## Not verified
+
+Nothing beyond this test.
+`;
+
 function git(root: string, ...args: readonly string[]): string {
   return execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
 }
@@ -58,13 +99,19 @@ describe("agent-stack", () => {
     const root = fixture();
     const installed = installStack(root);
 
-    expect(installed.files).toHaveLength(7);
+    expect(installed.files).toHaveLength(9);
     expect(git(root, "config", "--worktree", "--get", "core.hooksPath")).toBe(".githooks");
     expect(readFileSync(join(root, ".gitignore"), "utf8")).toContain("/.worktrees/");
     expect(readFileSync(join(root, ".gitignore"), "utf8")).toContain("/.tmp/code-production/");
     expect(readFileSync(join(root, ".agents/code-production/manifest.json"), "utf8")).toContain("dltxperts/0_agents");
     expect(readFileSync(join(root, ".agents/code-production/runtime/planctl.ts"), "utf8")).toBe(
       readFileSync(resolve(import.meta.dir, "../../planctl/src/cli/main.ts"), "utf8"),
+    );
+    // The gate is installed as the plain source file: hooks and CI call it with
+    // --freeze and --no-exec, which need no parser, and authoring lint runs
+    // from the source checkout through the launcher.
+    expect(readFileSync(join(root, ".agents/code-production/runtime/plan-gate.ts"), "utf8")).toBe(
+      readFileSync(resolve(import.meta.dir, "../../planctl/src/core/plan-gate.ts"), "utf8"),
     );
     expect(checkStack(root).files).toEqual(installed.files);
   });
@@ -96,7 +143,7 @@ describe("agent-stack", () => {
     expect(() => checkStack(root)).not.toThrow();
   });
 
-  test("tst_agent_stack_005 hooks allow draft prose but reject raw locked-plan edits", () => {
+  test("tst_agent_stack_005 hooks accept journaled plan writes and reject raw edits", () => {
     const root = fixture();
     installStack(root);
     const planctl = ".agents/code-production/runtime/planctl.ts";
@@ -110,12 +157,17 @@ describe("agent-stack", () => {
     expect(runPlan("init", plan, "--title", "Example")).toBe(0);
     expect(spawnSync("git", ["-C", root, "commit", "-m", "plan: draft"], { stdio: "pipe" }).status).toBe(0);
 
+    // Every marker-plan write goes through planctl and its journal; the
+    // pre-commit hook refuses a raw edit of a draft as much as of a locked plan.
     const draftPath = join(root, plan);
-    writeFileSync(draftPath, readFileSync(draftPath, "utf8").replace("<draft>", "A concrete user goal"));
-    git(root, "add", plan);
-    expect(spawnSync("git", ["-C", root, "commit", "-m", "plan: refine spec"], { stdio: "pipe" }).status).toBe(0);
+    writeFileSync(join(root, "spec.md"), LINTED_SPEC);
+    expect(runPlan("set-spec", plan, "--from", "spec.md")).toBe(0);
+    expect(spawnSync("git", ["-C", root, "commit", "-m", "plan: complete spec"], { stdio: "pipe" }).status).toBe(0);
 
-    expect(runPlan("approve-spec", plan, "--owner-word", "approved-by-owner")).toBe(0);
+    // Approval lints the SPEC, so it runs from the source checkout, as the
+    // planctl launcher does on a developer machine.
+    const sourceCli = resolve(import.meta.dir, "../../planctl/src/cli/main.ts");
+    expect(spawnSync("bun", [sourceCli, "approve-spec", plan, "--owner-word", "approved-by-owner"], { cwd: root, stdio: "pipe" }).status).toBe(0);
     expect(spawnSync("git", ["-C", root, "commit", "-m", "plan: lock spec"], { stdio: "pipe" }).status).toBe(0);
 
     writeFileSync(draftPath, readFileSync(draftPath, "utf8").replace("A concrete user goal", "A silently changed goal"));
@@ -125,7 +177,7 @@ describe("agent-stack", () => {
     });
     expect(refused.status).not.toBe(0);
     expect(`${refused.stdout}${refused.stderr}`).toMatch(/plan-freeze|no journal|lock/i);
-  });
+  }, 30_000);
 
   /**
    * @test-id: tst_agent_stack_006
@@ -184,7 +236,7 @@ describe("agent-stack", () => {
 
     const installed = installStack(root);
 
-    expect(installed.files).toHaveLength(6);
+    expect(installed.files).toHaveLength(8);
     expect(installed.files).not.toContain(".github/workflows/code-production.yml");
     expect(readFileSync(workflow, "utf8")).toBe("name: Existing CI\n");
     const manifest = readFileSync(join(root, ".agents/code-production/manifest.json"), "utf8");

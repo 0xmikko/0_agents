@@ -3,15 +3,12 @@
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
-  mkdtempSync,
-  rmSync,
   existsSync,
   mkdirSync,
   readFileSync,
   lstatSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 const MANAGED_MARKER = "Managed by 0_agents code-production";
@@ -123,19 +120,6 @@ function assertRepository(root: string): void {
   if (resolve(top) !== root) throw new Error(`${root} is not the Git repository root`);
 }
 
-// Consumers do not install planctl's parser dependencies. Ship the gate as
-// one Bun bundle; the writer and the other runtime files remain plain source.
-function bundleGate(source: string): string {
-  const temporary = mkdtempSync(join(tmpdir(), "planctl-gate-bundle-"));
-  try {
-    const output = join(temporary, "plan-gate.ts");
-    execFileSync("bun", ["build", source, "--target", "bun", "--outfile", output], { cwd: dirname(source), stdio: "pipe", timeout: 30_000 });
-    return readFileSync(output, "utf8");
-  } finally {
-    rmSync(temporary, { recursive: true, force: true });
-  }
-}
-
 function managedFiles(sourceRoot: string, ci: CiContract): readonly ManagedFile[] {
   const planctlSource = resolve(sourceRoot, "../../planctl/src");
   const files = [
@@ -197,7 +181,7 @@ function managedFiles(sourceRoot: string, ci: CiContract): readonly ManagedFile[
   const selected = ci.kind === "external" ? files.filter((file) => file.target !== ".github/workflows/code-production.yml") : files;
   return selected.map((file) => ({
     ...file,
-    content: file.target === ".agents/code-production/runtime/plan-gate.ts" ? bundleGate(file.source) : readFileSync(file.source, "utf8"),
+    content: readFileSync(file.source, "utf8"),
   }));
 }
 
