@@ -744,6 +744,34 @@ describe("two-line task contract", () => {
     expect(amended.body).toContain("D1-S2 -> D1-S3");
     expect(amended.body).toContain(legacy);
   });
+
+  // @test-id: tst_scripts_planupdate_020
+  // @scenario: scn_plan_control_locked_spec_amend_001
+  // @covers: planctl/src/core/plan-update.ts::applyOwnerAmendment
+  // @deterministic: yes
+  // @invariant: an owner can correct a locked SPEC without approving implementation or changing draft Tasks.
+  it("tst_scripts_planupdate_020 corrects a locked SPEC without approving implementation", () => {
+    let locked = lockPlanSpec(draft(), "initial approval").body;
+    locked = putDelivery(locked, delivery()).body;
+    locked = putStage(locked, stage("D1-S1", ["scripts/base.ts"])).body;
+    const implementation = locked.slice(locked.indexOf(IMPLEMENTATION_START), locked.indexOf(IMPLEMENTATION_END));
+
+    const amended = applyOwnerAmendment(locked, "owner requested correction", {
+      section: "spec",
+      find: "Ship one observable result.",
+      replace: "Ship the corrected result.",
+    });
+
+    expect(amended.body).toContain("Status: SPEC_LOCKED");
+    expect(amended.body).toContain("Implementation lock: unlocked");
+    expect(amended.body).toContain("Ship the corrected result.");
+    expect(amended.body).toContain("amend spec owner:owner requested correction");
+    expect(amended.body.slice(amended.body.indexOf(IMPLEMENTATION_START), amended.body.indexOf(IMPLEMENTATION_END))).toBe(implementation);
+    expect(protocolLockViolations(amended.body)).toEqual([]);
+    expect(() => applyOwnerAmendment(locked, "owner", {
+      section: "implementation", find: "writer", replace: "changed",
+    })).toThrow();
+  });
 });
 
 describe("stage estimate = tasks + verification", () => {

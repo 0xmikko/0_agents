@@ -1,55 +1,79 @@
 ---
 name: blueprint-start
-description: Work an approved plan Stage by Stage — red, green, three reviewers, one commit, the owner's word — and deliver one PR. Use when the plan is APPROVED.
+description: Execute an approved plan Stage by Stage with TDD, scoped commits, optional disjoint parallel agents, and one complete gate per PR. Use when implementation begins.
 ---
 
 # Blueprint Start
 
+This skill is self-contained and repository-agnostic. The approved Markdown
+plan defines scope; planctl owns its state; package.json scripts named agent:*
+own all project-specific commands.
+
 ## Start
 
-In the plan's worktree: `git merge origin/staging` (never rewrite history),
-`bun run agent:install`, a compiler dry run, then the project's own
-post-merge checklist from its CLAUDE.md (for Magnis: build the SDK, grep raw
-SQL for renamed columns, `uniq -d` the migration numbers, re-pin docs in the
-commit that moves an anchor). If the project has a browser suite, run it
-once now for its baseline. `planctl verify <plan>` must exit 0. A pull
-request exists from the first commit, no later than a day after the
-Delivery starts.
+1. Work in the plan's existing feature worktree. Confirm the plan is APPROVED.
+   Run agent-stack check and planctl verify <plan>.
+2. Merge origin/staging into the feature branch without rewriting history,
+   then run bun run agent:install.
+3. Select only dependency-ready Stages. Different agents may implement Stages
+   in parallel only when the plan declares disjoint writes. Each returns one
+   commit and a typed result; child agents never edit the plan.
 
-## Each Stage
+## Stage loop
 
-1. `planctl start-task <plan> --task <TASK>` prints the contract: the story,
-   the writes, the RED command.
-2. Write the test; run the RED command; it fails on missing behavior, not on
-   syntax or environment. Then the smallest change that makes it green.
-3. Run the Stage's one to three named test files. Nothing wider.
-4. The three reviewers on the diff: coherence (reuse, layers), coverage (the
-   state graph, one detailed test per flow), simplicity (no abstraction for
-   a case that does not exist). Fix a real finding; drop style. Codex only
-   on request or over 200 lines, two rounds at most.
-5. One commit, Conventional, its body the why. Then
-   `planctl complete-task <plan> --from <stage-result.json>`.
-6. `planctl close-stage <plan> --stage <STAGE>` when its commands are green.
-   A Stage whose criteria include `stage-approved` ends the turn: five lines
-   of what it produced, then `waiting for: the word`.
+1. Run planctl start-task <plan> --task <TASK_ID> and follow the printed frozen
+   scope.
+2. Add the named behavior test and run the exact agent:test command. Observe
+   RED for missing behavior, not syntax, dependencies or environment.
+3. Implement the minimum change, rerun the same command GREEN, then run only
+   tests covering the changed files and the project's typecheck.
+4. Review the diff for exact declared writes, reuse, duplication and accidental
+   fallbacks. Never run a full suite, cops or review-implementation for a
+   Stage or commit. Remove the registered .tmp/code-production/... Stage root.
+5. Create one conventional work commit for the Stage. Never bypass hooks;
+   agent:verify:commit belongs to the managed pre-commit hook.
+6. Import the result:
 
-Three tiers. Free — do it, planctl records the difference in the result row:
-add a test, add a file the compiler names, touch a file beyond the writes
-but inside the target tree in the same commit. Recorded — one
-`planctl add-deviation` line and on: a file outside the target tree, a
-deleted test, a criterion that became unreachable. Refused by planctl: a
-file another Stage or plan declares in its writes; the owner of that code
-changes it and you adapt to its API. The owner's word, and only here: the
-goal and its measure, removing a promised file, the meaning of a criterion,
-scope beyond the Delivery. These tiers stay within the owner's current task
-and explicit limits. Resolve implementation details inside those limits;
-record the decision. A Deviation does not authorize extra work. If a limit
-prevents completion, report the conflict instead of expanding the task.
+       planctl complete-task <plan> --from <stage-result.json>
+       planctl close-stage <plan> --stage <STAGE_ID>
+
+   Checkbox/result changes ride the next work commit; the last ones use one
+   closure commit.
+7. Continue automatically to the next ready Stage.
+
+If a Task cannot continue without an owner response, run
+`planctl needs-owner <plan> --task <TASK_ID> --reason <one-safe-line>`
+immediately before asking. Do not infer an owner obligation from transcript
+punctuation or a terminal turn. After the owner answers, run
+`planctl resume-task <plan> --task <TASK_ID>` before continuing; a fresh
+`start-task` also clears the marker.
+
+The integrator merges returned Stage commits into the Delivery tree and records
+their results. Never copy files between worktrees and never let child agents
+invent or mutate Tasks.
+
+If scope changes, use owner-authorized planctl amend.
+Continue within the owner's current task and explicit limits. Resolve missing
+implementation details there with the smallest reversible decision and record it.
+A Deviation does not authorize extra work. If those limits prevent completion,
+report the conflict instead of expanding the task.
+Time overrun alone is not a reason to stop.
 
 ## Deliver
 
-The complete gate runs once, in the pre-push hook. Push when someone needs
-the new state; CI checks the published SHA. A real CI failure is fixed
-locally with its exact command, then one push. Flip the PR to ready; the
-owner merges. "Done" is said with its proof in the same message: the PR
-URL, the probe, the CI run by SHA.
+1. Run bun run agent:install, then .githooks/pre-push once. Do not compose
+   framework commands or invoke another package manager directly.
+2. Push the exact green head. The push reuses its local receipt; CI independently
+   verifies the published SHA.
+3. Fix a real CI failure locally with its exact command before one new push.
+   When green, mark the PR ready.
+4. Return the PR as a Markdown URL plus the plan mdurl. The owner merges.
+
+review-implementation runs only at the user's request, once at the end of
+the entire implemented plan, after local checks and CI are green and the PR
+is ready to merge. Fix its findings with typecheck and tests covering changed
+files; do not start another review round.
+
+After a check fails, rerun that check. Reuse passing checks unless subsequent
+changes affect what they verified; do not repeat an aggregate command merely
+to rerun one failed step. Publication hooks still apply.

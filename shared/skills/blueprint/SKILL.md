@@ -1,57 +1,84 @@
 ---
 name: blueprint
-description: Write one plan the owner approves twice — the SPEC, then the Stages — with planctl as the only pen. Use before any non-trivial change.
+description: Turn a rough product idea into an owner-approved, executable plan with one PR Delivery and commit-sized Stages. Use before non-trivial implementation.
 ---
 
 # Blueprint
 
-A change that is one commit is not a plan: `/bug`, a red test, a fix, a pull
-request. The plan is `docs/plans/<slug>.md` on `feat/<slug>`, born in its own
-worktree from fresh `origin/staging`, next to the list of open PRs into
-staging that touch the same files. `planctl init <plan> --title "…"` creates
-it; from then on planctl is the only pen.
+Produce one plan at docs/plans/<slug>.md. This skill is repository-agnostic:
+project commands come only from package.json scripts named agent:*, and all
+plan mutations go through planctl.
 
-## The SPEC
+## SPEC
 
-Read the code first: the names, the mechanisms, the tests that exist. Then
-write the SPEC in prose, in the skeleton of `account-sync-state`:
+1. Create feat/<slug> from origin/staging in its own worktree. Run:
 
-- The Goal: two or three lines — the owner's measures, today's number and the
-  target. Never "measure X"; a Goal is what will be true.
-- Why now: the problem with its numbers and its `file:line` anchors.
-- The target, as detailed as the task is deep: the process as a flow (a
-  diagram and a table of its stages), the design as the screen will look,
-  Interfaces in TypeScript, Code where the algorithm is the decision, What
-  changes and what leaves, Target tree, Verification, Invariants,
-  Constraints and non-goals, Reuse, Deliveries.
-- Not verified: what the plan claims without having run it.
+       planctl init docs/plans/<slug>.md --title "<title>"
 
-Names come from the repository, or from the project's vocabulary page where
-one exists. A new name is declared in a New names table with its reason.
-Every new or changed type is TypeScript: a hand-written interface, one field
-per line, a zod schema decoding into it — never a sentence, never "as
-elsewhere". Sizes are printed, not capped: depth sets the size.
+   Commit the plan immediately.
+2. Explore existing code before proposing new mechanisms. Agree on the Goal,
+   user flows, success metrics, constraints, reuse and testable invariants.
+3. Write the SPEC with:
 
-`planctl set-spec <plan> --from <spec.md>`, then the pre-approval screen:
-SPEC lines, Stages, the longest Stage, the New names count, next to the
-medians of the plans approved in one round (150 to 300 SPEC lines). The
-plan-gate linter and judge have passed before the owner reads. Open the
-draft PR, publish with mdurl, ask. Hard stop. An owner question is answered
-in the chat; the plan changes only when the owner says "внеси". At most
-three review rounds, fixing only what the plan cannot run without.
-`planctl approve-spec` with the owner's words.
+       planctl set-spec <plan> --from <spec.md>
 
-## The Stages
+4. Publish the coherent SPEC with mdurl for owner review.
+5. Ask whether the owner approves the SPEC. This is a hard stop.
+6. After an explicit yes, run planctl approve-spec with the owner's words.
 
-One Delivery is one PR; Stage 0 of a Delivery is the interface and its mock,
-committed first, so a second agent can build against it. A Stage is a commit
-a reviewer reads in one sitting, green after it: two Stages one commit
-message would cover are one; a Stage with a second "What is built"
-paragraph, writes of two owners or more than three Tasks is two. A Task
-story names one change in under 200 characters. No minutes, no credits.
-`planctl put-delivery` and `planctl put-stage` from their `--help` JSON;
-never hand-write Stage Markdown. Check that every Goal line, flow and
-invariant has a Stage; the screen prints each Stage's writes and Tasks
-counts; publish and ask again. Hard stop. `planctl approve-plan` with the
-owner's words. After that the plan changes only through `amend`,
-`start-task`, `complete-task`, `add-deviation`, `approve-stage`, `close-stage`.
+Bad Goal: “Make development faster.”
+
+Good Goal: “Deliver one ready PR while measuring predicted versus actual active
+time, elapsed time and credits; run the complete product gate once locally and
+once on the published CI SHA.”
+
+## Implementation contract
+
+1. One Delivery is one PR. Each Stage is one delegable result and one work
+   commit. Do not parallelize multiple Deliveries by default.
+2. Give each Stage a result-oriented title, never branch history. Supply its
+   owner/profile, dependencies, parallel set, writes and temp root in the
+   `put-stage` JSON; `planctl` renders that compact Stage block once.
+3. A Task story names one concrete change in at most 200 characters. Its
+   writes are the contract: files, directories (`scripts/dev/`) or globs
+   (`test/**/*.test.ts`), as many as the change needs. Never point to “the new
+   files”, “the rename map”, “as discussed”, chat history or a colleague's
+   branch.
+4. Supply the writes, one RED command and How in the Task JSON; minutes and
+   credits are optional and default to zero. The rendered Task is the story
+   plus one hidden metadata line; `start-task` reveals the full contract.
+   Files a Stage commit touches beyond its writes are recorded in its result
+   row, never refused. RED uses:
+
+       bun run agent:test:<backend|frontend|e2e> -- <exact-target>
+
+5. Derive each Stage forecast exactly: Task sum plus an explicit verification
+   share, for both active minutes and credits.
+6. Trace each acceptance story through public calls before approval. If one
+   service must call a new method on another service, include the method's
+   owning file in a Task's writes. Missing required scope invalidates the
+   decomposition.
+7. Independent Stages may run in parallel only when their writes do not
+   overlap. Declare dependencies and integration order.
+8. Add Stages through planctl put-stage using its --help JSON format. Do not
+   hand-author implementation Markdown.
+9. Check that every Goal, flow and invariant is covered; each Task is
+   independently executable; estimates and the critical path are explicit.
+10. Publish the updated mdurl and ask whether the owner approves the complete
+   plan. This is the second hard stop.
+11. After an explicit yes, run planctl approve-plan with the owner's words.
+
+Bad Stage: “Finish the colleague's branch: build fixes and Verify rewire.”
+
+Good Stage: “Restore the preview build after the Verify rename.”
+
+Bad Task: “Apply the rename map in the named files.”
+
+Good Task story: Restore `creditOperationMarket` in
+`src/onchain/market/credit/index.ts`.
+
+Good Task story: Replace generic `Error` in `src/prepare/result.ts` with
+`SDKError`; cover it in `test/prepare/result.test.ts`.
+
+After approval, never edit the plan or checkboxes directly. Use planctl amend,
+start-task, complete-task, add-deviation and close-stage.
