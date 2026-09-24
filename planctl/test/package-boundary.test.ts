@@ -19,6 +19,7 @@ const CANONICAL_RUNTIME = [
   ["src/cli/main.ts", ".agents/code-production/runtime/planctl.ts"],
   ["src/core/plan-update.ts", ".agents/code-production/runtime/plan-update.ts"],
   ["src/core/retro-register.ts", ".agents/code-production/runtime/retro-register.ts"],
+  ["src/core/plan-gate.ts", ".agents/code-production/runtime/plan-gate.ts"],
 ] as const;
 
 function git(root: string, ...args: readonly string[]): string {
@@ -89,7 +90,12 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
     git(consumer, "commit", "-qm", "open the plan");
     writeFileSync(join(consumer, "spec.md"), readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8"));
     expect(run("set-spec", plan, "--from", "spec.md").status).toBe(0);
-    const locked = run("approve-spec", plan, "--owner-word", "yes");
+    // The installed copy carries no parser: approval lints from the source
+    // checkout, as the planctl launcher does, and the installed CLI says so.
+    const vendored = run("approve-spec", plan, "--owner-word", "yes");
+    expect(vendored.status).not.toBe(0);
+    expect(`${vendored.stdout}${vendored.stderr}`).toContain("approve through the planctl launcher");
+    const locked = spawnSync("bun", [cli, "approve-spec", plan, "--owner-word", "yes"], { cwd: consumer, encoding: "utf8", timeout: 30_000 });
     expect(locked.status, locked.stderr).toBe(0);
     expect(readFileSync(join(consumer, plan), "utf8")).toContain("Status: SPEC_LOCKED");
     const installedBin = join(consumer, "local bin");
