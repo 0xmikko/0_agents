@@ -242,6 +242,7 @@ Re-runs machinable criteria and closes only those proven on the current HEAD.
   amend: `Usage: planctl amend <plan.md> --owner-word <receipt> --patch <patch.json>
 
 Applies one exact owner-authorized replacement through the canonical writer.
+SPEC corrections are accepted in SPEC_LOCKED without approving implementation.
 `,
   verify: `Usage: planctl verify <plan.md>
 
