@@ -68,6 +68,8 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
     mkdirSync(join(consumer, "docs/plans"), { recursive: true });
     git(consumer, "add", ".");
     git(consumer, "commit", "-qm", "test: consumer fixture");
+    git(consumer, "config", "code-production.base", git(consumer, "branch", "--show-current"));
+    git(consumer, "checkout", "-qb", "feat/fixture");
 
     const installed = installStack(consumer);
 

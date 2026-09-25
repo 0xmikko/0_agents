@@ -279,6 +279,39 @@ function lintCommit(root: string, commit: string, types: ReadonlySet<string>, li
   }
 }
 
+/** The SPEC sections every plan carries, in the order the owner reads them. */
+export const REQUIRED_SECTIONS = ["The Goal", "Why now", "The target", "What changes", "Target tree", "Invariants", "Reuse", "New names", "Not verified"] as const;
+
+/** What a Goal is: the rule the agent reads at init and the model checks at submission. */
+export const GOAL_RULE = "The Goal is one to four numbered outcomes the owner will see when the work is done. "
+  + "Each outcome names its measure: a number, a count, a time, or the exact observable state before and after. "
+  + "It promises only what the request asks: no vision, no how, no extra scope. Plain English, one sentence per outcome.";
+
+export interface AuthoringContract {
+  readonly sections: readonly string[];
+  readonly vocabulary: readonly { readonly word: string; readonly term: string }[];
+  readonly goalRule: string;
+}
+
+function vocabularyMap(root: string, synonyms: (root: string, file?: string) => Map<string, string>): Map<string, string> {
+  return new Map([
+    ...synonyms(resolve(import.meta.dir, "../../..")),
+    ...synonyms(root, "docs/graph.md"),
+  ]);
+}
+
+/** What an agent needs before writing a SPEC: the sections, the vocabulary pairs and the Goal rule.
+ * @tested-by: tst_scripts_planctl_011
+ */
+export async function authoringContract(root: string): Promise<AuthoringContract> {
+  const { synonyms } = await import("../../../shared/code-production/instruction-audit");
+  return {
+    sections: REQUIRED_SECTIONS,
+    vocabulary: [...vocabularyMap(root, synonyms)].map(([word, term]) => ({ word, term })),
+    goalRule: GOAL_RULE,
+  };
+}
+
 /** Check the authored plan without executing its criteria or changing its locks.
  * @tested-by: tst_gate_lint_001, tst_gate_lint_002, tst_gate_lint_003
  */
@@ -308,7 +341,7 @@ export async function lint(body: string, root: string, commit?: string): Promise
   const spec = specLines.join("\n");
   const nodes = markdownNodes(fromMarkdown(spec));
   const headings = nodes.filter((node) => node.type === "heading");
-  const required = ["The Goal", "Why now", "The target", "What changes", "Target tree", "Invariants", "Reuse", "New names", "Not verified"];
+  const required = REQUIRED_SECTIONS;
   for (const name of required) {
     if (!headings.some((node) => proseText(node).toLowerCase() === name.toLowerCase())) add(specStart + 2, `missing SPEC section: ${name}`);
   }
@@ -325,10 +358,7 @@ export async function lint(body: string, root: string, commit?: string): Promise
   }
   const names = section("New names");
   if (names !== null && !/^\|\s*-{3,}\s*\|\s*-{3,}/m.test(names.text)) add(names.line, "New names needs a name/reason table");
-  const vocabulary = new Map([
-    ...synonyms(resolve(import.meta.dir, "../../..")),
-    ...synonyms(root, "docs/graph.md"),
-  ]);
+  const vocabulary = vocabularyMap(root, synonyms);
   const fullNodes = markdownNodes(fromMarkdown(body));
   const implementationEnd = lines.indexOf("<!-- plan:implementation:end -->");
   const authored = fullNodes.filter((node) => specStart < 0 || (sourceLine(node) > specStart && (implementationEnd < 0 ? sourceLine(node) < specEnd : sourceLine(node) < implementationEnd)));

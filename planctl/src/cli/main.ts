@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 
-import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
+import type { AuthoringContract } from "../core/plan-gate";
 import type { TaskExecutionBrief } from "../core/plan-update";
 import type { OwnerWaitMarker, TaskRun, TaskRunV1 } from "../core/task-run";
 import type { GitWorktreeIdentity } from "../machine/sessions/session-source";
@@ -20,14 +20,15 @@ function portableRuntimeFile(name: "plan-gate.ts" | "plan-update.ts" | "retro-re
 
 const PLAN_UPDATE_FILE = portableRuntimeFile("plan-update.ts");
 const {
-  createDraftPlan,
-  journalCreatedPlan,
+  completeTask: completeTaskOperation,
+  initPlan,
   mutatePlanFile,
   replaceDraftSpec,
   taskExecutionBrief,
+  taskRunPath,
   verifyStagedPlan,
 } = await import(PLAN_UPDATE_FILE);
-const { protocolImplementationHash, protocolLockViolations } = await import(portableRuntimeFile("plan-gate.ts"));
+const { authoringContract, protocolImplementationHash, protocolLockViolations } = await import(portableRuntimeFile("plan-gate.ts"));
 
 const GENERAL_HELP = `Usage: planctl <command> [arguments]
 
@@ -69,10 +70,12 @@ Run planctl <command> --help for exact syntax and JSON contracts.
 `;
 
 const COMMAND_HELP: Readonly<Record<string, string>> = {
-  init: `Usage: planctl init <plan.md> --title <text>
+  init: `Usage: planctl init [<plan.md>] --title <text>
 
-Creates the canonical SPEC_DRAFT skeleton and stages it. Commit it before
-locking SPEC.
+Creates docs/plans/<date>-<slug>.md from the branch (or the named file),
+stages it, journals it, and prints the authoring contract: the sections,
+the vocabulary pairs and the Goal rule. Refuses the integration branch and
+a missing code-production.base. Commit the plan before locking SPEC.
 `,
   "set-spec": `Usage: planctl set-spec <plan.md> --from <spec.md>
 
@@ -186,7 +189,8 @@ Transcript punctuation is never interpreted as an owner obligation.
 
 Atomically clears the Task's structured owner-response wait.
 `,
-  "complete-task": `Usage: planctl complete-task <plan.md> --from <stage-result.json>
+  "complete-task": `Usage: planctl complete-task <plan.md> --task <ID[,ID]> --commit <sha> --result <sentence> [--deviation <text>]
+       planctl complete-task <plan.md> --from <stage-result.json>
 
 Imports the canonical StageResultReceipt. It validates Task IDs, commit
 ancestry and actual diff paths, declared tests, time/usage and temp cleanup.
@@ -339,16 +343,6 @@ function atomicWrite(path: string, body: string): void {
   }
 }
 
-function stage(rootPath: string, path: string): void {
-  execFileSync("git", ["-C", rootPath, "add", "--", path]);
-}
-
-function taskRunPath(rootPath: string, plan: string, taskId: string): string {
-  const common = git(rootPath, "rev-parse", "--path-format=absolute", "--git-common-dir");
-  const planKey = createHash("sha256").update(plan).digest("hex").slice(0, 12);
-  return join(common, "planctl", "task-runs", `${planKey}-${taskId}.json`);
-}
-
 function writeTaskRun(path: string, run: TaskRun): void {
   const parent = dirname(path);
   mkdirSync(parent, { recursive: true });
@@ -428,7 +422,7 @@ function approvedPlan(args: readonly string[]): ApprovedPlanRead {
   const committed = execFileSync("git", ["-C", rootPath, "show", `HEAD:${target.relative}`], { encoding: "utf8" });
   if (body !== committed) {
     try {
-      verifyStagedPlan(target.relative);
+      verifyStagedPlan(rootPath, target.relative);
     } catch {
       throw new Error("start-task requires a committed plan or a journal-verified staged result");
     }
@@ -757,6 +751,24 @@ async function completeTask(args: readonly string[]): Promise<number> {
   if (plan === undefined) throw new Error("plan path is required");
   const rootPath = root();
   const target = addressedPath(rootPath, plan);
+  const taskFlag = optionalFlag(args, "--task");
+  if (taskFlag !== undefined) {
+    const done = await completeTaskOperation(rootPath, {
+      plan: target.relative,
+      taskIds: taskFlag.split(",").map((id) => id.trim()).filter((id) => id !== ""),
+      commit: flag(args, "--commit"),
+      result: flag(args, "--result"),
+      deviations: args.flatMap((arg, index) => arg === "--deviation" && args[index + 1] !== undefined ? [args[index + 1]] : []),
+    }, taskRunFrom);
+    console.log([
+      `Tasks ${done.taskIds.join(", ")} COMPLETED — ${done.stageId} commit:${done.commit}`,
+      `UTC: ${done.startedAt}–${done.endedAt} — ${done.activeMinutes.toFixed(1)} active (estimate) / ${done.elapsedMinutes.toFixed(1)} elapsed min`,
+      `Paths: ${done.paths.join(", ")}`,
+      ...(done.beyondWrites.length === 0 ? [] : [`Beyond writes: ${done.beyondWrites.join(", ")}`]),
+      `Temp root: ${done.tempRoot.path} (${done.tempRoot.state})`,
+    ].join("\n"));
+    return 0;
+  }
   const receipt = completionHeader(JSON.parse(readFileSync(resolve(rootPath, flag(args, "--from")), "utf8")) as unknown);
   if (receipt.plan !== target.relative) throw new Error(`Stage result names ${receipt.plan}, expected ${target.relative}`);
   const runs = await Promise.all(receipt.taskIds.map(async (taskId) => {
@@ -788,16 +800,25 @@ async function completeTask(args: readonly string[]): Promise<number> {
   return status;
 }
 
-function init(args: readonly string[]): void {
-  const plan = args[1];
-  if (plan === undefined) throw new Error("plan path is required");
+async function init(args: readonly string[]): Promise<void> {
   const rootPath = root();
-  const target = addressedPath(rootPath, plan);
-  if (existsSync(target.absolute)) throw new Error(`plan already exists: ${target.relative}`);
-  const body = createDraftPlan(flag(args, "--title"));
-  atomicWrite(target.absolute, body);
-  stage(rootPath, target.relative);
-  journalCreatedPlan(target.relative, body);
+  const explicit = args[1] !== undefined && !args[1].startsWith("--") ? addressedPath(rootPath, args[1]).relative : undefined;
+  const title = flag(args, "--title");
+  const created = initPlan(rootPath, explicit === undefined ? { title } : { title, plan: explicit });
+  if (basename(import.meta.dir) !== "cli") {
+    // The installed copy carries no vocabulary parser: the contract comes
+    // from the source checkout, as the planctl launcher runs it.
+    console.log(`Plan: ${created.plan}\nBranch: ${created.branch} (base ${created.base})\nContract: run init through the planctl launcher for the sections, vocabulary and Goal rule`);
+    return;
+  }
+  const contract: AuthoringContract = await authoringContract(rootPath);
+  console.log([
+    `Plan: ${created.plan}`,
+    `Branch: ${created.branch} (base ${created.base})`,
+    `Sections: ${contract.sections.join(", ")}`,
+    ...contract.vocabulary.map((pair) => `Vocabulary: ${pair.word} → ${pair.term}`),
+    `Goal rule: ${contract.goalRule}`,
+  ].join("\n"));
 }
 
 function setSpec(args: readonly string[]): void {
@@ -809,7 +830,7 @@ function setSpec(args: readonly string[]): void {
   // Through the journaled writer, like every other mutation: a SPEC written by
   // hand left no journal, and the managed pre-commit refuses a staged marker
   // plan that has none.
-  mutatePlanFile(target.relative, "set-spec", (body: string) => replaceDraftSpec(body, spec));
+  mutatePlanFile(rootPath, target.relative, "set-spec", (body: string) => replaceDraftSpec(body, spec));
 }
 
 async function configCommand(args: readonly string[]): Promise<void> {
@@ -863,7 +884,7 @@ async function run(args: readonly string[]): Promise<number> {
     return 0;
   }
   if (command === "init") {
-    init(args);
+    await init(args);
     return 0;
   }
   if (command === "set-spec") {

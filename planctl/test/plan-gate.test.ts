@@ -47,6 +47,9 @@ function makeRepo(): { root: string; sha: string } {
   writeFileSync(join(root, "seed.txt"), "seed\n");
   git(root, "add -A");
   git(root, '-c user.email=t@t -c user.name=t commit -qm seed');
+  // init refuses the integration branch and a missing base
+  git(root, `config code-production.base ${git(root, "branch --show-current")}`);
+  git(root, "checkout -qb feat/fixture");
   return { root, sha: git(root, "rev-parse --short HEAD") };
 }
 
