@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -89,6 +89,10 @@ function fixtureRepository(): {
   git(root, "config", "user.name", "Planctl Test");
   // a plan is born in a repository with history: the journal binds to HEAD
   git(root, "commit", "-q", "--allow-empty", "-m", "the repository");
+  // init refuses the integration branch and a missing base: the fixture
+  // names its base and works on a feature branch, like every real plan
+  git(root, "config", "code-production.base", git(root, "branch", "--show-current"));
+  git(root, "checkout", "-qb", "feat/fixture");
   mkdirSync(join(root, "docs", "plans"), { recursive: true });
   const plan = join(root, "docs", "plans", "fixture.md");
   const spec = join(root, "spec.md");
@@ -196,6 +200,46 @@ describe("planctl", () => {
       expect(approved).toContain("### PR Delivery D1 — Foundation");
       expect(approved).toContain("#### Stage D1-S1 — Canonical ownership");
       expect(approved).not.toContain("State: PLAN_APPROVED");
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  /*
+   * @test-id: tst_scripts_planctl_011
+   * @scenario: scn_plan_control_init_001
+   * @covers: planctl/src/cli/main.ts::init
+   * @deterministic: yes
+   * @fixtures: temporary Git repository
+   * Test environment: isolated local Git repository
+   * Clients: CLI
+   * Mocks: none
+   * Data: the branch name, the base config and the authoring contract
+   */
+  it("tst_scripts_planctl_011 names the plan from the branch, refuses the base branch and a missing base, and returns the contract", () => {
+    const fixture = fixtureRepository();
+    try {
+      const base = git(fixture.root, "config", "code-production.base");
+      git(fixture.root, "config", "--unset", "code-production.base");
+      const unset = run(fixture.root, "init", "--title", "Fixture plan");
+      expect(unset.status).not.toBe(0);
+      expect(unset.stderr).toContain("git config code-production.base <branch>");
+      git(fixture.root, "config", "code-production.base", base);
+      git(fixture.root, "checkout", "-q", base);
+      const onBase = run(fixture.root, "init", "--title", "Fixture plan");
+      expect(onBase.status).not.toBe(0);
+      expect(onBase.stderr).toContain(`integration branch ${base}`);
+      git(fixture.root, "checkout", "-qb", "feat/graph-Indexing_llm");
+      const named = run(fixture.root, "init", "--title", "Fixture plan");
+      expect(named.status, `${named.stdout}\n${named.stderr}`).toBe(0);
+      const today = new Date().toISOString().slice(0, 10);
+      const plan = `docs/plans/${today}-graph-indexing-llm.md`;
+      expect(existsSync(join(fixture.root, plan))).toBe(true);
+      expect(named.stdout).toContain(`Plan: ${plan}`);
+      expect(named.stdout).toContain("Sections: The Goal, Why now, The target");
+      expect(named.stdout).toMatch(/Vocabulary: .+ → .+/);
+      expect(named.stdout).toContain("Goal rule: The Goal is one to four numbered outcomes");
+      expect(run(fixture.root, "verify-staged", plan).status).toBe(0);
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }
@@ -368,9 +412,9 @@ describe("planctl", () => {
       const started = run(fixture.root, "start-task", fixture.plan, "--task", "PLANCTL_001");
       expect(started.status, `${started.stdout}\n${started.stderr}`).toBe(0);
       expect(started.stdout).toContain("Task PLANCTL_001 STARTED");
-      expect(started.stdout).toContain("Source: docs/plans/fixture.md");
-      expect(started.stdout).toContain("Distributed correlation: unavailable (TaskRunV1)");
-      expect(started.stdout).toContain("Writes: scripts/example.ts");
+      expect(started.stdout).toContain("Plan: docs/plans/fixture.md");
+      expect(started.stdout).toContain("Observer identity: none (local record)");
+      expect(started.stdout).toContain("Folders: scripts/example.ts");
       expect(started.stdout).toContain("RED: bun run agent:test:backend -- test/planctl.test.ts");
       const startedAt = started.stdout.match(/^Started: (.+)$/m)?.[1];
       expect(startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -452,8 +496,16 @@ describe("planctl", () => {
         fixture.plan,
         "--task",
         "PLANCTL_001",
-        "--reason",
+        "--context",
         "Choose the public hostname",
+        "--option",
+        "public: reachable from the internet",
+        "--option",
+        "private: reachable from the office only",
+        "--recommendation",
+        "public, because the Goal names external users",
+        "--answer",
+        "public or private",
       );
       expect(waiting.status, `${waiting.stdout}\n${waiting.stderr}`).toBe(0);
       const waitPath = ownerWaitPath(join(fixture.root, ".git"), "docs/plans/fixture.md", "PLANCTL_001");
@@ -466,8 +518,16 @@ describe("planctl", () => {
         fixture.plan,
         "--task",
         "PLANCTL_001",
-        "--reason",
+        "--context",
         "Choose the public hostname",
+        "--option",
+        "public: reachable from the internet",
+        "--option",
+        "private: reachable from the office only",
+        "--recommendation",
+        "public, because the Goal names external users",
+        "--answer",
+        "public or private",
       ).status).toBe(0);
       const resumed = run(fixture.root, "resume-task", fixture.plan, "--task", "PLANCTL_001");
       expect(resumed.status, `${resumed.stdout}\n${resumed.stderr}`).toBe(0);
@@ -475,8 +535,9 @@ describe("planctl", () => {
 
       const progress = run(fixture.root, "progress", fixture.plan);
       expect(progress.status, `${progress.stdout}\n${progress.stderr}`).toBe(0);
-      expect(progress.stdout).toContain("Source: local plan docs/plans/fixture.md");
-      expect(progress.stdout).toContain("Progress: 0.0% (0/1 Tasks)");
+      expect(progress.stdout).toContain("Plan      docs/plans/fixture.md (APPROVED)");
+      expect(progress.stdout).toContain("Delivery  D1 · 0 of 1 Tasks");
+      expect(progress.stdout).toContain("Now       PLANCTL_001 since");
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }

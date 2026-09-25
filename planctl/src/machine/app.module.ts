@@ -7,7 +7,7 @@ import { ScheduleModule, SchedulerRegistry } from "@nestjs/schedule";
 import { protocolImplementationHash, protocolLockViolations } from "../core/plan-gate";
 import { projectPlanProgress } from "../core/plan-progress";
 import { completedStageSamples } from "../core/plan-update";
-import { decodeTaskRun } from "../core/task-run";
+import { taskRunIdentity, taskRunWorktree, decodeTaskRun } from "../core/task-run";
 import { CollectorService, COLLECTOR_OPTIONS } from "./collector.service";
 import { discoverGitWorktrees, findGitRepositories } from "./discovery/git-worktree.source";
 import { scanClaudeSessionFile } from "./sessions/claude-session.source";
@@ -121,7 +121,8 @@ function correlationReceipts(worktrees: readonly GitWorktreeIdentity[], machineI
     for (const path of filesBelow(join(common, "planctl", "task-runs"), ".json", 0)) {
       try {
         const run = decodeTaskRun(JSON.parse(readFileSync(path, "utf8")) as unknown);
-        if (run.version === 1 || run.machineId === machineId) {
+        const identity = taskRunIdentity(run);
+        if (identity === null || identity.machineId === machineId) {
           taskRuns.push(run);
           commonRuns.push(run);
         }
@@ -132,9 +133,10 @@ function correlationReceipts(worktrees: readonly GitWorktreeIdentity[], machineI
     for (const path of filesBelow(join(common, "planctl", "owner-waits"), ".json", 0)) {
       try {
         const wait = structuredOwnerWait(JSON.parse(readFileSync(path, "utf8")) as unknown);
-        const run = commonRuns.find((candidate) => candidate.version === 2
+        const run = commonRuns.find((candidate) => taskRunIdentity(candidate) !== null
           && candidate.plan === wait.plan && candidate.taskId === wait.taskId);
-        ownerWaits.push(run?.version === 2 ? { ...wait, agentId: run.agentId } : wait);
+        const agentId = run === undefined ? undefined : taskRunIdentity(run)?.agentId;
+        ownerWaits.push(agentId === undefined ? wait : { ...wait, agentId });
       } catch {
         issues.push("malformed_owner_wait");
       }
@@ -168,8 +170,10 @@ function reportedPlans(taskRuns: readonly TaskRun[], worktrees: readonly GitWork
   const locations = new Map<string, PlanLocation>();
   const issues: string[] = [];
   for (const run of taskRuns) {
-    if (run.version !== 2) continue;
-    const location = { repositoryId: run.repositoryId, worktree: run.worktree, plan: run.plan };
+    const identity = taskRunIdentity(run);
+    const worktree = taskRunWorktree(run);
+    if (identity === null || worktree === null) continue;
+    const location = { repositoryId: identity.repositoryId, worktree, plan: run.plan };
     locations.set(`${location.repositoryId}:${location.worktree}:${location.plan}`, location);
   }
   for (const worktree of worktrees) {

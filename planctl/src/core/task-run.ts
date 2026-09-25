@@ -18,13 +18,21 @@ export interface OwnerWaitMarker {
   readonly startedAt: string;
 }
 
-export interface OwnerWaitReceipt extends OwnerWaitMarker {
+/** The question form: what this is about, the options with their consequences, the recommendation, the form of the answer. */
+export interface OwnerQuestion {
+  readonly context: string;
+  readonly options: readonly { readonly label: string; readonly consequence: string }[];
+  readonly recommendation: string;
+  readonly answerForm: string;
+}
+
+export interface OwnerWaitReceipt extends OwnerWaitMarker, OwnerQuestion {
   readonly version: 1;
   readonly plan: string;
   readonly taskId: string;
 }
 
-export interface OwnerWaitInput {
+export interface OwnerWaitInput extends OwnerQuestion {
   readonly plan: string;
   readonly taskId: string;
   readonly reason: string;
@@ -44,7 +52,28 @@ export interface TaskRunV2 extends Omit<TaskRunV1, "version"> {
   readonly lastAccountedOwnerWaitStartedAt: string | null;
 }
 
-export type TaskRun = TaskRunV1 | TaskRunV2;
+/** Who observes a run: the machine, the agent session, the repository and the plan revision. */
+export interface TaskRunIdentity {
+  readonly machineId: string;
+  readonly agentId: string;
+  readonly repositoryId: string;
+  readonly planRevision: string;
+}
+
+/** The record a local clone writes: its worktree, a checkpoint, and an
+ * observer identity only when observer configuration exists. */
+export interface TaskRunV3 extends Omit<TaskRunV1, "version"> {
+  readonly version: 3;
+  readonly worktree: string;
+  readonly branch: string;
+  readonly checkpoint: string | null;
+  readonly identity: TaskRunIdentity | null;
+  readonly ownerWait: OwnerWaitMarker | null;
+  readonly accumulatedOwnerWaitSeconds: number;
+  readonly lastAccountedOwnerWaitStartedAt: string | null;
+}
+
+export type TaskRun = TaskRunV1 | TaskRunV2 | TaskRunV3;
 
 export interface TaskRunCorrelation {
   readonly machineId: string;
@@ -103,10 +132,58 @@ function decodeOwnerWaitMarker(value: unknown): OwnerWaitMarker | null {
  * @tested-by: tst_unit_planctl_task_run_001
  * @invariant: CTL-011 legacy receipts remain locally decodable without invented distributed identity.
  */
+function decodeIdentity(value: unknown): TaskRunIdentity {
+  const identity = record(value, "TaskRunV3 identity");
+  return {
+    machineId: text(identity.machineId, "TaskRunV3 machineId", /^[a-z0-9][a-z0-9-]{0,62}$/),
+    agentId: text(identity.agentId, "TaskRunV3 agentId", /^(codex|claude):[^\s:][^\s]*$/),
+    repositoryId: text(identity.repositoryId, "TaskRunV3 repositoryId"),
+    planRevision: text(identity.planRevision, "TaskRunV3 planRevision", /^[0-9a-f]{64}$/),
+  };
+}
+
+function decodeWaitAccounting(value: Readonly<Record<string, unknown>>, name: string): {
+  readonly ownerWait: OwnerWaitMarker | null;
+  readonly accumulatedOwnerWaitSeconds: number;
+  readonly lastAccountedOwnerWaitStartedAt: string | null;
+} {
+  return {
+    ownerWait: decodeOwnerWaitMarker(value.ownerWait),
+    accumulatedOwnerWaitSeconds: nonNegativeSeconds(value.accumulatedOwnerWaitSeconds, `${name} accumulatedOwnerWaitSeconds`),
+    lastAccountedOwnerWaitStartedAt: value.lastAccountedOwnerWaitStartedAt === null
+      ? null
+      : timestamp(value.lastAccountedOwnerWaitStartedAt, `${name} lastAccountedOwnerWaitStartedAt`),
+  };
+}
+
+/** @tested-by: tst_unit_planctl_task_run_next */
+function decodeTaskRunV3(value: Readonly<Record<string, unknown>>, base: Omit<TaskRunV1, "version">): TaskRunV3 {
+  const worktree = text(value.worktree, "TaskRunV3 worktree");
+  if (!isAbsolute(worktree)) throw new Error("TaskRunV3 worktree must be absolute");
+  if (value.checkpoint !== null && typeof value.checkpoint !== "string") throw new Error("TaskRunV3 checkpoint must be a string or null");
+  if (typeof value.checkpoint === "string" && /[\r\n]/.test(value.checkpoint)) throw new Error("TaskRunV3 checkpoint must be one line");
+  const accounting = decodeWaitAccounting(value, "TaskRunV3");
+  const result: TaskRunV3 = {
+    version: 3,
+    ...base,
+    worktree,
+    branch: text(value.branch, "TaskRunV3 branch"),
+    checkpoint: value.checkpoint,
+    identity: value.identity === null ? null : decodeIdentity(value.identity),
+    ...accounting,
+  };
+  if (accounting.lastAccountedOwnerWaitStartedAt !== null
+    && Date.parse(accounting.lastAccountedOwnerWaitStartedAt) < Date.parse(result.startedAt)) {
+    throw new Error("TaskRunV3 accounted owner wait predates Task start");
+  }
+  return result;
+}
+
 export function decodeTaskRun(input: unknown): TaskRun {
   const value = record(input, "TaskRun");
   const base = baseFields(value);
   if (value.version === 1) return { version: 1, ...base };
+  if (value.version === 3) return decodeTaskRunV3(value, base);
   if (value.version !== 2) throw new Error("TaskRun version is unsupported");
   const worktree = text(value.worktree, "TaskRunV2 worktree");
   if (!isAbsolute(worktree)) throw new Error("TaskRunV2 worktree must be absolute");
@@ -169,16 +246,24 @@ export function accountOwnerWait(
   });
 }
 
-export function taskRunCorrelation(run: TaskRun): TaskRunCorrelation | null {
+/** The observer identity a record carries, whatever its version; a local V3 record has none. */
+export function taskRunIdentity(run: TaskRun): TaskRunIdentity | null {
   if (run.version === 1) return null;
-  return {
-    machineId: run.machineId,
-    agentId: run.agentId,
-    repositoryId: run.repositoryId,
-    worktree: run.worktree,
-    branch: run.branch,
-    planRevision: run.planRevision,
-  };
+  if (run.version === 2) {
+    return { machineId: run.machineId, agentId: run.agentId, repositoryId: run.repositoryId, planRevision: run.planRevision };
+  }
+  return run.identity;
+}
+
+/** The worktree a record belongs to; a legacy V1 record names none. */
+export function taskRunWorktree(run: TaskRun): string | null {
+  return run.version === 1 ? null : run.worktree;
+}
+
+export function taskRunCorrelation(run: TaskRun): TaskRunCorrelation | null {
+  const identity = taskRunIdentity(run);
+  if (identity === null || run.version === 1) return null;
+  return { ...identity, worktree: run.worktree, branch: run.branch };
 }
 
 function assertExactKeys(
@@ -190,31 +275,41 @@ function assertExactKeys(
   if (unexpected.length > 0) throw new Error(`${name} has unknown key(s): ${unexpected.join(", ")}`);
 }
 
+const PLAN_PATH = /^docs\/plans\/[a-z0-9][a-z0-9-]*\.md$/;
+const TASK_ID = /^[A-Z][A-Z0-9_-]*$/;
+
+function decodeOwnerQuestion(value: Readonly<Record<string, unknown>>): OwnerQuestion {
+  if (!Array.isArray(value.options) || value.options.length === 0) throw new Error("owner question needs at least one option");
+  return {
+    context: text(value.context, "owner question context"),
+    options: value.options.map((entry) => {
+      const option = record(entry, "owner question option");
+      return { label: text(option.label, "owner question option label"), consequence: text(option.consequence, "owner question option consequence") };
+    }),
+    recommendation: text(value.recommendation, "owner question recommendation"),
+    answerForm: text(value.answerForm, "owner question answerForm"),
+  };
+}
+
 export function decodeOwnerWait(input: unknown): OwnerWaitReceipt {
   const value = record(input, "owner wait receipt");
-  assertExactKeys(value, ["version", "plan", "taskId", "reason", "startedAt"], "owner wait receipt");
+  assertExactKeys(value, ["version", "plan", "taskId", "reason", "startedAt", "context", "options", "recommendation", "answerForm"], "owner wait receipt");
   if (value.version !== 1) throw new Error("owner wait receipt version is unsupported");
   const marker = decodeOwnerWaitMarker({ reason: value.reason, startedAt: value.startedAt });
   if (marker === null) throw new Error("owner wait receipt marker is missing");
   return {
     version: 1,
-    plan: text(value.plan, "owner wait plan", /^docs\/plans\/[a-z0-9][a-z0-9-]*\.md$/),
-    taskId: text(value.taskId, "owner wait taskId", /^[A-Z][A-Z0-9_-]*$/),
+    plan: text(value.plan, "owner wait plan", PLAN_PATH),
+    taskId: text(value.taskId, "owner wait taskId", TASK_ID),
     ...marker,
+    ...decodeOwnerQuestion(value),
   };
 }
 
 export function ownerWaitPath(gitCommonDir: string, plan: string, taskId: string): string {
   if (!isAbsolute(gitCommonDir)) throw new Error("Git common directory must be absolute");
-  const validated = decodeOwnerWait({
-    version: 1,
-    plan,
-    taskId,
-    reason: "path-validation",
-    startedAt: "1970-01-01T00:00:00.000Z",
-  });
-  const planKey = createHash("sha256").update(validated.plan).digest("hex").slice(0, 12);
-  return join(gitCommonDir, "planctl", "owner-waits", `${planKey}-${validated.taskId}.json`);
+  const planKey = createHash("sha256").update(text(plan, "owner wait plan", PLAN_PATH)).digest("hex").slice(0, 12);
+  return join(gitCommonDir, "planctl", "owner-waits", `${planKey}-${text(taskId, "owner wait taskId", TASK_ID)}.json`);
 }
 
 /**

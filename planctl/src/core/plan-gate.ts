@@ -15,11 +15,27 @@ import type { Content, Root } from "mdast";
 import { stageInputs, stageResultCommitPaths, MACHINABLE, protocolSpecHash, protocolImplementationHash } from "./plan-update";
 export { MACHINABLE, protocolSpecHash, protocolImplementationHash } from "./plan-update";
 
+/** Which lint rule a finding comes from; gate findings (receipts, boxes) carry none. */
+type LintRule = "structure" | "mermaid" | "typescript" | "vocabulary" | "codes" | "sentence" | "story" | "goal" | "clarity";
+
+/** One finding an agent can act on: the rule, the line, the offending text
+ * and the replacement when one exists. Lint errors and gate refusals block;
+ * a model note at submission advises. */
 export interface GateViolation {
   kind: "missing-receipt" | "unknown-receipt" | "stray-receipt" | "criterion-failed" | "open-box"
     | "unapproved-plan" | "awaiting-owner" | "protocol-shape" | "lock-mismatch";
+  rule: LintRule | null;
+  blocking: boolean;
   line: number;
+  quote: string;
   text: string;
+  replacement: string | null;
+}
+
+type AddFinding = (line: number, text: string, rule: LintRule, quote?: string, replacement?: string | null) => void;
+
+function refusal(kind: GateViolation["kind"], line: number, text: string): GateViolation {
+  return { kind, rule: null, blocking: true, line, quote: "", text, replacement: null };
 }
 
 export interface GateReport {
@@ -182,17 +198,19 @@ function proseText(node: Root | Content): string {
 function lintProse(
   nodes: readonly (Root | Content)[],
   matches: (text: string) => { word: string; term: string }[],
-  add: (line: number, text: string) => void,
+  add: AddFinding,
 ): void {
   for (const node of nodes) {
     if (node.type !== "paragraph" && node.type !== "heading") continue;
     const text = proseText(node).replace(/^(?:Stage D\d+-S\d+|PR Delivery D\d+|\[[ x]\] [A-Z][A-Z0-9_-]*) — /, "");
     // The writer owns these structural fields, including dependency IDs.
     if (/^(?:\||Owner:|Writes:|Temp root:|Stage graph:|Branch:|Of which verification:)/.test(text.trimStart())) continue;
-    if (/\b(?:D\d+-S\d+|INV-\d+)\b/.test(text)) add(sourceLine(node), "plan code in prose");
-    for (const match of matches(text)) add(sourceLine(node), `say ${match.term} instead of ${match.word}`);
+    const code = text.match(/\b(?:D\d+-S\d+|INV-\d+)\b/);
+    if (code !== null) add(sourceLine(node), "plan code in prose", "codes", code[0]);
+    for (const match of matches(text)) add(sourceLine(node), `say ${match.term} instead of ${match.word}`, "vocabulary", match.word, match.term);
     for (const sentence of new Intl.Segmenter("en", { granularity: "sentence" }).segment(text.replace(/\s+/g, " "))) {
-      if (sentence.segment.trim().split(/\s+/).length > 30) add(sourceLine(node), "sentence exceeds thirty words");
+      const words = sentence.segment.trim();
+      if (words.split(/\s+/).length > 30) add(sourceLine(node), "sentence exceeds thirty words", "sentence", words);
     }
   }
 }
@@ -201,7 +219,7 @@ function lintTypes(
   nodes: readonly (Root | Content)[],
   interfaces: { text: string; line: number } | null,
   ts: typeof import("typescript"),
-  add: (line: number, text: string) => void,
+  add: AddFinding,
 ): Set<string> {
   const types = new Set<string>();
   for (const node of nodes) {
@@ -211,7 +229,7 @@ function lintTypes(
     for (const diagnostic of parsed.diagnostics ?? []) {
       if (diagnostic.category !== ts.DiagnosticCategory.Error) continue;
       const row = diagnostic.start === undefined ? 0 : source.getLineAndCharacterOfPosition(diagnostic.start).line;
-      add(sourceLine(node) + row + 1, `TypeScript: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, " ")}`);
+      add(sourceLine(node) + row + 1, `TypeScript: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, " ")}`, "typescript");
     }
     const visit = (syntax: import("typescript").Node): void => {
       if (ts.isInterfaceDeclaration(syntax) || ts.isTypeAliasDeclaration(syntax)) {
@@ -221,7 +239,7 @@ function lintTypes(
         const seen = new Set<number>();
         for (const member of syntax.members) {
           const row = source.getLineAndCharacterOfPosition(member.getStart(source)).line;
-          if (seen.has(row)) add(sourceLine(node) + row + 1, "put each TypeScript field on its own line");
+          if (seen.has(row)) add(sourceLine(node) + row + 1, "put each TypeScript field on its own line", "typescript");
           seen.add(row);
         }
       }
@@ -232,7 +250,7 @@ function lintTypes(
   return types;
 }
 
-async function lintMermaid(nodes: readonly (Root | Content)[], add: (line: number, text: string) => void): Promise<void> {
+async function lintMermaid(nodes: readonly (Root | Content)[], add: AddFinding): Promise<void> {
   const diagrams = nodes.filter((node) => node.type === "code" && node.lang === "mermaid");
   if (diagrams.length === 0) return;
   const { Window } = await import("happy-dom");
@@ -248,7 +266,7 @@ async function lintMermaid(nodes: readonly (Root | Content)[], add: (line: numbe
       catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         const row = Number(message.match(/line (\d+)/)?.[1] ?? 1);
-        add(sourceLine(node) + row, `mermaid: ${message.split("\n")[0]}`);
+        add(sourceLine(node) + row, `mermaid: ${message.split("\n")[0]}`, "mermaid");
       }
     }
   } finally {
@@ -267,16 +285,94 @@ function exportedTypes(text: string, path: string, ts: typeof import("typescript
   return result;
 }
 
-function lintCommit(root: string, commit: string, types: ReadonlySet<string>, line: number, ts: typeof import("typescript"), add: (line: number, text: string) => void): void {
+/** Exported types the commit adds or changes that the SPEC Interfaces do not name. */
+function undeclaredTypesOf(root: string, commit: string, types: ReadonlySet<string>, ts: typeof import("typescript")): readonly { path: string; name: string }[] {
+  const found: { path: string; name: string }[] = [];
   for (const path of stageResultCommitPaths(commit, root).filter((path) => /\.tsx?$/.test(path))) {
     const current = spawnSync("git", ["-C", root, "show", `${commit}:${path}`], { encoding: "utf8" });
     if (current.status !== 0) continue; // deleted files introduce no types
     const previous = spawnSync("git", ["-C", root, "show", `${commit}^1:${path}`], { encoding: "utf8" });
     const before = exportedTypes(previous.status === 0 ? previous.stdout : "", path, ts);
     for (const [name, text] of exportedTypes(current.stdout, path, ts)) {
-      if (before.get(name) !== text && !types.has(name)) add(line, `${path}: exported type ${name} is missing from SPEC Interfaces`);
+      if (before.get(name) !== text && !types.has(name)) found.push({ path, name });
     }
   }
+  return found;
+}
+
+function lintCommit(root: string, commit: string, types: ReadonlySet<string>, line: number, ts: typeof import("typescript"), add: AddFinding): void {
+  for (const { path, name } of undeclaredTypesOf(root, commit, types, ts)) {
+    add(line, `${path}: exported type ${name} is missing from SPEC Interfaces`, "typescript", name);
+  }
+}
+
+/** The SPEC region as lint reads it: every line outside the markers blanked, so line numbers survive. */
+function specView(body: string, fromMarkdown: (value: string) => Root): {
+  readonly specStart: number;
+  readonly specEnd: number;
+  readonly specLines: readonly string[];
+  readonly nodes: readonly (Root | Content)[];
+  readonly headings: readonly (Root | Content)[];
+  readonly section: (name: string) => { text: string; line: number } | null;
+} {
+  const lines = body.split("\n");
+  const specStart = lines.indexOf(PROTOCOL_SPEC_START);
+  const specEnd = lines.indexOf(PROTOCOL_SPEC_END);
+  const specLines = specStart < 0 ? lines : lines.map((line, index) => index > specStart && index < specEnd ? line : "");
+  const nodes = markdownNodes(fromMarkdown(specLines.join("\n")));
+  const headings = nodes.filter((node) => node.type === "heading");
+  const section = (name: string): { text: string; line: number } | null => {
+    const heading = headings.find((node) => proseText(node).toLowerCase() === name.toLowerCase());
+    if (heading === undefined) return null;
+    const start = sourceLine(heading);
+    const next = headings.find((node) => sourceLine(node) > start && node.depth <= heading.depth);
+    return { text: specLines.slice(start, next === undefined ? specLines.length : sourceLine(next) - 1).join("\n"), line: start };
+  };
+  return { specStart, specEnd, specLines, nodes, headings, section };
+}
+
+/** Exported TypeScript types a commit adds or changes that the plan's
+ * Interfaces section does not declare. Completion refuses them by name.
+ * @tested-by: tst_scripts_planupdate_025
+ */
+export async function undeclaredExportedTypes(root: string, commit: string, body: string): Promise<readonly { path: string; name: string }[]> {
+  const [{ fromMarkdown }, ts] = await Promise.all([import("mdast-util-from-markdown"), import("typescript")]);
+  const view = specView(body, fromMarkdown);
+  const types = lintTypes(view.nodes, view.section("Interfaces"), ts, () => {});
+  return undeclaredTypesOf(root, commit, types, ts);
+}
+
+/** The SPEC sections every plan carries, in the order the owner reads them. */
+export const REQUIRED_SECTIONS = ["The Goal", "Why now", "The target", "Target tree", "Invariants", "Reuse", "New names", "Not verified"] as const;
+
+/** What a Goal is: the rule the agent reads at init and the model checks at submission. */
+export const GOAL_RULE = "The Goal is one to four numbered outcomes the owner will see when the work is done. "
+  + "Each outcome names its measure: a number, a count, a time, or the exact observable state before and after. "
+  + "It promises only what the request asks: no vision, no how, no extra scope. Plain English, one sentence per outcome.";
+
+export interface AuthoringContract {
+  readonly sections: readonly string[];
+  readonly vocabulary: readonly { readonly word: string; readonly term: string }[];
+  readonly goalRule: string;
+}
+
+function vocabularyMap(root: string, synonyms: (root: string, file?: string) => Map<string, string>): Map<string, string> {
+  return new Map([
+    ...synonyms(resolve(import.meta.dir, "../../..")),
+    ...synonyms(root, "docs/graph.md"),
+  ]);
+}
+
+/** What an agent needs before writing a SPEC: the sections, the vocabulary pairs and the Goal rule.
+ * @tested-by: tst_scripts_planctl_011
+ */
+export async function authoringContract(root: string): Promise<AuthoringContract> {
+  const { synonyms } = await import("../../../shared/code-production/instruction-audit");
+  return {
+    sections: REQUIRED_SECTIONS,
+    vocabulary: [...vocabularyMap(root, synonyms)].map(([word, term]) => ({ word, term })),
+    goalRule: GOAL_RULE,
+  };
 }
 
 /** Check the authored plan without executing its criteria or changing its locks.
@@ -297,38 +393,25 @@ export async function lint(body: string, root: string, commit?: string): Promise
     import("../../../shared/code-production/instruction-audit"),
   ]);
   const violations: GateViolation[] = [];
-  const add = (line: number, text: string): void => { violations.push({ kind: "protocol-shape", line, text }); };
-  const lines = body.split("\n");
-  const specStart = lines.indexOf(PROTOCOL_SPEC_START);
-  const specEnd = lines.indexOf(PROTOCOL_SPEC_END);
-  if ((specStart >= 0 || specEnd >= 0) && (specStart < 0 || specEnd <= specStart)) {
-    return { violations: [{ kind: "protocol-shape", line: 1, text: "missing ordered SPEC markers" }], metrics: [] };
-  }
-  const specLines = specStart < 0 ? lines : lines.map((line, index) => index > specStart && index < specEnd ? line : "");
-  const spec = specLines.join("\n");
-  const nodes = markdownNodes(fromMarkdown(spec));
-  const headings = nodes.filter((node) => node.type === "heading");
-  const required = ["The Goal", "Why now", "The target", "What changes", "Target tree", "Invariants", "Reuse", "New names", "Not verified"];
-  for (const name of required) {
-    if (!headings.some((node) => proseText(node).toLowerCase() === name.toLowerCase())) add(specStart + 2, `missing SPEC section: ${name}`);
-  }
-  const section = (name: string): { text: string; line: number } | null => {
-    const heading = headings.find((node) => proseText(node).toLowerCase() === name.toLowerCase());
-    if (heading === undefined) return null;
-    const start = sourceLine(heading);
-    const next = headings.find((node) => sourceLine(node) > start && node.depth <= heading.depth);
-    return { text: specLines.slice(start, next === undefined ? specLines.length : sourceLine(next) - 1).join("\n"), line: start };
+  const add: AddFinding = (line, text, rule, quote = "", replacement = null): void => {
+    violations.push({ kind: "protocol-shape", rule, blocking: true, line, quote, text, replacement });
   };
+  const lines = body.split("\n");
+  const { specStart, specEnd, specLines, nodes, headings, section } = specView(body, fromMarkdown);
+  if ((specStart >= 0 || specEnd >= 0) && (specStart < 0 || specEnd <= specStart)) {
+    return { violations: [refusal("protocol-shape", 1, "missing ordered SPEC markers")], metrics: [] };
+  }
+  const required = REQUIRED_SECTIONS;
+  for (const name of required) {
+    if (!headings.some((node) => proseText(node).toLowerCase() === name.toLowerCase())) add(specStart + 2, `missing SPEC section: ${name}`, "structure", name);
+  }
   for (const name of required) {
     const block = section(name);
-    if (block !== null && (block.text.trim() === "" || /^<[^>]+>$/.test(block.text.trim()))) add(block.line, `empty SPEC section: ${name}`);
+    if (block !== null && (block.text.trim() === "" || /^<[^>]+>$/.test(block.text.trim()))) add(block.line, `empty SPEC section: ${name}`, "structure", name);
   }
   const names = section("New names");
-  if (names !== null && !/^\|\s*-{3,}\s*\|\s*-{3,}/m.test(names.text)) add(names.line, "New names needs a name/reason table");
-  const vocabulary = new Map([
-    ...synonyms(resolve(import.meta.dir, "../../..")),
-    ...synonyms(root, "docs/graph.md"),
-  ]);
+  if (names !== null && !/^\|\s*-{3,}\s*\|\s*-{3,}/m.test(names.text)) add(names.line, "New names needs a name/reason table", "structure");
+  const vocabulary = vocabularyMap(root, synonyms);
   const fullNodes = markdownNodes(fromMarkdown(body));
   const implementationEnd = lines.indexOf("<!-- plan:implementation:end -->");
   const authored = fullNodes.filter((node) => specStart < 0 || (sourceLine(node) > specStart && (implementationEnd < 0 ? sourceLine(node) < specEnd : sourceLine(node) < implementationEnd)));
@@ -336,7 +419,7 @@ export async function lint(body: string, root: string, commit?: string): Promise
   const interfaces = section("Interfaces");
   const types = lintTypes(nodes, interfaces, ts, add);
   const target = section("Target tree");
-  if (target !== null && /\.tsx?\b/.test(target.text) && types.size === 0) add(target.line, "Interfaces must show the TypeScript types changed by this plan");
+  if (target !== null && /\.tsx?\b/.test(target.text) && types.size === 0) add(target.line, "Interfaces must show the TypeScript types changed by this plan", "structure");
   await lintMermaid(authored, add);
   // The common checkbox parser is also used by execution and closure.
   const contentLines = [...lines];
@@ -347,22 +430,22 @@ export async function lint(body: string, root: string, commit?: string): Promise
   }
   for (const item of allPlanItems(contentLines)) {
     const text = item.text.replace(RECEIPT, "").trim();
-    if (item.section === "criteria" && text !== "Commit" && !MACHINABLE.test(text)) add(item.line + 1, "criterion must be a command with its exit code or Commit");
+    if (item.section === "criteria" && text !== "Commit" && !MACHINABLE.test(text)) add(item.line + 1, "criterion must be a command with its exit code or Commit", "structure", text);
   }
   contentLines.forEach((line, index) => {
-    if (/^\s*(?:-\s+)?Predict:/.test(line)) add(index + 1, "Predict fields are not part of the plan");
+    if (/^\s*(?:-\s+)?Predict:/.test(line)) add(index + 1, "Predict fields are not part of the plan", "structure", line.trim());
   });
   const stages = stageInputs(body);
   for (const stage of stages) for (const task of stage.tasks) {
-    if (task.story.length > 200) add(lines.findIndex((line) => line.includes(`${task.id} — `)) + 1, "Task story exceeds 200 characters");
+    if (task.story.length > 200) add(lines.findIndex((line) => line.includes(`${task.id} — `)) + 1, "Task story exceeds 200 characters", "story", task.story);
   }
   const writes = [...new Set(stages.flatMap((stage) => stage.tasks.flatMap((task) => task.writes)))];
   if (stages.length > 0 && writes.length <= 2 && writes.every((path) => /\.[a-z]+$/i.test(path) && !/[*?{}]/.test(path))) {
-    add(1, "two files or fewer: this is a commit, not a plan");
+    add(1, "two files or fewer: this is a commit, not a plan", "structure");
   }
   if (commit !== undefined) lintCommit(root, commit, types, interfaces?.line ?? 1, ts, add);
   const metrics = [
-    `SPEC lines: ${spec.trim().split("\n").length}; reference range for one-round plans: 150–300 lines.`,
+    `SPEC lines: ${specLines.join("\n").trim().split("\n").length}.`,
     `Stages: ${stages.length}; longest description: ${Math.max(0, ...stages.map((stage) => stage.description.split("\n").length))} lines.`,
     ...stages.map((stage) => `${stage.title}: ${stage.writes.length} writes, ${stage.tasks.length} Tasks.`),
   ];
@@ -387,7 +470,7 @@ export function gatePlan(
   const report: GateReport = { openBoxes: 0, closedBoxes: 0, checkedCriteria: 0, violations: [] };
 
   for (const text of protocolLockViolations(body)) {
-    report.violations.push({ kind: text.includes("lock") ? "lock-mismatch" : "protocol-shape", line: 1, text });
+    report.violations.push(refusal(text.includes("lock") ? "lock-mismatch" : "protocol-shape", 1, text));
   }
 
   // --start: work must not begin on an unsettled plan. Approval comes from
@@ -396,11 +479,11 @@ export function gatePlan(
   if (options.start) {
     if (!/^status:\s*approved\s*$/im.test(lines.slice(0, 10).join("\n"))
       && !lines.some((line) => /^Status:\s*APPROVED/.test(line))) {
-      report.violations.push({ kind: "unapproved-plan", line: 1, text: "plan is not owner-approved" });
+      report.violations.push(refusal("unapproved-plan", 1, "plan is not owner-approved"));
     }
     lines.forEach((line, index) => {
       if (/await(s|ing)? the owner/i.test(line)) {
-        report.violations.push({ kind: "awaiting-owner", line: index + 1, text: line.trim() });
+        report.violations.push(refusal("awaiting-owner", index + 1, line.trim()));
       }
     });
   }
@@ -427,16 +510,16 @@ export function gatePlan(
     if (!item.closed) {
       report.openBoxes += 1;
       if (options.closure) {
-        report.violations.push({ kind: "open-box", line: number, text: sourceLine.trim() });
+        report.violations.push(refusal("open-box", number, sourceLine.trim()));
       }
       continue;
     }
     report.closedBoxes += 1;
 
     if (item.receipt === undefined) {
-      report.violations.push({ kind: "missing-receipt", line: number, text: sourceLine.trim() });
+      report.violations.push(refusal("missing-receipt", number, sourceLine.trim()));
     } else if (!shaKnownAndAncestor(options.root, item.receipt)) {
-      report.violations.push({ kind: "unknown-receipt", line: number, text: sourceLine.trim() });
+      report.violations.push(refusal("unknown-receipt", number, sourceLine.trim()));
     }
 
     const criterion = item.text.match(MACHINABLE);
@@ -457,7 +540,7 @@ export function gatePlan(
         env: { ...process.env, PLAN_GATE_NESTED: "1" },
       });
       if ((run.status ?? 1) !== Number(criterion[2])) {
-        report.violations.push({ kind: "criterion-failed", line: number, text: sourceLine.trim() });
+        report.violations.push(refusal("criterion-failed", number, sourceLine.trim()));
       }
     }
   }

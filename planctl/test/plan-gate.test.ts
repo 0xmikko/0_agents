@@ -6,7 +6,7 @@ import { execSync, spawnSync } from "node:child_process";
 
 import { lockPlanSpec, putDelivery, putStage, stageInputs, type StageInput } from "../src/core/plan-update";
 
-import { checkPlanFreeze, gatePlan, planItems } from "../src/core/plan-gate";
+import { checkPlanFreeze, gatePlan, lint, planItems } from "../src/core/plan-gate";
 
 // This file used to `delete process.env.PLAN_GATE_NESTED` here, so that the
 // suite could still exercise criterion execution when it ran AS a criterion
@@ -47,12 +47,45 @@ function makeRepo(): { root: string; sha: string } {
   writeFileSync(join(root, "seed.txt"), "seed\n");
   git(root, "add -A");
   git(root, '-c user.email=t@t -c user.name=t commit -qm seed');
+  // init refuses the integration branch and a missing base
+  git(root, `config code-production.base ${git(root, "branch --show-current")}`);
+  git(root, "checkout -qb feat/fixture");
   return { root, sha: git(root, "rev-parse --short HEAD") };
 }
 
 function planWith(body: string): string {
   return `# A plan\n\n## Stages\n\n${body}\n`;
 }
+
+describe("findings an agent can act on", () => {
+  const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8");
+
+  // @test-id: tst_gate_lint_004
+  // @scenario: scn_plan_form_findings_001
+  // @covers: planctl/src/core/plan-gate.ts::lint
+  // @deterministic: yes
+  // @invariant: every lint finding carries rule, line, quote and replacement; one call reports every error; What changes is not required.
+  it("tst_gate_lint_004 returns every error at once with rule, quote, line and replacement, and asks for no What changes", async () => {
+    const { root } = makeRepo();
+    try {
+      const body = spec
+        .replace("The current parser accepts empty names.", `Continue D1-S4 before the blueprint document lands. ${"word ".repeat(31)}ends.`)
+        .replace("### What changes\n\nReject empty names before saving.\n\n", "");
+      const report = await lint(body, root);
+      const rules = report.violations.map((violation) => violation.rule).sort();
+      expect(rules).toEqual(["codes", "sentence", "vocabulary"]);
+      const vocabulary = report.violations.find((violation) => violation.rule === "vocabulary");
+      expect(vocabulary).toMatchObject({ blocking: true, quote: "blueprint document", replacement: "plan" });
+      expect(vocabulary?.line).toBe(body.split("\n").findIndex((line) => line.includes("Continue D1-S4")) + 1);
+      const sentence = report.violations.find((violation) => violation.rule === "sentence");
+      expect(sentence?.quote).toContain("word word");
+      expect(sentence?.replacement).toBeNull();
+      expect(report.violations.some((violation) => violation.text.includes("What changes"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("plan form", () => {
   const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8");

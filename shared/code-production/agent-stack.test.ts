@@ -87,6 +87,10 @@ function fixture(): string {
   writeFileSync(join(root, "package.json"), packageJson());
   git(root, "add", "package.json");
   git(root, "commit", "-m", "test: fixture");
+  // init refuses the integration branch and a missing base: the fixture
+  // names its base and works on a feature branch, like every real plan
+  git(root, "config", "code-production.base", "staging");
+  git(root, "checkout", "-b", "feat/fixture");
   return root;
 }
 

@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 
-import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import type { TaskExecutionBrief } from "../core/plan-update";
-import type { OwnerWaitMarker, TaskRun, TaskRunV1 } from "../core/task-run";
+import type { AuthoringContract } from "../core/plan-gate";
+import type { TaskBrief } from "../core/plan-update";
+import type { OwnerWaitReceipt, TaskRun, TaskRunIdentity, TaskRunV1 } from "../core/task-run";
 import type { GitWorktreeIdentity } from "../machine/sessions/session-source";
 import type { ProgressPlanView } from "./render";
 
@@ -20,14 +21,17 @@ function portableRuntimeFile(name: "plan-gate.ts" | "plan-update.ts" | "retro-re
 
 const PLAN_UPDATE_FILE = portableRuntimeFile("plan-update.ts");
 const {
-  createDraftPlan,
-  journalCreatedPlan,
+  completeTask: completeTaskOperation,
+  initPlan,
   mutatePlanFile,
+  needsOwner: needsOwnerOperation,
   replaceDraftSpec,
-  taskExecutionBrief,
+  resumeTask: resumeTaskOperation,
+  startTask: startTaskOperation,
+  taskRunPath,
   verifyStagedPlan,
 } = await import(PLAN_UPDATE_FILE);
-const { protocolImplementationHash, protocolLockViolations } = await import(portableRuntimeFile("plan-gate.ts"));
+const { authoringContract, protocolImplementationHash, protocolLockViolations } = await import(portableRuntimeFile("plan-gate.ts"));
 
 const GENERAL_HELP = `Usage: planctl <command> [arguments]
 
@@ -37,6 +41,8 @@ edited directly.
 
 Authoring:
   init               Create and stage a SPEC_DRAFT plan
+  mcp                Serve the tools over stdio for Claude and Codex
+  stats              The five tables from ~/.local/share/planctl/events.jsonl
   set-spec           Replace and stage SPEC while it is still draft
   approve-spec       Lock SPEC after explicit owner approval
   put-delivery       Add or replace one draft PR Delivery from JSON
@@ -69,10 +75,12 @@ Run planctl <command> --help for exact syntax and JSON contracts.
 `;
 
 const COMMAND_HELP: Readonly<Record<string, string>> = {
-  init: `Usage: planctl init <plan.md> --title <text>
+  init: `Usage: planctl init [<plan.md>] --title <text>
 
-Creates the canonical SPEC_DRAFT skeleton and stages it. Commit it before
-locking SPEC.
+Creates docs/plans/<date>-<slug>.md from the branch (or the named file),
+stages it, journals it, and prints the authoring contract: the sections,
+the vocabulary pairs and the Goal rule. Refuses the integration branch and
+a missing code-production.base. Commit the plan before locking SPEC.
 `,
   "set-spec": `Usage: planctl set-spec <plan.md> --from <spec.md>
 
@@ -164,29 +172,36 @@ immutable. Re-add or replace remaining Stage JSON before approve-plan.
 
 Locks the Delivery/Stage/Task contract after explicit owner approval.
 `,
-  "start-task": `Usage: planctl start-task <plan.md> --task <Task-ID> [--agent <codex:id|claude:id>] [--config <absolute.toml>]
+  "start-task": `Usage: planctl start-task <plan.md> [--task <Task-ID>] [--checkpoint <one line>] [--agent <codex:id|claude:id>] [--config <absolute.toml>]
 
-Reads the Task from the committed or journal-verified staged APPROVED Markdown
-source of truth, checks its Delivery and Stage dependencies, prints the exact
-story/writes/forecast/How/RED contract, and stores only a Git-local start
-receipt. It does not edit the plan. Run it before RED.
+"What do I do now." Without --task: the Task already running in this
+worktree, else the next open one in Stage-graph order, else the first Task
+of a child Delivery whose parents have a green PR on their current head.
+With --task: that Task, also a completed one of an unmerged Delivery, for
+repair. --checkpoint saves one line on the start record. Prints the plan,
+the Goal and the Task's scope; keeps one Git-local clock per Task.
 `,
-  progress: `Usage: planctl progress <plan.md> [--server] [--config <absolute.toml>]
+  progress: `Usage: planctl progress [<plan.md>] [--root <dir>] [--note] [--server]
 
-Without --server, reads only the canonical local plan. With --server, performs
-one bounded authenticated read using the explicit/default machine config and
-reports offline evidence without affecting local execution commands.
+"Where am I." Without a plan, finds docs/plans/*-<slug>.md from the branch
+of the root and answers nothing when the branch has none. Shows the Goal,
+the running Task, the active Delivery beside the whole plan, the PR and CI
+gh observes, and the installed runtime against the source. --note prints
+one line for a running Task, or nothing. --server reads the observer.
 `,
-  "needs-owner": `Usage: planctl needs-owner <plan.md> --task <Task-ID> --reason <safe-line>
+  "needs-owner": `Usage: planctl needs-owner <plan.md> --task <Task-ID> --context <text> --option "<label>: <consequence>" [--option ...] --recommendation <text> --answer <form>
 
-Atomically records that an already-started Task needs one owner response.
-Transcript punctuation is never interpreted as an owner obligation.
+Records that a started Task needs one owner answer, as a form: what this is
+about, the options with their consequences, the recommendation, the form
+of the answer. Transcript punctuation is never an owner obligation.
 `,
   "resume-task": `Usage: planctl resume-task <plan.md> --task <Task-ID>
 
-Atomically clears the Task's structured owner-response wait.
+Clears the Task's owner wait and accounts its duration; without a wait,
+nothing changes.
 `,
-  "complete-task": `Usage: planctl complete-task <plan.md> --from <stage-result.json>
+  "complete-task": `Usage: planctl complete-task <plan.md> --task <ID[,ID]> --commit <sha> --result <sentence> [--deviation <text>]
+       planctl complete-task <plan.md> --from <stage-result.json>
 
 Imports the canonical StageResultReceipt. It validates Task IDs, commit
 ancestry and actual diff paths, declared tests, time/usage and temp cleanup.
@@ -339,28 +354,6 @@ function atomicWrite(path: string, body: string): void {
   }
 }
 
-function stage(rootPath: string, path: string): void {
-  execFileSync("git", ["-C", rootPath, "add", "--", path]);
-}
-
-function taskRunPath(rootPath: string, plan: string, taskId: string): string {
-  const common = git(rootPath, "rev-parse", "--path-format=absolute", "--git-common-dir");
-  const planKey = createHash("sha256").update(plan).digest("hex").slice(0, 12);
-  return join(common, "planctl", "task-runs", `${planKey}-${taskId}.json`);
-}
-
-function writeTaskRun(path: string, run: TaskRun): void {
-  const parent = dirname(path);
-  mkdirSync(parent, { recursive: true });
-  const temporary = mkdtempSync(join(parent, ".task-run-"));
-  const candidate = join(temporary, "receipt.json");
-  try {
-    writeFileSync(candidate, `${JSON.stringify(run, null, 2)}\n`, { mode: 0o600 });
-    renameSync(candidate, path);
-  } finally {
-    rmSync(temporary, { recursive: true, force: true });
-  }
-}
 
 function gitCommonDir(rootPath: string): string {
   return git(rootPath, "rev-parse", "--path-format=absolute", "--git-common-dir");
@@ -391,27 +384,6 @@ async function taskRunFrom(value: unknown): Promise<TaskRun> {
   return runtime.decodeTaskRun(value);
 }
 
-function printTaskStart(brief: TaskExecutionBrief, run: TaskRun): void {
-  const distributed = run.version === 1
-    ? "unavailable (TaskRunV1)"
-    : `TaskRunV2 ${run.machineId} / ${run.agentId} / ${run.repositoryId}`;
-  console.log([
-    `Task ${brief.id} STARTED`,
-    `Source: ${run.plan}`,
-    `Distributed correlation: ${distributed}`,
-    `Delivery / Stage: ${brief.deliveryId} / ${brief.stageId} — ${brief.stageTitle}`,
-    `Stage description: ${brief.stageDescription}`,
-    `Owner / Profile: ${brief.owner} / ${brief.profile}`,
-    `Started: ${run.startedAt}`,
-    `Base: ${run.baseHead}`,
-    `Forecast: ${brief.predictedActiveMinutes} active min / ${brief.predictedCredits} credits`,
-    `Writes: ${brief.writes.join(", ")}`,
-    `Temp root: ${brief.tempRoot} (clean before completion)`,
-    `Story: ${brief.story}`,
-    `How: ${brief.how}`,
-    `RED: ${brief.red}`,
-  ].join("\n"));
-}
 
 interface ApprovedPlanRead {
   readonly rootPath: string;
@@ -428,7 +400,7 @@ function approvedPlan(args: readonly string[]): ApprovedPlanRead {
   const committed = execFileSync("git", ["-C", rootPath, "show", `HEAD:${target.relative}`], { encoding: "utf8" });
   if (body !== committed) {
     try {
-      verifyStagedPlan(target.relative);
+      verifyStagedPlan(rootPath, target.relative);
     } catch {
       throw new Error("start-task requires a committed plan or a journal-verified staged result");
     }
@@ -442,75 +414,7 @@ function dedicatedRuntime(): void {
   if (basename(import.meta.dir) !== "cli") throw new Error("command requires the dedicated planctl package");
 }
 
-async function ownerWaitRuntime(): Promise<typeof import("../core/task-run")> {
-  dedicatedRuntime();
-  return import("../core/task-run");
-}
 
-async function accountAndClearOwnerWait(
-  rootPath: string,
-  plan: string,
-  taskId: string,
-  run: TaskRun,
-  resumedAt: string,
-): Promise<{ readonly run: TaskRun; readonly marker: OwnerWaitMarker | null }> {
-  if (basename(import.meta.dir) !== "cli") return { run, marker: null };
-  const runtime = await ownerWaitRuntime();
-  const waitPath = runtime.ownerWaitPath(gitCommonDir(rootPath), plan, taskId);
-  const marker = runtime.readOwnerWait(waitPath);
-  if (marker === null) return { run, marker: null };
-  const updated = runtime.accountOwnerWait(run, marker, resumedAt);
-  if (updated.version === 2) writeTaskRun(taskRunPath(rootPath, plan, taskId), updated);
-  runtime.clearOwnerWait(waitPath);
-  return { run: updated, marker };
-}
-
-async function startTask(args: readonly string[]): Promise<void> {
-  const { rootPath, target, body } = approvedPlan(args);
-  const brief = taskExecutionBrief(body, flag(args, "--task"));
-  const path = taskRunPath(rootPath, target.relative, brief.id);
-  if (existsSync(path)) {
-    const existing = await taskRunFrom(JSON.parse(readFileSync(path, "utf8")) as unknown);
-    if (existing.plan !== target.relative || existing.taskId !== brief.id || existing.stageId !== brief.stageId) {
-      throw new Error(`Task ${brief.id} has a conflicting start receipt`);
-    }
-    if (spawnSync("git", ["-C", rootPath, "merge-base", "--is-ancestor", existing.baseHead, "HEAD"]).status !== 0) {
-      throw new Error(`Task ${brief.id} start base is not ancestral to HEAD`);
-    }
-    let run = existing.version === 1
-      ? await distributedTaskRun(args, rootPath, target.relative, body, existing)
-      : existing;
-    run = (await accountAndClearOwnerWait(
-      rootPath,
-      target.relative,
-      brief.id,
-      run,
-      new Date().toISOString(),
-    )).run;
-    writeTaskRun(path, run);
-    printTaskStart(brief, run);
-    return;
-  }
-  const legacy: TaskRunV1 = {
-    version: 1,
-    plan: target.relative,
-    deliveryId: brief.deliveryId,
-    stageId: brief.stageId,
-    taskId: brief.id,
-    startedAt: new Date().toISOString(),
-    baseHead: git(rootPath, "rev-parse", "HEAD"),
-  };
-  let run = await distributedTaskRun(args, rootPath, target.relative, body, legacy);
-  run = (await accountAndClearOwnerWait(
-    rootPath,
-    target.relative,
-    brief.id,
-    run,
-    new Date().toISOString(),
-  )).run;
-  writeTaskRun(path, run);
-  printTaskStart(brief, run);
-}
 
 function explicitAgentId(args: readonly string[]): string | null {
   const flagged = optionalFlag(args, "--agent");
@@ -521,71 +425,8 @@ function explicitAgentId(args: readonly string[]): string | null {
   return claude === undefined || claude === "" ? null : `claude:${claude}`;
 }
 
-async function repositoryIdentity(
-  rootPath: string,
-  repositoryIds: Readonly<Record<string, string>>,
-): Promise<GitWorktreeIdentity> {
-  const common = gitCommonDir(rootPath);
-  const repositoryRoot = basename(common) === ".git" ? dirname(common) : rootPath;
-  const discoveryRuntime = await import("../machine/discovery/git-worktree.source");
-  const discovery = discoveryRuntime.discoverGitWorktrees([repositoryRoot], repositoryIds);
-  const identity = discovery.worktrees.find(
-    (worktree: GitWorktreeIdentity) => resolve(worktree.path) === resolve(rootPath),
-  );
-  if (identity !== undefined) return identity;
-  throw new Error(discovery.issues[0]?.message ?? `worktree ${rootPath} was not discovered`);
-}
 
-async function distributedTaskRun(
-  args: readonly string[],
-  rootPath: string,
-  plan: string,
-  body: string,
-  legacy: TaskRunV1,
-): Promise<TaskRun> {
-  if (basename(import.meta.dir) !== "cli") return legacy;
-  const agentId = explicitAgentId(args);
-  if (agentId === null) return legacy;
-  const configRuntime = await import("../config/config");
-  const configPath = optionalFlag(args, "--config") ?? configRuntime.defaultPlanctlConfigPath("machine");
-  if (!existsSync(configPath)) {
-    if (args.includes("--agent") || args.includes("--config")) {
-      throw new Error(`distributed start-task configuration does not exist: ${configPath}`);
-    }
-    return legacy;
-  }
-  const config = configRuntime.loadPlanctlConfig(configPath, "machine");
-  if (config.role !== "machine") throw new Error("start-task configuration has the wrong role");
-  let identity: GitWorktreeIdentity;
-  try {
-    identity = await repositoryIdentity(rootPath, config.repositoryIds);
-  } catch (error: unknown) {
-    if (!args.includes("--agent") && !args.includes("--config")) return legacy;
-    throw new Error(`distributed start-task has no repository identity: ${message(error)}`);
-  }
-  if (identity.branch === "(detached)") throw new Error("distributed start-task requires a named branch");
-  const candidate: TaskRun = {
-    ...legacy,
-    version: 2,
-    machineId: config.machineId,
-    agentId,
-    repositoryId: identity.repositoryId,
-    worktree: rootPath,
-    branch: identity.branch,
-    planRevision: protocolImplementationHash(body),
-    ownerWait: null,
-    accumulatedOwnerWaitSeconds: 0,
-    lastAccountedOwnerWaitStartedAt: null,
-  };
-  const taskRuntime = await import("../core/task-run");
-  return taskRuntime.decodeTaskRun(candidate);
-}
 
-async function existingTaskRun(rootPath: string, plan: string, taskId: string): Promise<TaskRun | null> {
-  const path = taskRunPath(rootPath, plan, taskId);
-  if (!existsSync(path)) return null;
-  return await taskRunFrom(JSON.parse(readFileSync(path, "utf8")) as unknown);
-}
 
 interface MachineServerSettings {
   readonly machineId: string;
@@ -641,7 +482,6 @@ async function serverProgress(args: readonly string[]): Promise<{
 
 async function progress(args: readonly string[]): Promise<void> {
   dedicatedRuntime();
-  const { target, body } = approvedPlan(args);
   const render = await import("./render");
   if (args.includes("--server")) {
     try {
@@ -672,65 +512,185 @@ async function progress(args: readonly string[]): Promise<void> {
     }
     return;
   }
+  const rootPath = args.includes("--root") ? resolve(flag(args, "--root")) : root();
+  const explicit = args[1] !== undefined && !args[1].startsWith("--") ? addressedPath(rootPath, args[1]).relative : null;
   const progressCore = await import("../core/plan-progress");
-  const forecastCore = await import("../core/delivery-forecast");
-  const projected = progressCore.projectPlanProgress(body);
-  const forecast = forecastCore.forecastDelivery(body, {
-    now: new Date().toISOString(),
-    activeTasks: [],
-    completedTaskSamples: [],
+  const view = await progressCore.planProgress(rootPath, {
+    plan: explicit,
+    publication: (branch) => readPublication(rootPath, branch),
+    sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
+    decodeRun: taskRunFrom,
   });
-  console.log(render.renderProgress({
-    source: `local plan ${target.relative}`,
-    status: "available",
-    evidence: `locked implementation revision ${protocolImplementationHash(body)}`,
-    plans: [{
-      planId: target.relative,
-      status: "local",
-      completionPercent: projected.completionPercent,
-      completedTasks: projected.tasks.completed,
-      totalTasks: projected.tasks.total,
-      remainingActiveMinutes: forecast.remainingActiveMinutes,
-      criticalPathMinutes: forecast.calibratedCriticalPathMinutes,
-      estimatedDeliveryAt: forecast.estimatedDeliveryAt,
-    }],
-  }));
+  if (args.includes("--note")) {
+    const note = progressCore.progressNote(view);
+    if (note !== null) console.log(note);
+    return;
+  }
+  if (view === null) return;
+  console.log(render.renderProgressView(view));
+
+}
+
+
+
+async function repositoryIdentity(
+  rootPath: string,
+  repositoryIds: Readonly<Record<string, string>>,
+): Promise<GitWorktreeIdentity> {
+  const common = gitCommonDir(rootPath);
+  const repositoryRoot = basename(common) === ".git" ? dirname(common) : rootPath;
+  const discoveryRuntime = await import("../machine/discovery/git-worktree.source");
+  const discovery = discoveryRuntime.discoverGitWorktrees([repositoryRoot], repositoryIds);
+  const identity = discovery.worktrees.find(
+    (worktree: GitWorktreeIdentity) => resolve(worktree.path) === resolve(rootPath),
+  );
+  if (identity !== undefined) return identity;
+  throw new Error(discovery.issues[0]?.message ?? `worktree ${rootPath} was not discovered`);
+}
+
+/** The observer identity a start record carries when observer configuration exists; null in a plain clone. */
+async function observerIdentity(args: readonly string[], rootPath: string, body: string): Promise<TaskRunIdentity | null> {
+  if (basename(import.meta.dir) !== "cli") return null;
+  const agentId = explicitAgentId(args);
+  if (agentId === null) return null;
+  const configRuntime = await import("../config/config");
+  const configPath = optionalFlag(args, "--config") ?? configRuntime.defaultPlanctlConfigPath("machine");
+  if (!existsSync(configPath)) {
+    if (args.includes("--agent") || args.includes("--config")) {
+      throw new Error(`distributed start-task configuration does not exist: ${configPath}`);
+    }
+    return null;
+  }
+  const config = configRuntime.loadPlanctlConfig(configPath, "machine");
+  if (config.role !== "machine") throw new Error("start-task configuration has the wrong role");
+  let identity: GitWorktreeIdentity;
+  try {
+    identity = await repositoryIdentity(rootPath, config.repositoryIds);
+  } catch (error: unknown) {
+    if (!args.includes("--agent") && !args.includes("--config")) return null;
+    throw new Error(`distributed start-task has no repository identity: ${message(error)}`);
+  }
+  if (identity.branch === "(detached)") throw new Error("distributed start-task requires a named branch");
+  return { machineId: config.machineId, agentId, repositoryId: identity.repositoryId, planRevision: protocolImplementationHash(body) };
+}
+
+async function startTask(args: readonly string[]): Promise<void> {
+  const { rootPath, target, body } = approvedPlan(args);
+  const identity = await observerIdentity(args, rootPath, body);
+  const brief: TaskBrief = await startTaskOperation(rootPath, {
+    plan: target.relative,
+    taskId: optionalFlag(args, "--task") ?? null,
+    checkpoint: optionalFlag(args, "--checkpoint") ?? null,
+    identity,
+    publication: (branch: string) => readPublication(rootPath, branch),
+    decodeRun: taskRunFrom,
+  });
+  const render = await import("./render");
+  console.log(render.renderTaskBrief(
+    brief,
+    identity === null ? "none (local record)" : `${identity.machineId} / ${identity.agentId} / ${identity.repositoryId}`,
+  ));
+}
+
+/** Serve the tools over stdio; diagnostics go to stderr, the protocol owns stdout. */
+async function mcp(args: readonly string[]): Promise<void> {
+  dedicatedRuntime();
+  const { createPlanctlServer } = await import("../mcp/server");
+  const { commandPublisher } = await import("../mcp/publish");
+  const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
+  const { eventLogPath } = await import("../core/event-log");
+  const { claudeModelRunner } = await import("../core/spec-submission");
+  const server = createPlanctlServer({
+    cwd: process.cwd(),
+    publication: readPublication,
+    sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
+    eventLog: eventLogPath(homedir()),
+    model: claudeModelRunner,
+    publisher: commandPublisher(optionalFlag(args, "--publisher") ?? "mdurl"),
+  });
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error(`planctl mcp: serving from ${dirname(import.meta.path)}`);
+  await new Promise<void>((done) => { transport.onclose = done; });
+}
+
+/** The five tables from the event log, one set per server source commit. */
+async function stats(args: readonly string[]): Promise<void> {
+  dedicatedRuntime();
+  const { eventLogPath, readEvents, renderStats, stats: tablesOf } = await import("../core/event-log");
+  const since = optionalFlag(args, "--since") ?? "1970-01-01T00:00:00.000Z";
+  if (!Number.isFinite(Date.parse(since))) throw new Error("--since must be an ISO date");
+  console.log(renderStats(tablesOf(readEvents(eventLogPath(homedir()), since))));
+}
+
+function questionOption(value: string): { readonly label: string; readonly consequence: string } {
+  const separator = value.indexOf(": ");
+  if (separator <= 0) throw new Error(`--option needs "label: consequence", got ${value}`);
+  return { label: value.slice(0, separator), consequence: value.slice(separator + 2) };
 }
 
 async function needsOwner(args: readonly string[]): Promise<void> {
-  const { rootPath, target, body } = approvedPlan(args);
+  const { rootPath, target } = approvedPlan(args);
   const taskId = flag(args, "--task");
-  const brief = taskExecutionBrief(body, taskId);
-  const run = await existingTaskRun(rootPath, target.relative, taskId);
-  if (run === null) throw new Error(`Task ${taskId} has no start receipt; run planctl start-task first`);
-  if (spawnSync("git", ["-C", rootPath, "merge-base", "--is-ancestor", run.baseHead, "HEAD"]).status !== 0) {
-    throw new Error(`Task ${taskId} start base is not ancestral to HEAD`);
-  }
-  const waits = await ownerWaitRuntime();
-  const receipt = waits.markOwnerWait(waits.ownerWaitPath(gitCommonDir(rootPath), target.relative, taskId), {
-    plan: target.relative,
-    taskId: brief.id,
-    reason: flag(args, "--reason"),
-    startedAt: new Date().toISOString(),
+  const options: string[] = [];
+  args.forEach((arg, index) => {
+    const next = args[index + 1];
+    if (arg === "--option" && next !== undefined) options.push(next);
   });
-  console.log(`Task ${taskId} AWAITING OWNER\nReason: ${receipt.reason}\nStarted: ${receipt.startedAt}`);
+  const receipt: OwnerWaitReceipt = await needsOwnerOperation(rootPath, {
+    plan: target.relative,
+    taskId,
+    context: flag(args, "--context"),
+    options: options.map(questionOption),
+    recommendation: flag(args, "--recommendation"),
+    answerForm: flag(args, "--answer"),
+  });
+  console.log([
+    `Task ${taskId} AWAITING OWNER`,
+    `Context: ${receipt.context}`,
+    ...receipt.options.map((option) => `Option: ${option.label} — ${option.consequence}`),
+    `Recommendation: ${receipt.recommendation}`,
+    `Answer: ${receipt.answerForm}`,
+    `Started: ${receipt.startedAt}`,
+  ].join("\n"));
 }
 
 async function resumeTask(args: readonly string[]): Promise<void> {
-  const { rootPath, target, body } = approvedPlan(args);
+  const { rootPath, target } = approvedPlan(args);
   const taskId = flag(args, "--task");
-  taskExecutionBrief(body, taskId);
-  const run = await existingTaskRun(rootPath, target.relative, taskId);
-  if (run === null) throw new Error(`Task ${taskId} has no start receipt; run start-task first`);
-  const resumed = await accountAndClearOwnerWait(
-    rootPath,
-    target.relative,
-    taskId,
-    run,
-    new Date().toISOString(),
-  );
-  if (resumed.marker === null) throw new Error(`Task ${taskId} has no structured owner wait`);
-  console.log(`Task ${taskId} RESUMED\nCleared owner wait: ${resumed.marker.reason}`);
+  const resumed = await resumeTaskOperation(rootPath, { plan: target.relative, taskId, decodeRun: taskRunFrom });
+  console.log(resumed.marker === null
+    ? `Task ${taskId} has no owner wait; nothing cleared`
+    : `Task ${taskId} RESUMED\nCleared owner wait: ${resumed.marker.context}`);
+}
+
+/** What gh reports for a Delivery branch: the PR, its CI on the current head, the last run. */
+function readPublication(rootPath: string, branch: string): import("../core/plan-progress").ProgressView["publication"] {
+  const gh = (...ghArgs: readonly string[]): string => {
+    const result = spawnSync("gh", ghArgs, { cwd: rootPath, encoding: "utf8" });
+    if (result.error !== undefined) throw new Error(result.error.message);
+    if (result.status !== 0) throw new Error(result.stderr.trim() || `gh ${ghArgs[0]} exited ${result.status}`);
+    return result.stdout;
+  };
+  const pulls: unknown = JSON.parse(gh("pr", "list", "--head", branch, "--state", "all", "--limit", "1", "--json", "url,headRefOid,mergedAt,statusCheckRollup"));
+  if (!Array.isArray(pulls) || pulls.length === 0) return null;
+  const pull = pulls[0] as Readonly<Record<string, unknown>>;
+  if (typeof pull.url !== "string" || typeof pull.headRefOid !== "string") throw new Error("gh pr list returned no url or head");
+  const checks = Array.isArray(pull.statusCheckRollup) ? pull.statusCheckRollup as readonly Readonly<Record<string, unknown>>[] : [];
+  const conclusions = checks.map((check) => `${check.conclusion ?? check.state ?? ""}`.toUpperCase());
+  const ci = conclusions.some((value) => ["FAILURE", "ERROR", "CANCELLED", "TIMED_OUT"].includes(value))
+    ? "red"
+    : conclusions.length > 0 && conclusions.every((value) => ["SUCCESS", "SKIPPED", "NEUTRAL"].includes(value)) ? "green" : "pending";
+  const runs: unknown = JSON.parse(gh("run", "list", "--branch", branch, "--commit", pull.headRefOid, "--limit", "1", "--json", "databaseId,attempt"));
+  const run = Array.isArray(runs) && runs.length > 0 ? runs[0] as Readonly<Record<string, unknown>> : null;
+  return {
+    prUrl: pull.url,
+    ci,
+    headSha: pull.headRefOid,
+    runId: run === null ? "" : String(run.databaseId),
+    attempt: run !== null && typeof run.attempt === "number" ? run.attempt : 0,
+    merged: typeof pull.mergedAt === "string",
+  };
 }
 
 function completionHeader(value: unknown): CompletionHeader {
@@ -757,6 +717,24 @@ async function completeTask(args: readonly string[]): Promise<number> {
   if (plan === undefined) throw new Error("plan path is required");
   const rootPath = root();
   const target = addressedPath(rootPath, plan);
+  const taskFlag = optionalFlag(args, "--task");
+  if (taskFlag !== undefined) {
+    const done = await completeTaskOperation(rootPath, {
+      plan: target.relative,
+      taskIds: taskFlag.split(",").map((id) => id.trim()).filter((id) => id !== ""),
+      commit: flag(args, "--commit"),
+      result: flag(args, "--result"),
+      deviations: args.flatMap((arg, index) => arg === "--deviation" && args[index + 1] !== undefined ? [args[index + 1]] : []),
+    }, taskRunFrom);
+    console.log([
+      `Tasks ${done.taskIds.join(", ")} COMPLETED — ${done.stageId} commit:${done.commit}`,
+      `UTC: ${done.startedAt}–${done.endedAt} — ${done.activeMinutes.toFixed(1)} active (estimate) / ${done.elapsedMinutes.toFixed(1)} elapsed min`,
+      `Paths: ${done.paths.join(", ")}`,
+      ...(done.beyondWrites.length === 0 ? [] : [`Beyond writes: ${done.beyondWrites.join(", ")}`]),
+      `Temp root: ${done.tempRoot.path} (${done.tempRoot.state})`,
+    ].join("\n"));
+    return 0;
+  }
   const receipt = completionHeader(JSON.parse(readFileSync(resolve(rootPath, flag(args, "--from")), "utf8")) as unknown);
   if (receipt.plan !== target.relative) throw new Error(`Stage result names ${receipt.plan}, expected ${target.relative}`);
   const runs = await Promise.all(receipt.taskIds.map(async (taskId) => {
@@ -788,16 +766,25 @@ async function completeTask(args: readonly string[]): Promise<number> {
   return status;
 }
 
-function init(args: readonly string[]): void {
-  const plan = args[1];
-  if (plan === undefined) throw new Error("plan path is required");
+async function init(args: readonly string[]): Promise<void> {
   const rootPath = root();
-  const target = addressedPath(rootPath, plan);
-  if (existsSync(target.absolute)) throw new Error(`plan already exists: ${target.relative}`);
-  const body = createDraftPlan(flag(args, "--title"));
-  atomicWrite(target.absolute, body);
-  stage(rootPath, target.relative);
-  journalCreatedPlan(target.relative, body);
+  const explicit = args[1] !== undefined && !args[1].startsWith("--") ? addressedPath(rootPath, args[1]).relative : undefined;
+  const title = flag(args, "--title");
+  const created = initPlan(rootPath, explicit === undefined ? { title } : { title, plan: explicit });
+  if (basename(import.meta.dir) !== "cli") {
+    // The installed copy carries no vocabulary parser: the contract comes
+    // from the source checkout, as the planctl launcher runs it.
+    console.log(`Plan: ${created.plan}\nBranch: ${created.branch} (base ${created.base})\nContract: run init through the planctl launcher for the sections, vocabulary and Goal rule`);
+    return;
+  }
+  const contract: AuthoringContract = await authoringContract(rootPath);
+  console.log([
+    `Plan: ${created.plan}`,
+    `Branch: ${created.branch} (base ${created.base})`,
+    `Sections: ${contract.sections.join(", ")}`,
+    ...contract.vocabulary.map((pair) => `Vocabulary: ${pair.word} → ${pair.term}`),
+    `Goal rule: ${contract.goalRule}`,
+  ].join("\n"));
 }
 
 function setSpec(args: readonly string[]): void {
@@ -809,7 +796,7 @@ function setSpec(args: readonly string[]): void {
   // Through the journaled writer, like every other mutation: a SPEC written by
   // hand left no journal, and the managed pre-commit refuses a staged marker
   // plan that has none.
-  mutatePlanFile(target.relative, "set-spec", (body: string) => replaceDraftSpec(body, spec));
+  mutatePlanFile(rootPath, target.relative, "set-spec", (body: string) => replaceDraftSpec(body, spec));
 }
 
 async function configCommand(args: readonly string[]): Promise<void> {
@@ -863,7 +850,7 @@ async function run(args: readonly string[]): Promise<number> {
     return 0;
   }
   if (command === "init") {
-    init(args);
+    await init(args);
     return 0;
   }
   if (command === "set-spec") {
@@ -897,6 +884,14 @@ async function run(args: readonly string[]): Promise<number> {
   }
   if (command === "progress") {
     await progress(args);
+    return 0;
+  }
+  if (command === "mcp") {
+    await mcp(args);
+    return 0;
+  }
+  if (command === "stats") {
+    await stats(args);
     return 0;
   }
   if (command === "needs-owner") {
