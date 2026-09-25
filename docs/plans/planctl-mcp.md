@@ -1,8 +1,8 @@
 # Planctl MCP: authoring, task recovery and verified delivery
 
 Status: APPROVED  
-Spec lock: sha256:f2866ece604eeb340e74ce8dd3a8197034e474f2b84471b5593041754d63c172 owner:a)  
-Implementation lock: sha256:921a2b321182761798c2eec122a1ea93d5fef64bd00fee234ba1099709a1ad2a owner:a)  
+Spec lock: sha256:367c0c1c5dfd95bf4c81459e91a1189c44cc0dd971dd62afafccf1278a996294 owner:делать две штуки публикации - это достаточно странная идея  
+Implementation lock: sha256:6edd2c38739f9ce50ace6d0f5040566d28f3c8edf5adba3c16e567f8b7414fd5 owner:делать две штуки публикации - это достаточно странная идея  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -31,11 +31,9 @@ flowchart TD
   B["/blueprint"] --> I[init: worktree, branch, dated plan file]
   I --> S[submit_spec: lint plus one model call]
   S -->|findings| S
-  S --> V[show_plan: owner screen via mdurl]
-  V --> W1[owner's word: approve_spec]
+  S -->|reply with the plan URL| W1[owner's word: approve_spec]
   W1 --> P[put_delivery, put_stage]
-  P --> V2[show_plan: contract]
-  V2 --> W2[owner's word: approve_plan]
+  P -->|reply with the plan URL| W2[owner's word: approve_plan]
   W2 --> T[start_task: Goal first, then the Task]
   T --> C[code, RED, GREEN, one commit per Stage]
   C --> R[complete_task: taskIds, commit, result]
@@ -52,18 +50,17 @@ Context, not gates, and pulled, not pushed. Plan work runs through planctl; anyt
 
 ### Server
 
-`planctl mcp` starts over stdio from the 0_agents checkout through the existing `planctl` launcher. One global entry in the user's MCP settings serves every repository; no per-repository file and no arguments. Each call names its plan path, relative to the server's working directory or absolute. The server takes the repository root from that path, or from the `root` argument of a planless `progress`. The integration branch comes from the repository's local Git config, `code-production.base`, set once per clone with `git config code-production.base <branch>` and shared by its linked worktrees; a missing value refuses with that command. The MCP SDK and Zod live only in the planctl package.
+`planctl mcp` starts over stdio from the 0_agents checkout through the existing `planctl` launcher. One global entry in the user's MCP settings serves every repository; no per-repository file and no arguments. Each call names its plan path, relative to the server's working directory or absolute. The server takes the repository root from that path, or from the `root` argument of a planless `progress`. The integration branch comes from the repository's local Git config, `code-production.base`, set once per clone with `git config code-production.base <branch>` and shared by its linked worktrees; a missing value refuses with that command. The MCP SDK and Zod live only in the planctl package. Every tool that writes the plan republishes it through mdurl at the same slug and returns `url` and `reply`, the lines the agent shows the owner verbatim. There is no separate publish step, because an agent forgets a second one.
 
 ### Tools
 
 | Tool | Does | Refuses only |
 |---|---|---|
 | `init` | Creates `docs/plans/<date>-<slug>.md` from the branch, stages it, journals it. Returns the required sections, the vocabulary and the Goal rule below. | existing file, the integration branch itself, no `code-production.base` |
-| `submit_spec` | Replaces the SPEC with the whole text. Runs lint, then one model call on changed lines. Fixes line endings and unambiguous vocabulary pairs itself. Returns revision, corrections, findings, `checkStatus`. | stale revision, locked plan |
-| `show_plan` | Publishes the saved bytes through mdurl. The saved order already puts the Goal, Why now and the diagram first; nothing is folded or re-rendered. | mdurl failure |
+| `submit_spec` | Replaces the SPEC with the whole text. Runs lint, then one model call on changed lines. Fixes line endings and unambiguous vocabulary pairs itself. Publishes the saved bytes. Returns revision, corrections, findings, `checkStatus`, `url` and `reply`. | stale revision, locked plan, mdurl failure |
 | `vocabulary` | Returns terms and their rejected synonyms with sources. | nothing |
 | `approve_spec`, `approve_plan` | Record the owner's word for the addressed revision. Run the same lint as submission on the same bytes, so it finds nothing new. | stale revision, lint errors |
-| `put_delivery`, `put_stage`, `remove_stage`, `amend`, `add_deviation` | Existing writer operations with structured input; each refuses with every error of the submitted part at once and returns the whole-plan findings; a put leaves no line in the Execution log. Stage writes are folders. | decoder errors, forecast arithmetic, every lint error of the part |
+| `put_delivery`, `put_stage`, `remove_stage`, `amend`, `add_deviation` | Existing writer operations with structured input; each refuses with every error of the submitted part at once and returns the whole-plan findings, `url` and `reply`; a put leaves no line in the Execution log. Stage writes are folders. | decoder errors, forecast arithmetic, every lint error of the part, mdurl failure |
 | `progress` | "Where am I." Reads the plan, the Git-local records, the PR and CI through `gh`, the installed runtime version. Without `plan`, takes `root` and finds the plan by that repository's branch slug, answering nothing when the branch has none. Runs nothing. | nothing |
 | `start_task` | "What do I do now." Without `task`: returns the running Task, or starts the next one in Stage-graph order. With `task`: that Task, for repair or an explicit switch. With `checkpoint`: saves that sentence on the running Task's record. Checks dependencies, records the start, returns the brief below. | unmet dependency, unpublished parent Delivery, nothing left |
 | `complete_task` | Takes `taskIds`, `commit`, `result`, optional `deviations`. Derives paths, elapsed time, planned tests and temp roots itself; active minutes is elapsed less recorded owner waits, an estimate; a temp root still present is reported. | commit not ancestral, file outside folders, unnamed protected path, undeclared exported type |
@@ -112,6 +109,14 @@ The Goal is one to four numbered outcomes the owner will see when the work is do
 Lint, 0.55 seconds on this plan, reports every error at once with rule, line, quote and replacement, like a compiler. The errors: a missing or empty section, Mermaid or TypeScript that fails to parse, vocabulary, plan codes in prose, sentences over thirty words, story shape. No size limit. Approval runs the same lint on the same bytes and finds nothing new.
 Model, about five seconds: Sonnet 5 without thinking, tools off, MCP off, no session. Input is the owner request, the Goal rule, the vocabulary pairs and the changed lines with numbers. Output is findings with rule, line, quote and replacement. Deadline fifteen seconds; on timeout the draft is saved with `checkStatus: unavailable` and no retry. Model findings advise; lint errors block, all of them at once.
 
+The reply the agent shows the owner after any write is three fixed lines; after a write that is not a submission the Checks line is absent.
+
+```text
+Plan: http://u3775:6420/dev/<slug>
+Revision <revision>, <state>
+Checks: <n> errors, <m> model notes
+```
+
 ### Event log
 
 Every tool call appends one JSON line to `~/.local/share/planctl/events.jsonl`, outside any repository. A line carries the time, repository, worktree, plan and revision; a call that resolved no plan leaves plan and revision empty. A `complete_task` line carries every Task ID; a `start_task` line the Delivery and the forecast; a `progress` line the PR, the CI head and the run it observed. It names the tool, the Task, the outcome, the refusal reason and the duration. It records the installed runtime commit and the source commit, never plan text or code.
@@ -124,6 +129,7 @@ The log answers five questions. Where agents stop, and why. Submit rounds per pl
 |---|---|---|
 | CREATE | `planctl/src/mcp/server.ts` | Register tools and schemas, serve stdio, append events; the repository root travels with each call. |
 | CREATE | `planctl/src/core/spec-submission.ts` | Lint, safe corrections, one model call, draft write. |
+| CREATE | `planctl/src/mcp/publish.ts` | mdurl publication and the three-line reply after every write. |
 | CREATE | `planctl/src/core/event-log.ts` | Append and read `events.jsonl`; `stats` tables. |
 | MODIFY | `planctl/src/cli/main.ts` | Add `mcp` and `stats`; `init` derives the dated file name; start and complete move to the core. |
 | MODIFY | `planctl/src/core/plan-update.ts` | Evaluate a transformation once; start, complete and the journal take a root parameter; derive the Stage result; superseding result; Delivery `depends` and `branch`; `Ledger:` header; wire the exported-type check; all story errors in one refusal; Execution log for locks, approvals, amendments and closures only. |
@@ -169,6 +175,8 @@ interface SubmitSpecResult {
   findings: GateViolation[];
   checkStatus: "checked" | "no_change" | "unavailable";
   checkError: string | null;
+  url: string;
+  reply: string;
 }
 
 interface CompleteTaskInput {
@@ -350,6 +358,7 @@ interface EventRecord {
 | A repeated call returns the saved attempt. | Call `start_task` twice without `task`; one start record, one clock, the same Task. |
 | The next Delivery starts on green CI, not on merge. | Parent PR green and unmerged; child Task starts. |
 | A transformation runs once. | A criterion command counts one invocation through the writer. |
+| Every write is published. | Put a Stage through an injected mdurl runner; the runner received the new bytes and the reply names the URL. |
 | The plan carries no mutation history. | Put a Stage twice; the Execution log gains no line. |
 | Every tool call writes one event line. | Run a sequence; count lines; refusals carry reasons. |
 
@@ -378,7 +387,8 @@ The MCP server, the submission checker and the event log are new files. The writ
 
 | Name | Reason |
 |---|---|
-| `submit_spec`, `show_plan`, `vocabulary` | The three authoring tools the owner named. |
+| `submit_spec`, `vocabulary` | The two authoring tools; publication lives inside every writing tool. |
+| `url`, `reply` | What every writing tool returns for the owner, so the agent never publishes twice or forgets to. |
 | `Ledger:` header line | The plan carries its own lifecycle; no shared table. |
 | `events.jsonl`, `EventRecord`, `planctl stats` | The process record the owner asked for, outside the repository. |
 | `TaskBrief`, `ProgressView`, `CompleteTaskInput`, `NeedsOwnerInput`, `TaskRunV3`, `TaskRunIdentity` | The two screens, the completion contract, the owner question form and the start record with a checkpoint and an optional observer identity. |
@@ -408,7 +418,7 @@ Branch: `feat/planctl-mcp`; Depends: none; Gate: cd planctl && bun run agent:ver
 
 Stage graph: `D1-S1 -> D1-S2 -> D1-S3 -> D1-S4 -> D1-S5`.
 
-Forecast: 995 active min / 103 credits across 5 Stages; longest dependency path 995 active min; external waits 180 min.
+Forecast: 1005 active min / 104 credits across 5 Stages; longest dependency path 1005 active min; external waits 180 min.
 
 What changed for people. An agent writes and executes a plan through planctl tools over MCP and never edits a plan file by hand. The owner reads one screen per decision and is never asked to approve twice. A file inside the Stage folders or a test never stops work, and every tool call leaves one line in an event log outside the repository.
 
@@ -571,19 +581,19 @@ Proven by planctl/test/mcp.test.ts: one server launched outside both fixtures dr
 <!-- plan:stage:D1-S4:end -->
 
 <!-- plan:stage:D1-S5:start -->
-<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S4"],"parallelWith":[],"writes":["planctl/src/core/","planctl/src/mcp/","planctl/test/"],"tempRoot":".tmp/code-production/planctl-mcp/D1-S5","predictedActiveMinutes":180,"predictedCredits":19,"verifyActiveMinutes":15,"verifyCredits":2} -->
-#### Stage D1-S5 — submit_spec and show_plan: lint, safe corrections, one model call
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S4"],"parallelWith":[],"writes":["planctl/src/core/","planctl/src/mcp/","planctl/test/"],"tempRoot":".tmp/code-production/planctl-mcp/D1-S5","predictedActiveMinutes":190,"predictedCredits":20,"verifyActiveMinutes":15,"verifyCredits":2} -->
+#### Stage D1-S5 — submit_spec: lint, safe corrections, one model call, and one publication inside every write
 
 - Owner: agent-1; Profile: strong; Depends: D1-S4; Parallel with: none.
 - Writes: `planctl/src/core/`, `planctl/src/mcp/`, `planctl/test/`.
 - Temp root: `.tmp/code-production/planctl-mcp/D1-S5` (must be absent at handoff).
 - Of which verification: 15 active min / 2 credits.
 
-feat(planctl): submit_spec with lint, safe corrections and one bounded model call, the owner reads a checked draft
+feat(planctl): submit_spec with lint, safe corrections, one bounded model call and publication inside every write
 
-Done for Goal outcome 1: the owner reads a draft that approval cannot refuse. The file planctl/src/core/spec-submission.ts replaces the whole SPEC through the existing writer. It refuses a stale revision and a locked plan. It fixes line endings and unambiguous vocabulary pairs and runs the same lint approval uses, so approval on the same bytes cannot find anything new. It makes at most one model call for the changed lines. The call is the measured claude -p invocation with the sonnet model, tools off, MCP config strict, no session persistence, JSON output and thinking off. It receives the owner request, the Goal rule, the vocabulary pairs and the changed lines. A fifteen-second deadline kills the process and ends in checkStatus unavailable without retry; invalid output ends the same way. The file planctl/src/mcp/server.ts registers submit_spec, show_plan and vocabulary; show_plan publishes the saved bytes through mdurl and returns the URL and revision, or the error when publishing fails.
+Done for Goal outcome 1: the owner reads a draft that approval cannot refuse. The file planctl/src/core/spec-submission.ts replaces the whole SPEC through the existing writer. It refuses a stale revision and a locked plan. It fixes line endings and unambiguous vocabulary pairs and runs the same lint approval uses, so approval on the same bytes cannot find anything new. It makes at most one model call for the changed lines. The call is the measured claude -p invocation with the sonnet model, tools off, MCP config strict, no session persistence, JSON output and thinking off. It receives the owner request, the Goal rule, the vocabulary pairs and the changed lines. A fifteen-second deadline kills the process and ends in checkStatus unavailable without retry; invalid output ends the same way. The file planctl/src/mcp/server.ts registers submit_spec and vocabulary. The file planctl/src/mcp/publish.ts wraps every tool that writes the plan. It republishes the saved bytes through mdurl at a stable worktree-aware slug and returns url and the three-line reply, or the error when publishing fails. The agent never publishes on its own, because a second publish step is the one it forgets.
 
-Proven by planctl/test/spec-submission.test.ts: a SPEC with a vocabulary error yields the correction and the finding, and approval on the same bytes finds nothing new. An unchanged resubmission returns no_change with no model call. A forced timeout and an invalid answer through an injected runner both end unavailable. Proven by planctl/test/mcp.test.ts: one client drives init, submit_spec, approve_spec, put_delivery, put_stage, approve_plan, start_task, complete_task and close_stage with returned revisions and no fixture-side plan edit. It sees approve_plan find nothing put_stage did not already return. It reads a duplicate Task ID and a dependency cycle as findings before approval, and reads URL, revision and the vocabulary rows.
+Proven by planctl/test/spec-submission.test.ts: a SPEC with a vocabulary error yields the correction and the finding, and approval on the same bytes finds nothing new. An unchanged resubmission returns no_change with no model call. A forced timeout and an invalid answer through an injected runner both end unavailable. Proven by planctl/test/mcp.test.ts: one client drives init, submit_spec, approve_spec, put_delivery, put_stage, approve_plan, start_task, complete_task and close_stage with returned revisions and no fixture-side plan edit. It sees approve_plan find nothing put_stage did not already return. It reads a duplicate Task ID and a dependency cycle as findings before approval. It reads url and the three-line reply from submit_spec and from put_stage through an injected mdurl runner, and reads the vocabulary rows.
 
 ##### Tasks
 
@@ -591,13 +601,13 @@ Proven by planctl/test/spec-submission.test.ts: a SPEC with a vocabulary error y
 <!-- plan:task-meta:{"writes":["planctl/src/core/spec-submission.ts","planctl/src/mcp/server.ts","planctl/test/spec-submission.test.ts"],"predictedActiveMinutes":60,"predictedCredits":6,"how":"create planctl/src/core/spec-submission.ts: refuse stale revision and locked plan; fix line endings and unambiguous vocabulary pairs; run lint; write through replaceDraftSpec and mutatePlanFile; register submit_spec in planctl/src/mcp/server.ts; in planctl/test/spec-submission.test.ts cover corrections, findings, the two refusals, and approval on the same bytes finding nothing new","red":"bun run agent:test:backend -- test/spec-submission.test.ts -t tst_unit_planctl_spec_submission_001"} -->
 - [ ] MCP_015 — One bounded model call checks the changed lines against the Goal rule and the vocabulary. Unchanged text calls nothing; a timeout ends in unavailable without retry. (45 min)
 <!-- plan:task-meta:{"writes":["planctl/src/core/spec-submission.ts","planctl/test/spec-submission.test.ts"],"predictedActiveMinutes":45,"predictedCredits":5,"how":"call the model once per changed submission from planctl/src/core/spec-submission.ts through an injectable runner whose production form is the measured claude -p invocation: --model sonnet, --tools empty, --strict-mcp-config, --no-session-persistence, --output-format json, MAX_THINKING_TOKENS=0, no API key; give it the owner request, the Goal rule, the vocabulary pairs and the changed lines; kill it at fifteen seconds; decode the JSON findings as advisory; return no_change for an unchanged submission and unavailable with the cause on timeout or invalid output; cover checked, no_change and both unavailable causes with a fake runner in planctl/test/spec-submission.test.ts","red":"bun run agent:test:backend -- test/spec-submission.test.ts -t tst_unit_planctl_spec_submission_002"} -->
-- [ ] MCP_016 — show_plan publishes through mdurl and returns URL and revision; vocabulary returns the terms; one client authors and executes a plan. (60 min)
-<!-- plan:task-meta:{"writes":["planctl/src/mcp/server.ts","planctl/test/mcp.test.ts"],"predictedActiveMinutes":60,"predictedCredits":6,"how":"register show_plan and vocabulary in planctl/src/mcp/server.ts; publish through an injectable mdurl runner with a stable worktree-aware slug and return an error instead of a stale URL when publishing fails; in planctl/test/mcp.test.ts drive init, submit_spec, approve_spec, put_delivery, put_stage, approve_plan, start_task, complete_task and close_stage through one client with returned revisions and no fixture-side plan edit, prove approve_plan finds nothing put_stage did not already return on the same bytes, put a duplicate Task ID and a dependency cycle and read both findings before approval, and read URL, revision and the vocabulary rows","red":"bun run agent:test:backend -- test/mcp.test.ts -t tst_unit_planctl_mcp_002"} -->
+- [ ] MCP_016 — Every tool that writes the plan republishes it through mdurl and returns url and the three-line reply; vocabulary returns the terms. (70 min)
+<!-- plan:task-meta:{"writes":["planctl/src/mcp/publish.ts","planctl/src/mcp/server.ts","planctl/test/mcp.test.ts"],"predictedActiveMinutes":70,"predictedCredits":7,"how":"create planctl/src/mcp/publish.ts wrapping every writing tool in planctl/src/mcp/server.ts: after the core operation, publish the saved bytes through an injectable mdurl runner at a stable worktree-aware slug, build the three-line reply, and return an error instead of a stale URL when publishing fails; register vocabulary; in planctl/test/mcp.test.ts drive init, submit_spec, approve_spec, put_delivery, put_stage, approve_plan, start_task, complete_task and close_stage through one client with returned revisions and no fixture-side plan edit, prove approve_plan finds nothing put_stage did not already return on the same bytes, put a duplicate Task ID and a dependency cycle and read both findings before approval, and read url and reply from submit_spec and put_stage with the runner's received bytes","red":"bun run agent:test:backend -- test/mcp.test.ts -t tst_unit_planctl_mcp_002"} -->
 
 ##### Acceptance criteria
 
 - [ ] `cd planctl && bun run agent:test:backend -- test/spec-submission.test.ts` exits 0 — corrections, findings, two refusals, approval finds nothing new, checked, no_change and unavailable
-- [ ] `cd planctl && bun run agent:test:backend -- test/mcp.test.ts` exits 0 — one client authors and executes a plan through the tools alone
+- [ ] `cd planctl && bun run agent:test:backend -- test/mcp.test.ts` exits 0 — one client authors and executes a plan through the tools alone; every write returns url and reply
 - [ ] Commit
 
 ##### Results
@@ -750,4 +760,10 @@ Proven by planctl/test/spec-submission.test.ts: a SPEC with a vocabulary error y
 - amend spec owner:a) sha256:f2866ece604eeb340e74ce8dd3a8197034e474f2b84471b5593041754d63c172
 
 - approve sha256:921a2b321182761798c2eec122a1ea93d5fef64bd00fee234ba1099709a1ad2a owner:a)
+
+- amend spec owner:делать две штуки публикации - это достаточно странная идея sha256:367c0c1c5dfd95bf4c81459e91a1189c44cc0dd971dd62afafccf1278a996294
+
+- replace-stage D1-S5
+
+- approve sha256:6edd2c38739f9ce50ace6d0f5040566d28f3c8edf5adba3c16e567f8b7414fd5 owner:делать две штуки публикации - это достаточно странная идея
 <!-- plan:execution:end -->
