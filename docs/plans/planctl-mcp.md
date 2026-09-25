@@ -484,14 +484,14 @@ Proven by planctl/test/plan-update.test.ts. It counts one invocation through the
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/cli/main.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":80,"predictedCredits":8,"how":"move the completion operation from planctl/src/cli/main.ts into planctl/src/core/plan-update.ts with the repository root as a parameter and a structured return the CLI prints; give mutatePlanFile, verifyStagedPlan, journalPath and journalCreatedPlan the same root parameter; derive paths from the commit, elapsed minutes as the UTC interval from the earliest start record, active minutes as that interval less the recorded owner waits and labelled an estimate, planned tests from each Task RED command, and leave usage unavailable; refuse a protected path by name unless the Task's writes name it; accept tests anywhere and files inside the Stage folders; report an existing temp root instead of refusing; accept complete-task --task --commit --result beside --from; cover the 30-minute record with a 20-minute wait, the accepted outside test, both protected-path cases and the reported temp root in planctl/test/plan-update.test.ts","red":"bun run agent:test:backend -- test/plan-update.test.ts -t tst_scripts_planupdate_022"} -->
 - [x] MCP_003 — Closing the last Stage of a Delivery writes the header line Ledger: implemented, and a Results number below the Goal never changes closure. (40 min) — 571438974c772dcd37b923b1600a4fec10ef20b7
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":40,"predictedCredits":4,"how":"make closePlanStage in planctl/src/core/plan-update.ts write `Ledger: implemented` into the header when the closed Stage is the last open one of its Delivery, with no PR number; in planctl/test/plan-update.test.ts read the line back, prove an earlier Stage writes none, and close a Stage whose Results report 49.8 against a Goal of 50","red":"bun run agent:test:backend -- test/plan-update.test.ts -t tst_scripts_planupdate_023"} -->
-- [x] MCP_007 — init derives the dated plan file from the branch, refuses the base branch, and returns the sections, vocabulary and Goal rule. (50 min) — 571438974c772dcd37b923b1600a4fec10ef20b7
+- [x] MCP_007 — init derives the dated plan file from the branch, refuses the base branch, and returns the sections, vocabulary and Goal rule. (50 min) — d086ab03d2aa1587156675ac596260cca280bb62
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/cli/main.ts","planctl/test/planctl.test.ts"],"predictedActiveMinutes":50,"predictedCredits":5,"how":"move init from planctl/src/cli/main.ts into planctl/src/core/plan-update.ts with the repository root as a parameter and a structured return the CLI prints; derive docs/plans/<date>-<slug>.md from the current branch; refuse when the branch equals code-production.base, and refuse a missing key with the message `git config code-production.base <branch>`; print and return the required sections, the vocabulary and the Goal rule; cover the name, both refusals and the contract in planctl/test/planctl.test.ts","red":"bun run agent:test:backend -- test/planctl.test.ts -t tst_scripts_planctl_011"} -->
 
 ##### Acceptance criteria
 
-- [x] `cd planctl && bun run agent:test:backend -- test/plan-update.test.ts` exits 0 — one evaluation, four-input completion, folder, test and protected-path rules, the Ledger line, no log line per put — 571438974c772dcd37b923b1600a4fec10ef20b7
-- [x] `cd planctl && bun run agent:test:backend -- test/planctl.test.ts` exits 0 — init names the file, refuses the base branch and the missing key, returns the contract — 571438974c772dcd37b923b1600a4fec10ef20b7
-- [x] Commit — 571438974c772dcd37b923b1600a4fec10ef20b7
+- [x] `cd planctl && bun run agent:test:backend -- test/plan-update.test.ts` exits 0 — one evaluation, four-input completion, folder, test and protected-path rules, the Ledger line, no log line per put — d086ab03d2aa1587156675ac596260cca280bb62
+- [x] `cd planctl && bun run agent:test:backend -- test/planctl.test.ts` exits 0 — init names the file, refuses the base branch and the missing key, returns the contract — d086ab03d2aa1587156675ac596260cca280bb62
+- [x] Commit — d086ab03d2aa1587156675ac596260cca280bb62
 
 ##### Results
 
@@ -502,6 +502,7 @@ Proven by planctl/test/plan-update.test.ts. It counts one invocation through the
 | MCP_002 | 571438974c772dcd37b923b1600a4fec10ef20b7 | 2026-09-25T09:17:44.602Z–2026-09-25T09:36:49.519Z | 19.08195 / 19.08195 min | unavailable: not measured by planctl | The writer evaluates once, derives the Stage result from four inputs, writes the Ledger line and names the plan from the branch — beyond writes: planctl/src/core/plan-gate.ts, planctl/test/package-boundary.test.ts, planctl/test/plan-gate.test.ts |
 | MCP_003 | 571438974c772dcd37b923b1600a4fec10ef20b7 | 2026-09-25T09:17:44.602Z–2026-09-25T09:36:49.519Z | 19.08195 / 19.08195 min | unavailable: not measured by planctl | The writer evaluates once, derives the Stage result from four inputs, writes the Ledger line and names the plan from the branch — beyond writes: planctl/src/core/plan-gate.ts, planctl/test/package-boundary.test.ts, planctl/test/plan-gate.test.ts |
 | MCP_007 | 571438974c772dcd37b923b1600a4fec10ef20b7 | 2026-09-25T09:17:44.602Z–2026-09-25T09:36:49.519Z | 19.08195 / 19.08195 min | unavailable: not measured by planctl | The writer evaluates once, derives the Stage result from four inputs, writes the Ledger line and names the plan from the branch — beyond writes: planctl/src/core/plan-gate.ts, planctl/test/package-boundary.test.ts, planctl/test/plan-gate.test.ts |
+| MCP_007 | d086ab03d2aa1587156675ac596260cca280bb62 | 2026-09-25T15:56:40.450Z–2026-09-25T15:57:09.155Z | 0.47841666666666666 / 0.47841666666666666 min | unavailable: not measured by planctl | the agent-stack fixture names its base branch, so the shared suite is green again with the new init — beyond writes: shared/code-production/agent-stack.test.ts |
 <!-- plan:results:D1-S1:end -->
 <!-- plan:stage:D1-S1:end -->
 
@@ -863,4 +864,10 @@ Proven by planctl/test/spec-submission.test.ts: a SPEC with a vocabulary error y
 - deviation D1-S5: planctl/src/cli/ was added to the Stage writes by an unattended amendment: the mcp command wires the publisher and the model runner
 
 - close D1-S5 closed commit:0d8621c5d0317144131c4fc543547bd79e762f7a
+
+- record-result D1-S1 commit:d086ab03d2aa1587156675ac596260cca280bb62
+
+- deviation D1-S1: repair after closure: the shared agent-stack suite is outside the package gate and turned red unseen; its fixture now sets code-production.base
+
+- close D1-S1 closed commit:d086ab03d2aa1587156675ac596260cca280bb62
 <!-- plan:execution:end -->
