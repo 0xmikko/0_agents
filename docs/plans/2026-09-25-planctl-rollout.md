@@ -3,7 +3,7 @@
 Status: SPEC_LOCKED  
 Spec lock: sha256:c8b973007e0ab1af1506ce4377f918b476c257f72728f9b93e5ca3e99fc24458 owner:Да, давай это воплотим и запустим параллельно  
 Implementation lock: unlocked  
-Active Delivery: none  
+Active Delivery: D1  
 Unattended decisions: allowed  
 
 <!-- plan:spec:start -->
@@ -135,6 +135,133 @@ The parallel comparison on the second magnis-app clone is the owner's run, after
 
 <!-- plan:implementation:start -->
 ## Implementation contract
+
+<!-- plan:delivery:D1:start -->
+<!-- plan:delivery-meta:{"active":true,"depends":[],"predictedExternalWaitMinutes":120} -->
+### PR Delivery D1 — The skills on the tools and one installer
+
+Branch: `feat/planctl-rollout`; Depends: none; Gate: cd planctl && bun run agent:verify:docs, cd planctl && bun run agent:verify:pr, cd planctl && bun test ../shared/code-production/agent-stack.test.ts.
+
+Stage graph: `D1-S1 -> D1-S2 -> D1-S3`.
+
+Forecast: 370 active min / 38 credits across 3 Stages; longest dependency path 370 active min; external waits 120 min.
+
+What changed for people. One command installs the new process into a consumer repository. It leaves the runtime, hooks and workflow, the base branch, the three flow skills as managed copies, and the planctl MCP server registered once per user. The three skills speak only the tools. After every write the owner sees the three-line reply. A second clone of magnis-app can run the new process beside the current one.
+
+What changed in the code. agent-stack takes --base and manages the skill copies. Two shell scripts in lib register the server and run the whole install; update.sh gains the registration step. The three skills are rewritten, and the audit proves they name only tools.
+
+How it was proven. The shared agent-stack suite, a setup test with fake claude and codex on PATH, the instruction audit over the three skills, and the package gate. The PR stacks on PR #20 and becomes mergeable after it.
+
+Not in this PR. The owner's parallel run on the second clone and its comparison table.
+
+<!-- plan:stage:D1-S1:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["shared/code-production/"],"tempRoot":".tmp/code-production/planctl-rollout/D1-S1","predictedActiveMinutes":120,"predictedCredits":12,"verifyActiveMinutes":10,"verifyCredits":1} -->
+#### Stage D1-S1 — agent-stack installs the base branch and the managed skill copies
+
+- Owner: agent-1; Profile: strong; Depends: none; Parallel with: none.
+- Writes: `shared/code-production/`.
+- Temp root: `.tmp/code-production/planctl-rollout/D1-S1` (must be absent at handoff).
+- Of which verification: 10 active min / 1 credits.
+
+feat(agent-stack): install the base branch and the three skill copies
+
+Done for Goal outcome 1: one install leaves the base branch set and the skills in the repository. The install command takes --base <branch> and writes code-production.base into the repository's local Git config. The check command reports a missing value with the command that sets it. The three flow skills become managed files. The install writes .claude/skills/<name>/SKILL.md and .agents/skills/<name>/SKILL.md from shared/skills/<name>/SKILL.md. The check reports a changed copy as stale, and consumer-only skills stay untouched. The package contract names both.
+
+Proven by shared/code-production/agent-stack.test.ts. An install with --base writes the value and check passes; a check without it names the git config command. The six skill copies exist after install. An edited copy is stale and install restores it. A consumer-only skill survives install.
+
+##### Tasks
+
+- [ ] ROLL_001 — agent-stack install --base <branch> writes code-production.base into the repository's local Git config, and check reports a missing value with the command that sets it. (50 min)
+<!-- plan:task-meta:{"writes":["shared/code-production/agent-stack.ts","shared/code-production/agent-stack.test.ts"],"predictedActiveMinutes":50,"predictedCredits":5,"how":"add --base <branch> to the install command in shared/code-production/agent-stack.ts and write code-production.base with git config in the repository; make check refuse a missing value naming git config code-production.base <branch>; in shared/code-production/agent-stack.test.ts install a fixture with --base and read the value back, then remove it and read the refusal","red":"bun run agent:test:backend -- ../shared/code-production/agent-stack.test.ts -t tst_agent_stack_014"} -->
+- [ ] ROLL_002 — install writes the three flow skills into .claude/skills and .agents/skills as managed files from shared/skills; check reports an edited copy; consumer-only skills stay untouched. (60 min)
+<!-- plan:task-meta:{"writes":["shared/code-production/agent-stack.ts","shared/code-production/agent-stack.test.ts","shared/code-production/package-contract.md"],"predictedActiveMinutes":60,"predictedCredits":6,"how":"add the six SKILL.md targets for blueprint, blueprint-start and end-work to managedFiles in shared/code-production/agent-stack.ts, sourced from shared/skills; keep them in the manifest so check compares them; state the base branch and the managed skill copies in shared/code-production/package-contract.md; in shared/code-production/agent-stack.test.ts read the six copies after install, edit one and see check report it stale and install restore it, and see a consumer-only skill directory survive install","red":"bun run agent:test:backend -- ../shared/code-production/agent-stack.test.ts -t tst_agent_stack_015"} -->
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun test ../shared/code-production/agent-stack.test.ts` exits 0 — the base branch is written and checked, the skill copies are installed, compared and restored
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S1:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S1:end -->
+<!-- plan:stage:D1-S1:end -->
+
+<!-- plan:stage:D1-S2:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S1"],"parallelWith":[],"writes":["lib/","update.sh","README.md","planctl/test/"],"tempRoot":".tmp/code-production/planctl-rollout/D1-S2","predictedActiveMinutes":115,"predictedCredits":12,"verifyActiveMinutes":10,"verifyCredits":1} -->
+#### Stage D1-S2 — One command installs the process and registers the MCP server
+
+- Owner: agent-1; Profile: strong; Depends: D1-S1; Parallel with: none.
+- Writes: `lib/`, `update.sh`, `README.md`, `planctl/test/`.
+- Temp root: `.tmp/code-production/planctl-rollout/D1-S2` (must be absent at handoff).
+- Of which verification: 10 active min / 1 credits.
+
+feat(lib): one command installs the process into a repository and registers planctl over MCP
+
+Done for Goal outcome 1: bash lib/setup-code-production.sh --repo <dir> --base <branch> is the whole install. The script validates its two arguments, runs agent-stack install with the base, runs lib/install-planctl-mcp.sh, and prints planctl progress --root for the repository. It refuses a repository without the seven agent scripts, as agent-stack check does, naming the missing script. The script lib/install-planctl-mcp.sh registers planctl mcp for Claude with claude mcp add -s user and for Codex with codex mcp add. It skips what claude mcp get and codex mcp get already report, in the shape of lib/install-linear-mcp.sh. The update.sh script runs it after the Linear step, and README documents the one command.
+
+Proven by planctl/test/setup-code-production.test.ts with fake claude and codex on PATH. One run on a fixture repository with the seven scripts leaves the runtime, hooks, workflow, base config and skill copies in place, and agent-stack check passes. A second run of the registration adds nothing. A fixture without agent:verify:pr is refused with its name. The printed screen names the plan.
+
+##### Tasks
+
+- [ ] ROLL_003 — lib/install-planctl-mcp.sh registers planctl mcp for Claude and Codex once per user; a second run adds nothing, and update.sh runs it after the Linear step. (45 min)
+<!-- plan:task-meta:{"writes":["lib/install-planctl-mcp.sh","update.sh","planctl/test/setup-code-production.test.ts"],"predictedActiveMinutes":45,"predictedCredits":5,"how":"create lib/install-planctl-mcp.sh in the shape of lib/install-linear-mcp.sh: claude mcp add -s user planctl -- planctl mcp unless claude mcp get planctl succeeds, codex mcp add planctl -- planctl mcp unless codex mcp get planctl succeeds, a --help text, and a skip with a message when a CLI is absent; add the step to update.sh after install-linear-mcp.sh with a --skip name; in planctl/test/setup-code-production.test.ts put fake claude and codex scripts on PATH that record their arguments, run the script twice and read one add per CLI","red":"bun run agent:test:backend -- test/setup-code-production.test.ts -t tst_unit_planctl_setup_001"} -->
+- [ ] ROLL_004 — lib/setup-code-production.sh --repo <dir> --base <branch> installs the stack with the base, registers the server, prints the progress screen, and refuses a repository without the contract. (60 min)
+<!-- plan:task-meta:{"writes":["lib/setup-code-production.sh","README.md","planctl/test/setup-code-production.test.ts"],"predictedActiveMinutes":60,"predictedCredits":6,"how":"create lib/setup-code-production.sh that validates --repo and --base, runs bun shared/code-production/agent-stack.ts install <repo> --base <branch>, then lib/install-planctl-mcp.sh, then planctl progress --root <repo>, and exits non-zero with the message of agent-stack when the repository lacks a script; document the one command in README.md under the MCP section; in planctl/test/setup-code-production.test.ts run the script on a fixture with the seven scripts and read the runtime, hooks, workflow, base config and six skill copies, then run it on a fixture without agent:verify:pr and read the refusal naming it","red":"bun run agent:test:backend -- test/setup-code-production.test.ts -t tst_unit_planctl_setup_002"} -->
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/setup-code-production.test.ts` exits 0 — one run installs everything, the registration is idempotent, a repository without the contract is refused
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S2:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S2:end -->
+<!-- plan:stage:D1-S2:end -->
+
+<!-- plan:stage:D1-S3:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S2"],"parallelWith":[],"writes":["shared/skills/","planctl/test/"],"tempRoot":".tmp/code-production/planctl-rollout/D1-S3","predictedActiveMinutes":135,"predictedCredits":14,"verifyActiveMinutes":10,"verifyCredits":1} -->
+#### Stage D1-S3 — The three skills speak only the tools
+
+- Owner: agent-1; Profile: strong; Depends: D1-S2; Parallel with: none.
+- Writes: `shared/skills/`, `planctl/test/`.
+- Temp root: `.tmp/code-production/planctl-rollout/D1-S3` (must be absent at handoff).
+- Of which verification: 10 active min / 1 credits.
+
+feat(skills): blueprint, blueprint-start and end-work on the planctl tools
+
+Done for Goal outcome 2: each skill reads as one page and names only tools. The blueprint skill opens with init and sends the SPEC with submit_spec, using the returned revision and the owner's request. It shows the three-line reply and stops. After the word it calls approve_spec, then put_delivery and put_stage with the returned revisions, and stops with the reply. After the second word it calls approve_plan. The blueprint-start skill opens with start_task and follows the brief through RED, GREEN, the diff review and one commit. Then complete_task takes the Task IDs, the commit and the result sentence, and close_stage closes the Stage. A question goes through needs_owner as the four-part form and resume_task after the answer. The skill asks progress for the whole picture and after a compaction, and delivers by push, CI and ready. The end-work skill runs after the owner's merge: progress, planctl stats --since the plan date for the retro, the worktree cleanup, and never a commit. The Claude and Codex directories keep their symlinks.
+
+Proven by planctl/test/instruction-audit.test.ts. The three skills carry no planctl <command> line except planctl stats and planctl progress --note, and no --from, --reason or JSON file. Each names every tool of its flow. The audit over the repository passes.
+
+##### Tasks
+
+- [ ] ROLL_005 — blueprint authors a plan through init, submit_spec, approve_spec, put_delivery, put_stage and approve_plan, stops twice for the owner's word, and names no CLI command. (45 min)
+<!-- plan:task-meta:{"writes":["shared/skills/blueprint/SKILL.md","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":45,"predictedCredits":5,"how":"rewrite shared/skills/blueprint/SKILL.md around the tools: init with root and title, the SPEC as one text through submit_spec with the returned revision and the owner's request, the three-line reply shown verbatim and the first stop, approve_spec after the word, put_delivery and put_stage with returned revisions and their findings, the second stop, approve_plan; keep the Goal examples; in planctl/test/instruction-audit.test.ts add the test that reads the three skills and refuses any planctl <command> line except stats and progress --note, any --from, --reason or JSON file, and requires the tool names of each flow","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills_002"} -->
+- [ ] ROLL_006 — blueprint-start executes a plan through start_task, complete_task, close_stage, needs_owner, resume_task and progress, with the brief as the scope and the reply after every write. (50 min)
+<!-- plan:task-meta:{"writes":["shared/skills/blueprint-start/SKILL.md","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":50,"predictedCredits":5,"how":"rewrite shared/skills/blueprint-start/SKILL.md around the tools: start_task without a Task for the running or next one, the brief as the frozen scope, RED with the printed command, GREEN, the diff review, one commit, complete_task with Task IDs, commit and result sentence, close_stage, needs_owner as the four-part form before any question and resume_task after the answer, progress for the whole picture and after a compaction, the delivery by push, CI and ready with the PR URL and the plan URL from the last reply; keep the rules on parallel agents, deviations and time overruns; extend the audit test with this skill's tool names","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills_002"} -->
+- [ ] ROLL_007 — end-work closes a merged Delivery with progress, planctl stats for the retro and the worktree cleanup, and never commits. (30 min)
+<!-- plan:task-meta:{"writes":["shared/skills/end-work/SKILL.md","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":30,"predictedCredits":3,"how":"rewrite shared/skills/end-work/SKILL.md: confirm the merge through progress, take the retro numbers from planctl stats --since the plan date and the plan's Results rows, post the compact retro on the PR, prove the worktree clean and remove it with its temp roots, never commit; extend the audit test with this skill's tool names","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills_002"} -->
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/instruction-audit.test.ts` exits 0 — the three skills name only tools and every tool of their flow
+- [ ] `cd planctl && bun run agent:verify:docs` exits 0 — the audit over the repository passes with the rewritten skills
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S3:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S3:end -->
+<!-- plan:stage:D1-S3:end -->
+<!-- plan:delivery:D1:end -->
 <!-- plan:implementation:end -->
 
 <!-- plan:execution:start -->
