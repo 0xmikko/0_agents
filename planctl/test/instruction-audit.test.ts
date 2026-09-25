@@ -228,6 +228,37 @@ describe("the skills", () => {
   });
 });
 
+describe("the flow skills speak the tools", () => {
+  const FLOWS: Readonly<Record<string, readonly string[]>> = {
+    blueprint: ["init", "submit_spec", "approve_spec", "put_delivery", "put_stage", "approve_plan"],
+    "blueprint-start": ["start_task", "complete_task", "close_stage", "needs_owner", "resume_task", "progress"],
+    "end-work": ["progress", "planctl stats"],
+  };
+  const ALLOWED_COMMANDS = [/^planctl stats\b/, /^planctl progress --note\b/];
+  // @test-id: tst_audit_skills_002
+  // @covers: shared/skills/blueprint/SKILL.md, shared/skills/blueprint-start/SKILL.md, shared/skills/end-work/SKILL.md
+  // @deterministic: yes
+  // @invariant: the three flow skills name only tools: no planctl <command> beside stats and progress --note, no Stage result file, no --from or --reason, and every tool of their flow.
+  it("tst_audit_skills_002 the three flow skills name only tools and every tool of their flow", () => {
+    const root = join(import.meta.dir, "../..");
+    const problems: string[] = [];
+    for (const [name, tools] of Object.entries(FLOWS)) {
+      const text = readFileSync(join(root, "shared/skills", name, "SKILL.md"), "utf8");
+      const CLI = /planctl (?:init|set-spec|approve-spec|approve-plan|put-delivery|put-stage|remove-stage|start-task|complete-task|close-stage|needs-owner|resume-task|amend|add-deviation|verify|verify-staged|clear-transaction|progress|stats|mcp)\b(?: --[a-z-]+)?/g;
+      for (const command of text.match(CLI) ?? []) {
+        if (!ALLOWED_COMMANDS.some((allowed) => allowed.test(command))) problems.push(`${name}: ${command}`);
+      }
+      for (const forbidden of ["--from", "--reason", "stage-result.json", "set-spec"]) {
+        if (text.includes(forbidden)) problems.push(`${name}: ${forbidden}`);
+      }
+      for (const tool of tools) {
+        if (!text.includes(tool.includes(" ") ? tool : `\`${tool}\``)) problems.push(`${name} misses ${tool}`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+});
+
 describe("the audit as a command", () => {
   // @test-id: tst_audit_007
   // @covers: shared/code-production/instruction-audit.ts (main)

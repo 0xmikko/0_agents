@@ -208,21 +208,23 @@ Proven by planctl/test/setup-code-production.test.ts with fake claude and codex 
 
 ##### Tasks
 
-- [ ] ROLL_003 — lib/install-planctl-mcp.sh registers planctl mcp for Claude and Codex once per user; a second run adds nothing, and update.sh runs it after the Linear step. (45 min)
+- [x] ROLL_003 — lib/install-planctl-mcp.sh registers planctl mcp for Claude and Codex once per user; a second run adds nothing, and update.sh runs it after the Linear step. (45 min) — baa7b69ef03659403cdc85cf2d12eb6e1c543ee5
 <!-- plan:task-meta:{"writes":["lib/install-planctl-mcp.sh","update.sh","planctl/test/setup-code-production.test.ts"],"predictedActiveMinutes":45,"predictedCredits":5,"how":"create lib/install-planctl-mcp.sh in the shape of lib/install-linear-mcp.sh: claude mcp add -s user planctl -- planctl mcp unless claude mcp get planctl succeeds, codex mcp add planctl -- planctl mcp unless codex mcp get planctl succeeds, a --help text, and a skip with a message when a CLI is absent; add the step to update.sh after install-linear-mcp.sh with a --skip name; in planctl/test/setup-code-production.test.ts put fake claude and codex scripts on PATH that record their arguments, run the script twice and read one add per CLI","red":"bun run agent:test:backend -- test/setup-code-production.test.ts -t tst_unit_planctl_setup_001"} -->
-- [ ] ROLL_004 — lib/setup-code-production.sh --repo <dir> --base <branch> installs the stack with the base, registers the server, prints the progress screen, and refuses a repository without the contract. (60 min)
+- [x] ROLL_004 — lib/setup-code-production.sh --repo <dir> --base <branch> installs the stack with the base, registers the server, prints the progress screen, and refuses a repository without the contract. (60 min) — baa7b69ef03659403cdc85cf2d12eb6e1c543ee5
 <!-- plan:task-meta:{"writes":["lib/setup-code-production.sh","README.md","planctl/test/setup-code-production.test.ts"],"predictedActiveMinutes":60,"predictedCredits":6,"how":"create lib/setup-code-production.sh that validates --repo and --base, runs bun shared/code-production/agent-stack.ts install <repo> --base <branch>, then lib/install-planctl-mcp.sh, then planctl progress --root <repo>, and exits non-zero with the message of agent-stack when the repository lacks a script; document the one command in README.md under the MCP section; in planctl/test/setup-code-production.test.ts run the script on a fixture with the seven scripts and read the runtime, hooks, workflow, base config and six skill copies, then run it on a fixture without agent:verify:pr and read the refusal naming it","red":"bun run agent:test:backend -- test/setup-code-production.test.ts -t tst_unit_planctl_setup_002"} -->
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/setup-code-production.test.ts` exits 0 — one run installs everything, the registration is idempotent, a repository without the contract is refused
-- [ ] Commit
+- [x] `cd planctl && bun run agent:test:backend -- test/setup-code-production.test.ts` exits 0 — one run installs everything, the registration is idempotent, a repository without the contract is refused — baa7b69ef03659403cdc85cf2d12eb6e1c543ee5
+- [x] Commit — baa7b69ef03659403cdc85cf2d12eb6e1c543ee5
 
 ##### Results
 
 <!-- plan:results:D1-S2:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| ROLL_003 | baa7b69ef03659403cdc85cf2d12eb6e1c543ee5 | 2026-09-25T17:31:04.927Z–2026-09-25T17:33:34.295Z | 2.4894666666666665 / 2.4894666666666665 min | unavailable: not measured by planctl | one command installs the stack with the base, registers the server once and prints the screen; a repository without the contract is refused |
+| ROLL_004 | baa7b69ef03659403cdc85cf2d12eb6e1c543ee5 | 2026-09-25T17:31:04.927Z–2026-09-25T17:33:34.295Z | 2.4894666666666665 / 2.4894666666666665 min | unavailable: not measured by planctl | one command installs the stack with the base, registers the server once and prints the screen; a repository without the contract is refused |
 <!-- plan:results:D1-S2:end -->
 <!-- plan:stage:D1-S2:end -->
 
@@ -276,4 +278,8 @@ Proven by planctl/test/instruction-audit.test.ts. The three skills carry no plan
 - record-result D1-S1 commit:7a4d6399a2a7e34c57498b323a4fa213ba3d91b4
 
 - close D1-S1 closed commit:7a4d6399a2a7e34c57498b323a4fa213ba3d91b4
+
+- record-result D1-S2 commit:baa7b69ef03659403cdc85cf2d12eb6e1c543ee5
+
+- close D1-S2 closed commit:baa7b69ef03659403cdc85cf2d12eb6e1c543ee5
 <!-- plan:execution:end -->
