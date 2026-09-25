@@ -23,16 +23,15 @@ and the integration branch from that repository's `git config
 code-production.base`. No per-repository file, no arguments.
 
 ```bash
-# Claude Code, once per user
-claude mcp add --scope user planctl -- planctl mcp
+# Once per consumer repository: runtime, hooks, workflow, the base branch,
+# the three flow skills as managed copies, and the MCP registration for
+# Claude and Codex (once per user). Prints the "where am I" screen.
+bash ~/Coding/0_agents/lib/setup-code-production.sh --repo ~/Coding/magnis-app --base staging
 ```
 
-```toml
-# Codex: ~/.codex/config.toml, once per user
-[mcp_servers.planctl]
-command = "planctl"
-args = ["mcp"]
-```
+The registration alone is `bash lib/install-planctl-mcp.sh` (also a step of
+`update.sh`): `claude mcp add -s user planctl -- planctl mcp` and
+`codex mcp add planctl -- planctl mcp`, skipping what is already registered.
 
 Optional, after context compaction: a hook that runs `planctl progress
 --note` prints one line only when a Task is running in the current

@@ -171,21 +171,23 @@ Proven by shared/code-production/agent-stack.test.ts. An install with --base wri
 
 ##### Tasks
 
-- [ ] ROLL_001 — agent-stack install --base <branch> writes code-production.base into the repository's local Git config, and check reports a missing value with the command that sets it. (50 min)
+- [x] ROLL_001 — agent-stack install --base <branch> writes code-production.base into the repository's local Git config, and check reports a missing value with the command that sets it. (50 min) — 7a4d6399a2a7e34c57498b323a4fa213ba3d91b4
 <!-- plan:task-meta:{"writes":["shared/code-production/agent-stack.ts","shared/code-production/agent-stack.test.ts"],"predictedActiveMinutes":50,"predictedCredits":5,"how":"add --base <branch> to the install command in shared/code-production/agent-stack.ts and write code-production.base with git config in the repository; make check refuse a missing value naming git config code-production.base <branch>; in shared/code-production/agent-stack.test.ts install a fixture with --base and read the value back, then remove it and read the refusal","red":"bun run agent:test:backend -- ../shared/code-production/agent-stack.test.ts -t tst_agent_stack_014"} -->
-- [ ] ROLL_002 — install writes the three flow skills into .claude/skills and .agents/skills as managed files from shared/skills; check reports an edited copy; consumer-only skills stay untouched. (60 min)
+- [x] ROLL_002 — install writes the three flow skills into .claude/skills and .agents/skills as managed files from shared/skills; check reports an edited copy; consumer-only skills stay untouched. (60 min) — 7a4d6399a2a7e34c57498b323a4fa213ba3d91b4
 <!-- plan:task-meta:{"writes":["shared/code-production/agent-stack.ts","shared/code-production/agent-stack.test.ts","shared/code-production/package-contract.md"],"predictedActiveMinutes":60,"predictedCredits":6,"how":"add the six SKILL.md targets for blueprint, blueprint-start and end-work to managedFiles in shared/code-production/agent-stack.ts, sourced from shared/skills; keep them in the manifest so check compares them; state the base branch and the managed skill copies in shared/code-production/package-contract.md; in shared/code-production/agent-stack.test.ts read the six copies after install, edit one and see check report it stale and install restore it, and see a consumer-only skill directory survive install","red":"bun run agent:test:backend -- ../shared/code-production/agent-stack.test.ts -t tst_agent_stack_015"} -->
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun test ../shared/code-production/agent-stack.test.ts` exits 0 — the base branch is written and checked, the skill copies are installed, compared and restored
-- [ ] Commit
+- [x] `cd planctl && bun test ../shared/code-production/agent-stack.test.ts` exits 0 — the base branch is written and checked, the skill copies are installed, compared and restored — 7a4d6399a2a7e34c57498b323a4fa213ba3d91b4
+- [x] Commit — 7a4d6399a2a7e34c57498b323a4fa213ba3d91b4
 
 ##### Results
 
 <!-- plan:results:D1-S1:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| ROLL_001 | 7a4d6399a2a7e34c57498b323a4fa213ba3d91b4 | 2026-09-25T17:27:25.870Z–2026-09-25T17:30:55.943Z | 3.5012166666666666 / 3.5012166666666666 min | unavailable: not measured by planctl | install writes the base branch and the six skill copies; check refuses a missing base and a stale copy — beyond writes: planctl/test/package-boundary.test.ts |
+| ROLL_002 | 7a4d6399a2a7e34c57498b323a4fa213ba3d91b4 | 2026-09-25T17:27:25.870Z–2026-09-25T17:30:55.943Z | 3.5012166666666666 / 3.5012166666666666 min | unavailable: not measured by planctl | install writes the base branch and the six skill copies; check refuses a missing base and a stale copy — beyond writes: planctl/test/package-boundary.test.ts |
 <!-- plan:results:D1-S1:end -->
 <!-- plan:stage:D1-S1:end -->
 
@@ -270,4 +272,8 @@ Proven by planctl/test/instruction-audit.test.ts. The three skills carry no plan
 - lock-spec sha256:c8b973007e0ab1af1506ce4377f918b476c257f72728f9b93e5ca3e99fc24458 owner:Да, давай это воплотим и запустим параллельно
 
 - approve sha256:22a8ac79ac1165add0c49cd1210ddabee24dfdc3a8b4f8766caa8cb7889fda16 owner:Да, давай его исполним и развернем
+
+- record-result D1-S1 commit:7a4d6399a2a7e34c57498b323a4fa213ba3d91b4
+
+- close D1-S1 closed commit:7a4d6399a2a7e34c57498b323a4fa213ba3d91b4
 <!-- plan:execution:end -->
