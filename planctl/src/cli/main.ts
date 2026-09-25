@@ -593,16 +593,20 @@ async function startTask(args: readonly string[]): Promise<void> {
 }
 
 /** Serve the tools over stdio; diagnostics go to stderr, the protocol owns stdout. */
-async function mcp(): Promise<void> {
+async function mcp(args: readonly string[]): Promise<void> {
   dedicatedRuntime();
   const { createPlanctlServer } = await import("../mcp/server");
+  const { commandPublisher } = await import("../mcp/publish");
   const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
   const { eventLogPath } = await import("../core/event-log");
+  const { claudeModelRunner } = await import("../core/spec-submission");
   const server = createPlanctlServer({
     cwd: process.cwd(),
     publication: readPublication,
     sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
     eventLog: eventLogPath(homedir()),
+    model: claudeModelRunner,
+    publisher: commandPublisher(optionalFlag(args, "--publisher") ?? "mdurl"),
   });
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -883,7 +887,7 @@ async function run(args: readonly string[]): Promise<number> {
     return 0;
   }
   if (command === "mcp") {
-    await mcp();
+    await mcp(args);
     return 0;
   }
   if (command === "stats") {

@@ -23,6 +23,7 @@ import {
   mutatePlanFile,
   needsOwner,
   patchFrom,
+  planState,
   protocolImplementationHash,
   protocolSpecHash,
   putDelivery,
@@ -36,8 +37,10 @@ import {
   startTask,
   validateImplementation,
 } from "../core/plan-update";
+import { submitSpec } from "../core/spec-submission";
 import { decodeTaskRun } from "../core/task-run";
 import { renderProgressView, renderTaskBrief } from "../cli/render";
+import { ownerReply } from "./publish";
 
 interface ServerDependencies {
   /** Where relative plan paths resolve; the server never changes it. */
@@ -48,6 +51,10 @@ interface ServerDependencies {
   readonly sourceCommit: string;
   /** The events.jsonl every call appends one line to. */
   readonly eventLog: string;
+  /** The one bounded model call submit_spec makes for the changed lines. */
+  readonly model: (prompt: string, deadlineMs: number) => Promise<string>;
+  /** Publishes the saved bytes after every write and returns the URL. */
+  readonly publisher: (root: string, plan: string) => string;
 }
 
 interface ToolResult {
@@ -135,6 +142,30 @@ const TOOLS = {
         ...contract.vocabulary.map((pair) => `Vocabulary: ${pair.word} → ${pair.term}`),
         `Goal rule: ${contract.goalRule}`,
       ].join("\n"));
+    },
+  }),
+  submit_spec: tool({
+    description: "Replace the whole SPEC of a draft. Fixes line endings and vocabulary itself, returns every lint error at once and the model's notes on the changed lines. Refuses a stale revision and a locked plan.",
+    schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string() }),
+    run: async (deps, { plan, baseRevision, ownerRequest, spec }) => {
+      const { root, plan: relative } = located(deps.cwd, plan);
+      const result = await submitSpec(root, { plan: relative, baseRevision, ownerRequest, spec }, deps.model);
+      const errors = result.findings.filter((finding) => finding.blocking).length;
+      const notes = result.findings.length - errors;
+      return reply({ plan: relative, ...result }, [
+        `Revision ${result.revision}, ${result.state}`,
+        `Checks: ${errors} errors, ${notes} model notes${result.checkStatus === "checked" ? "" : ` (${result.checkStatus}${result.checkError === null ? "" : `: ${result.checkError}`})`}`,
+        ...result.corrections.map((correction) => `Corrected line ${correction.line}: ${correction.after}`),
+        ...result.findings.map((finding) => `line ${finding.line}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}`),
+      ].join("\n"));
+    },
+  }),
+  vocabulary: tool({
+    description: "The terms and the words they replace, from the shared vocabulary and the repository's own page.",
+    schema: z.object({ root: z.string() }),
+    run: async (deps, { root }) => {
+      const contract = await authoringContract(repository(deps.cwd, root));
+      return reply({ terms: contract.vocabulary }, contract.vocabulary.map((pair) => `${pair.word} → ${pair.term}`).join("\n"));
     },
   }),
   approve_spec: tool({
@@ -319,6 +350,39 @@ const TOOLS = {
 
 type ToolName = keyof typeof TOOLS;
 
+/** The tools that write the plan: each republishes it and returns url and reply. */
+const WRITERS: ReadonlySet<ToolName> = new Set<ToolName>(["submit_spec", "approve_spec", "approve_plan", "put_delivery", "put_stage", "remove_stage", "amend", "add_deviation", "complete_task", "close_stage"]);
+
+/** After a write: publish the saved bytes and add url and the owner reply; a publish failure is an error, never a stale URL.
+ * @tested-by: tst_unit_planctl_mcp_002
+ */
+function published(deps: ServerDependencies, args: Record<string, unknown>, result: ToolResult): ToolResult {
+  if (result.isError === true || typeof args.plan !== "string") return result;
+  const { root, plan } = located(deps.cwd, args.plan);
+  const structured = result.structuredContent ?? {};
+  const saved = readFileSync(resolve(root, plan), "utf8");
+  const state = typeof structured.state === "string" ? structured.state : planState(saved);
+  const revision = typeof structured.revision === "string"
+    ? structured.revision
+    : state === "SPEC_DRAFT" ? protocolSpecHash(saved) : protocolImplementationHash(saved);
+  const findings = Array.isArray(structured.findings) ? structured.findings as readonly { blocking?: unknown }[] : null;
+  const checks = "checkStatus" in structured && findings !== null
+    ? { errors: findings.filter((finding) => finding.blocking === true).length, notes: findings.filter((finding) => finding.blocking === false).length }
+    : null;
+  let url: string;
+  try {
+    url = deps.publisher(root, plan);
+  } catch (error: unknown) {
+    return refusal(`saved revision ${revision} but publishing failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const owner = ownerReply(url, revision, state, checks);
+  return {
+    ...result,
+    structuredContent: { ...structured, revision, state, url, reply: owner },
+    content: [{ type: "text", text: `${owner}\n${result.content.map((entry) => entry.text).join("\n")}` }],
+  };
+}
+
 /** Where a call points, for the event line: the repository and plan it named, even when the plan does not exist yet. */
 function calledLocation(cwd: string, args: Record<string, unknown>): { readonly repository: string; readonly plan: string } {
   const toplevel = (directory: string): string => {
@@ -411,6 +475,7 @@ export async function dispatchTool(deps: ServerDependencies, name: string, args:
     } else {
       try {
         result = await (definition.run as (deps: ServerDependencies, args: unknown) => Promise<ToolResult>)(deps, parsed.data);
+        if (WRITERS.has(name as ToolName)) result = published(deps, args, result);
       } catch (error: unknown) {
         result = refusal(error instanceof Error ? error.message : String(error));
       }

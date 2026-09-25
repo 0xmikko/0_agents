@@ -602,22 +602,24 @@ Proven by planctl/test/mcp.test.ts: one server launched outside both fixtures dr
 
 ##### Tasks
 
-- [ ] MCP_011 — planctl mcp serves the tools over stdio with schemas over the core operations and routes each call by its plan path or root. (120 min)
+- [x] MCP_011 — planctl mcp serves the tools over stdio with schemas over the core operations and routes each call by its plan path or root. (120 min) — 6abf9f47b59b80b4cbd8cf206614db7db18bba89
 <!-- plan:task-meta:{"writes":["planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/package.json","planctl/bun.lock","README.md","planctl/test/mcp.test.ts"],"predictedActiveMinutes":120,"predictedCredits":12,"how":"add the MCP SDK and Zod to planctl/package.json and planctl/bun.lock; create planctl/src/mcp/server.ts registering the tools with input schemas, structured content and text, passing the repository root from each plan path or from the root argument of a planless progress into the core operations and reading code-production.base there, never changing the process working directory; refuse put_delivery and put_stage with every lint error of the submitted part at once and return the validateImplementation findings of the whole plan without refusing an incomplete draft; add the mcp command to planctl/src/cli/main.ts with diagnostics on stderr; document the one global registration for Claude and Codex in README.md; in planctl/test/mcp.test.ts launch one server outside two fixture repositories and drive init, put_stage, start_task, needs_owner, resume_task, complete_task, close_stage, a planless progress by root, one malformed argument and one refusal in each, reading the journal path inside each repository","red":"bun run agent:test:backend -- test/mcp.test.ts -t tst_unit_planctl_mcp_001"} -->
-- [ ] MCP_012 — Every tool call appends one event line to ~/.local/share/planctl/events.jsonl and planctl stats prints the five tables grouped by the server's source commit. (60 min)
+- [x] MCP_012 — Every tool call appends one event line to ~/.local/share/planctl/events.jsonl and planctl stats prints the five tables grouped by the server's source commit. (60 min) — 6abf9f47b59b80b4cbd8cf206614db7db18bba89
 <!-- plan:task-meta:{"writes":["planctl/src/core/event-log.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/event-log.test.ts"],"predictedActiveMinutes":60,"predictedCredits":6,"how":"create planctl/src/core/event-log.ts appending EventRecord lines to ~/.local/share/planctl/events.jsonl, with every Task ID of a call, the Delivery, the forecast, the observed PR, CI head, run id and attempt, the server's source commit and the consumer's installed runtime commit or null, and empty plan fields for a call that resolved no plan; compute the five stats tables from start, complete, submit, needs_owner, resume and progress events grouped by source commit; call it from every tool in planctl/src/mcp/server.ts and add stats to planctl/src/cli/main.ts; in planctl/test/event-log.test.ts count lines per call, read a refusal reason, and read two Task timings from one batched completion, one start for a repeated start, one CI run for a repeated observation and two attempts for a rerun that keeps the run id and head; write a refused line for a schema rejection before the handler","red":"bun run agent:test:backend -- test/event-log.test.ts -t tst_unit_planctl_event_log_001"} -->
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/mcp.test.ts` exits 0 — two repositories through one server, an owner wait, a journal per repository, a refusal, a schema rejection
-- [ ] `cd planctl && bun run agent:test:backend -- test/event-log.test.ts` exits 0 — one line per call and the five tables with the specified totals
-- [ ] Commit
+- [x] `cd planctl && bun run agent:test:backend -- test/mcp.test.ts` exits 0 — two repositories through one server, an owner wait, a journal per repository, a refusal, a schema rejection — 6abf9f47b59b80b4cbd8cf206614db7db18bba89
+- [x] `cd planctl && bun run agent:test:backend -- test/event-log.test.ts` exits 0 — one line per call and the five tables with the specified totals — 6abf9f47b59b80b4cbd8cf206614db7db18bba89
+- [x] Commit — 6abf9f47b59b80b4cbd8cf206614db7db18bba89
 
 ##### Results
 
 <!-- plan:results:D1-S4:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| MCP_011 | 6abf9f47b59b80b4cbd8cf206614db7db18bba89 | 2026-09-25T10:08:07.508Z–2026-09-25T10:20:28.055Z | 12.34245 / 12.34245 min | unavailable: not measured by planctl | one global MCP server serves any repository over stdio and every call leaves one event line; stats answers the five questions — beyond writes: planctl/src/cli/render.ts, planctl/src/core/plan-update.ts |
+| MCP_012 | 6abf9f47b59b80b4cbd8cf206614db7db18bba89 | 2026-09-25T10:08:07.508Z–2026-09-25T10:20:28.055Z | 12.34245 / 12.34245 min | unavailable: not measured by planctl | one global MCP server serves any repository over stdio and every call leaves one event line; stats answers the five questions — beyond writes: planctl/src/cli/render.ts, planctl/src/core/plan-update.ts |
 <!-- plan:results:D1-S4:end -->
 <!-- plan:stage:D1-S4:end -->
 
@@ -837,4 +839,10 @@ Proven by planctl/test/spec-submission.test.ts: a SPEC with a vocabulary error y
 - deviation D1-S3: StartTaskInput, OwnerQuestion, OwnerWaitInput and OwnerWaitReceipt were declared in Interfaces by an unattended amendment, because the Stage necessarily changes them
 
 - close D1-S3 closed commit:e6f39e21b6cf0277e20a9c72ba9bd9fcdef3e87f
+
+- record-result D1-S4 commit:6abf9f47b59b80b4cbd8cf206614db7db18bba89
+
+- deviation D1-S4: the server uses the SDK's low-level Server with its own dispatch so a schema rejection before the handler is logged; ServerDependencies and StatsTables stay unexported
+
+- close D1-S4 closed commit:6abf9f47b59b80b4cbd8cf206614db7db18bba89
 <!-- plan:execution:end -->

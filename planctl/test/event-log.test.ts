@@ -92,7 +92,7 @@ describe("the event log", () => {
     const root = mkdtempSync(join(tmpdir(), "planctl-events-repo-"));
     try {
       execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
-      const deps = { cwd: home, publication: () => null, sourceCommit: "s".repeat(40), eventLog: eventLogPath(home) };
+      const deps = { cwd: home, publication: () => null, sourceCommit: "s".repeat(40), eventLog: eventLogPath(home), model: () => Promise.resolve('{"findings":[]}'), publisher: () => "http://fixture/plan" };
       const rejected = await dispatchTool(deps, "start_task", { plan: join(root, "docs/plans/none.md"), task: 42 });
       expect(rejected.isError).toBe(true);
       const unknown = await dispatchTool(deps, "no_such_tool", {});

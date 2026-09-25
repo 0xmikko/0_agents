@@ -4,6 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { dispatchTool } from "../src/mcp/server";
+import { protocolSpecHash } from "../src/core/plan-update";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 interface Fixture {
@@ -47,10 +49,13 @@ describe("planctl mcp", () => {
   const client = new Client({ name: "mcp-test", version: "0.0.0" });
   const repositories = [fixture("alpha"), fixture("beta")];
 
+  const publisher = join(home, "publish.sh");
+  writeFileSync(publisher, "#!/bin/sh\nsha256sum \"$1\" | cut -c1-64 > \"$(dirname \"$0\")/published-$2\"\necho \"http://fixture/$2\"\n", { mode: 0o755 });
+
   beforeAll(async () => {
     await client.connect(new StdioClientTransport({
       command: "bun",
-      args: [join(import.meta.dir, "../src/cli/main.ts"), "mcp"],
+      args: [join(import.meta.dir, "../src/cli/main.ts"), "mcp", "--publisher", publisher],
       cwd: home,
       env: { ...process.env, HOME: home },
       stderr: "pipe",
@@ -123,6 +128,8 @@ describe("planctl mcp", () => {
       expect(closed.isError ?? false, text(closed)).toBe(false);
       expect((closed.structuredContent as { status: string }).status).toBe("CLOSED");
       expect(readFileSync(absolute, "utf8")).toMatch(/^Ledger: implemented/m);
+      expect((closed.structuredContent as { url: string }).url).toBe(`http://fixture/${plan.slice("docs/plans/".length, -3)}`);
+      expect(text(closed)).toMatch(/^Plan: http:\/\/fixture\//);
 
       const progress = await client.callTool({ name: "progress", arguments: { root } });
       expect(progress.isError ?? false, text(progress)).toBe(false);
@@ -135,5 +142,88 @@ describe("planctl mcp", () => {
       expect(existsSync(join(root, ".git/plan-update-journal.json"))).toBe(true);
     }
     expect(existsSync(join(home, ".git"))).toBe(false);
+  }, 120_000);
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_002
+   * @scenario: scn_planctl_mcp_authoring_001
+   * @covers: planctl/src/mcp/server.ts::dispatchTool,published
+   * @deterministic: yes
+   * @invariant: one client authors and executes a plan through the tools alone with returned revisions; every write publishes the saved bytes and returns url and reply; approve_plan finds nothing put_stage did not already return; a duplicate Task ID and a dependency cycle are findings before approval.
+   */
+  it("tst_unit_planctl_mcp_002 authors and executes a plan through the tools alone, publishing after every write", async () => {
+    const { root, git } = fixture("gamma");
+    const received: { plan: string; bytes: string }[] = [];
+    const deps = {
+      cwd: home,
+      publication: () => null,
+      sourceCommit: "s".repeat(40),
+      eventLog: join(home, "events-002.jsonl"),
+      model: () => Promise.resolve(JSON.stringify({ findings: [{ rule: "clarity", line: 3, quote: "Ship one observable result.", message: "say which result", replacement: null }] })),
+      publisher: (repository: string, plan: string) => {
+        received.push({ plan, bytes: readFileSync(join(repository, plan), "utf8") });
+        return `http://fixture/${plan}`;
+      },
+    };
+    try {
+      const started = await dispatchTool(deps, "init", { root, title: "Gamma plan" });
+      expect(started.isError ?? false, text(started)).toBe(false);
+      const plan = (started.structuredContent as { plan: string }).plan;
+      const absolute = join(root, plan);
+      const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result.");
+      const submitted = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: protocolSpecHash(readFileSync(absolute, "utf8")), ownerRequest: "Reject empty names", spec });
+      expect(submitted.isError ?? false, text(submitted)).toBe(false);
+      const submission = submitted.structuredContent as { revision: string; url: string; reply: string; checkStatus: string };
+      expect(submission.checkStatus).toBe("checked");
+      expect(submission.url).toBe(`http://fixture/${plan}`);
+      expect(submission.reply).toBe(`Plan: http://fixture/${plan}\nRevision ${submission.revision}, SPEC_DRAFT\nChecks: 0 errors, 1 model notes`);
+      expect(received.at(-1)?.bytes).toBe(readFileSync(absolute, "utf8"));
+
+      const locked = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec" });
+      expect(locked.isError ?? false, text(locked)).toBe(false);
+      expect((locked.structuredContent as { revision: string }).revision).toBe(submission.revision);
+      const withDelivery = await dispatchTool(deps, "put_delivery", { plan: absolute, delivery: { ...delivery, stageGraph: "D1-S1 -> D1-S2 -> D1-S3" } });
+      expect(withDelivery.isError ?? false, text(withDelivery)).toBe(false);
+      const first = await dispatchTool(deps, "put_stage", { plan: absolute, stage });
+      expect(first.isError ?? false, text(first)).toBe(false);
+      expect((first.structuredContent as { findings: unknown[] }).findings).toEqual([]);
+      expect(received.at(-1)?.bytes).toBe(readFileSync(absolute, "utf8"));
+      expect((first.structuredContent as { reply: string }).reply).toBe(`Plan: http://fixture/${plan}\nRevision ${(first.structuredContent as { revision: string }).revision}, SPEC_LOCKED`);
+
+      const duplicate = await dispatchTool(deps, "put_stage", { plan: absolute, stage: { ...stage, id: "D1-S2", title: "Duplicate", depends: ["D1-S1"], writes: ["lib/"], tempRoot: ".tmp/code-production/fixture/D1-S2", tasks: [{ ...stage.tasks[0], writes: ["lib/a.ts", "lib/b.ts", "lib/c.ts"] }] } });
+      expect(duplicate.isError ?? false, text(duplicate)).toBe(false);
+      expect(JSON.stringify((duplicate.structuredContent as { findings: unknown[] }).findings)).toContain("Plan Task IDs");
+      const third = await dispatchTool(deps, "put_stage", { plan: absolute, stage: { ...stage, id: "D1-S3", title: "Cycle back", depends: ["D1-S2"], writes: ["app/"], tempRoot: ".tmp/code-production/fixture/D1-S3", tasks: [{ ...stage.tasks[0], id: "MCP_FIX_003", writes: ["app/a.ts", "app/b.ts", "app/c.ts"] }] } });
+      expect(third.isError ?? false, text(third)).toBe(false);
+      const cyclic = await dispatchTool(deps, "put_stage", { plan: absolute, stage: { ...stage, id: "D1-S2", title: "Cycle", depends: ["D1-S3"], writes: ["lib/"], tempRoot: ".tmp/code-production/fixture/D1-S2", tasks: [{ ...stage.tasks[0], id: "MCP_FIX_002", writes: ["lib/a.ts", "lib/b.ts", "lib/c.ts"] }] } });
+      expect(cyclic.isError).toBe(true);
+      expect(text(cyclic)).toContain("cycle");
+      let lastRevision = "";
+      for (const id of ["D1-S3", "D1-S2"]) {
+        const removed = await dispatchTool(deps, "remove_stage", { plan: absolute, stage: id });
+        expect(removed.isError ?? false, text(removed)).toBe(false);
+        lastRevision = (removed.structuredContent as { revision: string }).revision;
+      }
+      const approved = await dispatchTool(deps, "approve_plan", { plan: absolute, ownerWord: "plan" });
+      expect(approved.isError ?? false, text(approved)).toBe(false);
+      expect((approved.structuredContent as { revision: string }).revision).toBe(lastRevision);
+
+      const brief = await dispatchTool(deps, "start_task", { plan: absolute });
+      expect((brief.structuredContent as { taskId: string }).taskId).toBe("MCP_FIX_001");
+      mkdirSync(join(root, "scripts"), { recursive: true });
+      writeFileSync(join(root, "scripts/base.ts"), "export const base = 1;\n");
+      git("add", "-A");
+      git("commit", "-qm", "work");
+      const done = await dispatchTool(deps, "complete_task", { plan: absolute, taskIds: ["MCP_FIX_001"], commit: git("rev-parse", "HEAD"), result: "base shipped" });
+      expect(done.isError ?? false, text(done)).toBe(false);
+      const closed = await dispatchTool(deps, "close_stage", { plan: absolute, stage: "D1-S1" });
+      expect((closed.structuredContent as { status: string; url: string }).status).toBe("CLOSED");
+      expect((closed.structuredContent as { url: string }).url).toBe(`http://fixture/${plan}`);
+      expect(received.at(-1)?.bytes).toBe(readFileSync(absolute, "utf8"));
+      const terms = await dispatchTool(deps, "vocabulary", { root });
+      expect((terms.structuredContent as { terms: { word: string; term: string }[] }).terms.some((pair) => pair.term === "plan")).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   }, 120_000);
 });
