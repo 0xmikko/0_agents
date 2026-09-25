@@ -2,9 +2,10 @@
 
 Status: APPROVED  
 Spec lock: sha256:382dee4344bcf4aec8f8316b97ca4b39e24aa5f454f7c2e892727c1ee7ed4075 agent-unattended  
-Implementation lock: sha256:0de83f7dec47399a3c4ee1ce0e21e9ea322b77a6366aac2423647de18339fcd6 agent-unattended  
+Implementation lock: sha256:9b0bef454cab3f8563f60d9425b40b0b2d5898ff5ad0ca71a68645ad6bcb0c3c agent-unattended  
 Active Delivery: D1  
 Unattended decisions: allowed  
+Ledger: implemented  
 
 <!-- plan:spec:start -->
 ## The Goal
@@ -624,11 +625,11 @@ Proven by planctl/test/mcp.test.ts: one server launched outside both fixtures dr
 <!-- plan:stage:D1-S4:end -->
 
 <!-- plan:stage:D1-S5:start -->
-<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S4"],"parallelWith":[],"writes":["planctl/src/core/","planctl/src/mcp/","planctl/test/"],"tempRoot":".tmp/code-production/planctl-mcp/D1-S5","predictedActiveMinutes":190,"predictedCredits":20,"verifyActiveMinutes":15,"verifyCredits":2} -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S4"],"parallelWith":[],"writes":["planctl/src/core/","planctl/src/mcp/","planctl/src/cli/","planctl/test/"],"tempRoot":".tmp/code-production/planctl-mcp/D1-S5","predictedActiveMinutes":190,"predictedCredits":20,"verifyActiveMinutes":15,"verifyCredits":2} -->
 #### Stage D1-S5 — submit_spec: lint, safe corrections, one model call, and one publication inside every write
 
 - Owner: agent-1; Profile: strong; Depends: D1-S4; Parallel with: none.
-- Writes: `planctl/src/core/`, `planctl/src/mcp/`, `planctl/test/`.
+- Writes: `planctl/src/core/`, `planctl/src/mcp/`, `planctl/src/cli/`, `planctl/test/`.
 - Temp root: `.tmp/code-production/planctl-mcp/D1-S5` (must be absent at handoff).
 - Of which verification: 15 active min / 2 credits.
 
@@ -640,24 +641,27 @@ Proven by planctl/test/spec-submission.test.ts: a SPEC with a vocabulary error y
 
 ##### Tasks
 
-- [ ] MCP_014 — submit_spec writes the whole SPEC through the writer, applies safe corrections, returns revision and findings, and refuses stale revisions and locked plans. (60 min)
+- [x] MCP_014 — submit_spec writes the whole SPEC through the writer, applies safe corrections, returns revision and findings, and refuses stale revisions and locked plans. (60 min) — 0d8621c5d0317144131c4fc543547bd79e762f7a
 <!-- plan:task-meta:{"writes":["planctl/src/core/spec-submission.ts","planctl/src/mcp/server.ts","planctl/test/spec-submission.test.ts"],"predictedActiveMinutes":60,"predictedCredits":6,"how":"create planctl/src/core/spec-submission.ts: refuse stale revision and locked plan; fix line endings and unambiguous vocabulary pairs; run lint; write through replaceDraftSpec and mutatePlanFile; register submit_spec in planctl/src/mcp/server.ts; in planctl/test/spec-submission.test.ts cover corrections, findings, the two refusals, and approval on the same bytes finding nothing new","red":"bun run agent:test:backend -- test/spec-submission.test.ts -t tst_unit_planctl_spec_submission_001"} -->
-- [ ] MCP_015 — One bounded model call checks the changed lines against the Goal rule and the vocabulary. Unchanged text calls nothing; a timeout ends in unavailable without retry. (45 min)
+- [x] MCP_015 — One bounded model call checks the changed lines against the Goal rule and the vocabulary. Unchanged text calls nothing; a timeout ends in unavailable without retry. (45 min) — 0d8621c5d0317144131c4fc543547bd79e762f7a
 <!-- plan:task-meta:{"writes":["planctl/src/core/spec-submission.ts","planctl/test/spec-submission.test.ts"],"predictedActiveMinutes":45,"predictedCredits":5,"how":"call the model once per changed submission from planctl/src/core/spec-submission.ts through an injectable runner whose production form is the measured claude -p invocation: --model sonnet, --tools empty, --strict-mcp-config, --no-session-persistence, --output-format json, MAX_THINKING_TOKENS=0, no API key; give it the owner request, the Goal rule, the vocabulary pairs and the changed lines; kill it at fifteen seconds; decode the JSON findings as advisory; return no_change for an unchanged submission and unavailable with the cause on timeout or invalid output; cover checked, no_change and both unavailable causes with a fake runner in planctl/test/spec-submission.test.ts","red":"bun run agent:test:backend -- test/spec-submission.test.ts -t tst_unit_planctl_spec_submission_002"} -->
-- [ ] MCP_016 — Every tool that writes the plan republishes it through mdurl and returns url and the three-line reply; vocabulary returns the terms. (70 min)
+- [x] MCP_016 — Every tool that writes the plan republishes it through mdurl and returns url and the three-line reply; vocabulary returns the terms. (70 min) — 0d8621c5d0317144131c4fc543547bd79e762f7a
 <!-- plan:task-meta:{"writes":["planctl/src/mcp/publish.ts","planctl/src/mcp/server.ts","planctl/test/mcp.test.ts"],"predictedActiveMinutes":70,"predictedCredits":7,"how":"create planctl/src/mcp/publish.ts wrapping every writing tool in planctl/src/mcp/server.ts: after the core operation, publish the saved bytes through an injectable mdurl runner at a stable worktree-aware slug, build the three-line reply, and return an error instead of a stale URL when publishing fails; register vocabulary; in planctl/test/mcp.test.ts drive init, submit_spec, approve_spec, put_delivery, put_stage, approve_plan, start_task, complete_task and close_stage through one client with returned revisions and no fixture-side plan edit, prove approve_plan finds nothing put_stage did not already return on the same bytes, put a duplicate Task ID and a dependency cycle and read both findings before approval, and read url and reply from submit_spec and put_stage with the runner's received bytes","red":"bun run agent:test:backend -- test/mcp.test.ts -t tst_unit_planctl_mcp_002"} -->
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/spec-submission.test.ts` exits 0 — corrections, findings, two refusals, approval finds nothing new, checked, no_change and unavailable
-- [ ] `cd planctl && bun run agent:test:backend -- test/mcp.test.ts` exits 0 — one client authors and executes a plan through the tools alone; every write returns url and reply
-- [ ] Commit
+- [x] `cd planctl && bun run agent:test:backend -- test/spec-submission.test.ts` exits 0 — corrections, findings, two refusals, approval finds nothing new, checked, no_change and unavailable — 0d8621c5d0317144131c4fc543547bd79e762f7a
+- [x] `cd planctl && bun run agent:test:backend -- test/mcp.test.ts` exits 0 — one client authors and executes a plan through the tools alone; every write returns url and reply — 0d8621c5d0317144131c4fc543547bd79e762f7a
+- [x] Commit — 0d8621c5d0317144131c4fc543547bd79e762f7a
 
 ##### Results
 
 <!-- plan:results:D1-S5:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| MCP_014 | 0d8621c5d0317144131c4fc543547bd79e762f7a | 2026-09-25T10:20:55.131Z–2026-09-25T10:29:27.664Z | 8.542216666666667 / 8.542216666666667 min | unavailable: not measured by planctl | submit_spec corrects, lints and asks the model once; every write publishes and returns url and reply; the whole plan is authored and executed through the tools alone — beyond writes: planctl/src/cli/main.ts, planctl/test/event-log.test.ts |
+| MCP_015 | 0d8621c5d0317144131c4fc543547bd79e762f7a | 2026-09-25T10:20:55.131Z–2026-09-25T10:29:27.664Z | 8.542216666666667 / 8.542216666666667 min | unavailable: not measured by planctl | submit_spec corrects, lints and asks the model once; every write publishes and returns url and reply; the whole plan is authored and executed through the tools alone — beyond writes: planctl/src/cli/main.ts, planctl/test/event-log.test.ts |
+| MCP_016 | 0d8621c5d0317144131c4fc543547bd79e762f7a | 2026-09-25T10:20:55.131Z–2026-09-25T10:29:27.664Z | 8.542216666666667 / 8.542216666666667 min | unavailable: not measured by planctl | submit_spec corrects, lints and asks the model once; every write publishes and returns url and reply; the whole plan is authored and executed through the tools alone — beyond writes: planctl/src/cli/main.ts, planctl/test/event-log.test.ts |
 <!-- plan:results:D1-S5:end -->
 <!-- plan:stage:D1-S5:end -->
 <!-- plan:delivery:D1:end -->
@@ -845,4 +849,18 @@ Proven by planctl/test/spec-submission.test.ts: a SPEC with a vocabulary error y
 - deviation D1-S4: the server uses the SDK's low-level Server with its own dispatch so a schema rejection before the handler is logged; ServerDependencies and StatsTables stay unexported
 
 - close D1-S4 closed commit:6abf9f47b59b80b4cbd8cf206614db7db18bba89
+
+- owner_review_pending implementation sha256:5c59ce7818baf3084e929d091ba648bd084ee8fab998b954ce860a550b9ebde6 decision:eyJ2ZXJzaW9uIjoxLCJkZWNpZGVkQXQiOiIyMDI2LTA5LTI1VDEwOjI5OjI3WiIsImdvYWxQcmVzZXJ2ZWQiOiJPdXRjb21lIDEgdW5jaGFuZ2VkOiB0aGUgb3duZXIgcmVhZHMgYSBjaGVja2VkIGRyYWZ0OyB0aGUgc2VydmVyIG5lZWRzIGl0cyBDTEkgZW50cnkgdG8gcmVjZWl2ZSB0aGUgcHVibGlzaGVyIGNvbW1hbmQgYW5kIHRoZSBtb2RlbCBydW5uZXIuIiwiZGVjaXNpb24iOiJBZGQgcGxhbmN0bC9zcmMvY2xpLyB0byB0aGUgU3RhZ2UgRDEtUzUgd3JpdGVzOiB0aGUgbWNwIGNvbW1hbmQgaW4gcGxhbmN0bC9zcmMvY2xpL21haW4udHMgcGFzc2VzIHRoZSBwdWJsaXNoZXIgYW5kIHRoZSBtb2RlbCBydW5uZXIgaW50byB0aGUgc2VydmVyLiIsImFsdGVybmF0aXZlcyI6WyJzdG9wIGFuZCBhc2sgdGhlIG93bmVyIGZvciBvbmUgZm9sZGVyIGluIGEgU3RhZ2Ugd3JpdGVzIGxpc3QiLCJtb3ZlIHRoZSB3aXJpbmcgb3V0IG9mIHRoZSBDTEkgaW50byB0aGUgc2VydmVyLCBsZWF2aW5nIHRoZSBDTEkgdW5hYmxlIHRvIGNob29zZSBhIHB1Ymxpc2hlciJdLCJ3aHlDb250aW51ZU5vdyI6Ik9uZSBmb2xkZXIgdGhhdCB0aGUgU3RhZ2UncyBvd24gVGFzayBuZWNlc3NhcmlseSB0b3VjaGVzOyB0aGUgb3duZXIgYWxsb3dlZCB1bmF0dGVuZGVkIGRlY2lzaW9ucyBpbiB0aGUgcGxhbiBoZWFkZXIgYW5kIHJldmlld3MgdGhlIGFtZW5kbWVudCBhZnRlcndhcmRzLiIsImFmZmVjdGVkU2NvcGUiOlsicGxhbmN0bC9zcmMvY2xpL21haW4udHMiXSwicm9sbGJhY2tCYXNlIjoiMGQ4NjIxYzVkMDMxNzE0NDEzMWM0ZmM1NDM1NDdiZDc5ZTc2MmY3YSIsInZlcmlmaWNhdGlvbiI6WyJjZCBwbGFuY3RsICYmIGJ1biBydW4gYWdlbnQ6dGVzdDpiYWNrZW5kIC0tIHRlc3QvbWNwLnRlc3QudHMiXX0
+
+- owner_review_pending implementation sha256:9b0bef454cab3f8563f60d9425b40b0b2d5898ff5ad0ca71a68645ad6bcb0c3c decision:eyJ2ZXJzaW9uIjoxLCJkZWNpZGVkQXQiOiIyMDI2LTA5LTI1VDEwOjI5OjI3WiIsImdvYWxQcmVzZXJ2ZWQiOiJPdXRjb21lIDEgdW5jaGFuZ2VkOiB0aGUgb3duZXIgcmVhZHMgYSBjaGVja2VkIGRyYWZ0OyB0aGUgc2VydmVyIG5lZWRzIGl0cyBDTEkgZW50cnkgdG8gcmVjZWl2ZSB0aGUgcHVibGlzaGVyIGNvbW1hbmQgYW5kIHRoZSBtb2RlbCBydW5uZXIuIiwiZGVjaXNpb24iOiJBZGQgcGxhbmN0bC9zcmMvY2xpLyB0byB0aGUgU3RhZ2UgRDEtUzUgd3JpdGVzOiB0aGUgbWNwIGNvbW1hbmQgaW4gcGxhbmN0bC9zcmMvY2xpL21haW4udHMgcGFzc2VzIHRoZSBwdWJsaXNoZXIgYW5kIHRoZSBtb2RlbCBydW5uZXIgaW50byB0aGUgc2VydmVyLiIsImFsdGVybmF0aXZlcyI6WyJzdG9wIGFuZCBhc2sgdGhlIG93bmVyIGZvciBvbmUgZm9sZGVyIGluIGEgU3RhZ2Ugd3JpdGVzIGxpc3QiLCJtb3ZlIHRoZSB3aXJpbmcgb3V0IG9mIHRoZSBDTEkgaW50byB0aGUgc2VydmVyLCBsZWF2aW5nIHRoZSBDTEkgdW5hYmxlIHRvIGNob29zZSBhIHB1Ymxpc2hlciJdLCJ3aHlDb250aW51ZU5vdyI6Ik9uZSBmb2xkZXIgdGhhdCB0aGUgU3RhZ2UncyBvd24gVGFzayBuZWNlc3NhcmlseSB0b3VjaGVzOyB0aGUgb3duZXIgYWxsb3dlZCB1bmF0dGVuZGVkIGRlY2lzaW9ucyBpbiB0aGUgcGxhbiBoZWFkZXIgYW5kIHJldmlld3MgdGhlIGFtZW5kbWVudCBhZnRlcndhcmRzLiIsImFmZmVjdGVkU2NvcGUiOlsicGxhbmN0bC9zcmMvY2xpL21haW4udHMiXSwicm9sbGJhY2tCYXNlIjoiMGQ4NjIxYzVkMDMxNzE0NDEzMWM0ZmM1NDM1NDdiZDc5ZTc2MmY3YSIsInZlcmlmaWNhdGlvbiI6WyJjZCBwbGFuY3RsICYmIGJ1biBydW4gYWdlbnQ6dGVzdDpiYWNrZW5kIC0tIHRlc3QvbWNwLnRlc3QudHMiXX0
+
+- record-result D1-S5 commit:0d8621c5d0317144131c4fc543547bd79e762f7a
+
+- deviation D1-S5: the authoring sequence test runs in-process through dispatchTool with a fake model and publisher, because a fake cannot cross the stdio boundary; the stdio test uses a publisher command instead of mdurl
+
+- deviation D1-S5: ModelRunner and Publisher stay unexported; SubmitSpecResult carries url and reply through the server's publish wrapper, not from the core
+
+- deviation D1-S5: planctl/src/cli/ was added to the Stage writes by an unattended amendment: the mcp command wires the publisher and the model runner
+
+- close D1-S5 closed commit:0d8621c5d0317144131c4fc543547bd79e762f7a
 <!-- plan:execution:end -->
