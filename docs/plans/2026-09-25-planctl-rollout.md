@@ -5,6 +5,7 @@ Spec lock: sha256:c8b973007e0ab1af1506ce4377f918b476c257f72728f9b93e5ca3e99fc244
 Implementation lock: sha256:22a8ac79ac1165add0c49cd1210ddabee24dfdc3a8b4f8766caa8cb7889fda16 owner:Да, давай его исполним и развернем  
 Active Delivery: D1  
 Unattended decisions: allowed  
+Ledger: implemented  
 
 <!-- plan:spec:start -->
 ## The Goal
@@ -245,24 +246,27 @@ Proven by planctl/test/instruction-audit.test.ts. The three skills carry no plan
 
 ##### Tasks
 
-- [ ] ROLL_005 — blueprint authors a plan through init, submit_spec, approve_spec, put_delivery, put_stage and approve_plan, stops twice for the owner's word, and names no CLI command. (45 min)
+- [x] ROLL_005 — blueprint authors a plan through init, submit_spec, approve_spec, put_delivery, put_stage and approve_plan, stops twice for the owner's word, and names no CLI command. (45 min) — 33f9b901a127811bd1503b5cc387bcd4182e4792
 <!-- plan:task-meta:{"writes":["shared/skills/blueprint/SKILL.md","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":45,"predictedCredits":5,"how":"rewrite shared/skills/blueprint/SKILL.md around the tools: init with root and title, the SPEC as one text through submit_spec with the returned revision and the owner's request, the three-line reply shown verbatim and the first stop, approve_spec after the word, put_delivery and put_stage with returned revisions and their findings, the second stop, approve_plan; keep the Goal examples; in planctl/test/instruction-audit.test.ts add the test that reads the three skills and refuses any planctl <command> line except stats and progress --note, any --from, --reason or JSON file, and requires the tool names of each flow","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills_002"} -->
-- [ ] ROLL_006 — blueprint-start executes a plan through start_task, complete_task, close_stage, needs_owner, resume_task and progress, with the brief as the scope and the reply after every write. (50 min)
+- [x] ROLL_006 — blueprint-start executes a plan through start_task, complete_task, close_stage, needs_owner, resume_task and progress, with the brief as the scope and the reply after every write. (50 min) — 33f9b901a127811bd1503b5cc387bcd4182e4792
 <!-- plan:task-meta:{"writes":["shared/skills/blueprint-start/SKILL.md","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":50,"predictedCredits":5,"how":"rewrite shared/skills/blueprint-start/SKILL.md around the tools: start_task without a Task for the running or next one, the brief as the frozen scope, RED with the printed command, GREEN, the diff review, one commit, complete_task with Task IDs, commit and result sentence, close_stage, needs_owner as the four-part form before any question and resume_task after the answer, progress for the whole picture and after a compaction, the delivery by push, CI and ready with the PR URL and the plan URL from the last reply; keep the rules on parallel agents, deviations and time overruns; extend the audit test with this skill's tool names","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills_002"} -->
-- [ ] ROLL_007 — end-work closes a merged Delivery with progress, planctl stats for the retro and the worktree cleanup, and never commits. (30 min)
+- [x] ROLL_007 — end-work closes a merged Delivery with progress, planctl stats for the retro and the worktree cleanup, and never commits. (30 min) — 33f9b901a127811bd1503b5cc387bcd4182e4792
 <!-- plan:task-meta:{"writes":["shared/skills/end-work/SKILL.md","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":30,"predictedCredits":3,"how":"rewrite shared/skills/end-work/SKILL.md: confirm the merge through progress, take the retro numbers from planctl stats --since the plan date and the plan's Results rows, post the compact retro on the PR, prove the worktree clean and remove it with its temp roots, never commit; extend the audit test with this skill's tool names","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills_002"} -->
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/instruction-audit.test.ts` exits 0 — the three skills name only tools and every tool of their flow
-- [ ] `cd planctl && bun run agent:verify:docs` exits 0 — the audit over the repository passes with the rewritten skills
-- [ ] Commit
+- [x] `cd planctl && bun run agent:test:backend -- test/instruction-audit.test.ts` exits 0 — the three skills name only tools and every tool of their flow — 33f9b901a127811bd1503b5cc387bcd4182e4792
+- [x] `cd planctl && bun run agent:verify:docs` exits 0 — the audit over the repository passes with the rewritten skills — 33f9b901a127811bd1503b5cc387bcd4182e4792
+- [x] Commit — 33f9b901a127811bd1503b5cc387bcd4182e4792
 
 ##### Results
 
 <!-- plan:results:D1-S3:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| ROLL_005 | 33f9b901a127811bd1503b5cc387bcd4182e4792 | 2026-09-25T17:33:34.862Z–2026-09-25T17:36:30.382Z | 2.925333333333333 / 2.925333333333333 min | unavailable: not measured by planctl | the three flow skills name only tools and every tool of their flow; the audit proves it |
+| ROLL_006 | 33f9b901a127811bd1503b5cc387bcd4182e4792 | 2026-09-25T17:33:34.862Z–2026-09-25T17:36:30.382Z | 2.925333333333333 / 2.925333333333333 min | unavailable: not measured by planctl | the three flow skills name only tools and every tool of their flow; the audit proves it |
+| ROLL_007 | 33f9b901a127811bd1503b5cc387bcd4182e4792 | 2026-09-25T17:33:34.862Z–2026-09-25T17:36:30.382Z | 2.925333333333333 / 2.925333333333333 min | unavailable: not measured by planctl | the three flow skills name only tools and every tool of their flow; the audit proves it |
 <!-- plan:results:D1-S3:end -->
 <!-- plan:stage:D1-S3:end -->
 <!-- plan:delivery:D1:end -->
@@ -282,4 +286,8 @@ Proven by planctl/test/instruction-audit.test.ts. The three skills carry no plan
 - record-result D1-S2 commit:baa7b69ef03659403cdc85cf2d12eb6e1c543ee5
 
 - close D1-S2 closed commit:baa7b69ef03659403cdc85cf2d12eb6e1c543ee5
+
+- record-result D1-S3 commit:33f9b901a127811bd1503b5cc387bcd4182e4792
+
+- close D1-S3 closed commit:33f9b901a127811bd1503b5cc387bcd4182e4792
 <!-- plan:execution:end -->
