@@ -16,6 +16,7 @@
     "build": "bun build src/cli/main.ts src/core/plan-gate.ts src/core/plan-update.ts src/machine/main.ts src/server/main.ts --outdir dist --target bun --external @nestjs/platform-socket.io --external nats --external ioredis --external mqtt --external kafkajs --external amqplib --external amqp-connection-manager --external @grpc/grpc-js --external @grpc/proto-loader"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.1",
     "@nestjs/common": "^11.1.6",
     "@nestjs/core": "^11.1.6",
     "@nestjs/microservices": "^11.1.6",
@@ -29,7 +30,8 @@
     "mermaid": "^10.9.5",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/bun": "^1.2.21",

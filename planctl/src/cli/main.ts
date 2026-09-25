@@ -2,6 +2,7 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import type { AuthoringContract } from "../core/plan-gate";
@@ -40,6 +41,8 @@ edited directly.
 
 Authoring:
   init               Create and stage a SPEC_DRAFT plan
+  mcp                Serve the tools over stdio for Claude and Codex
+  stats              The five tables from ~/.local/share/planctl/events.jsonl
   set-spec           Replace and stage SPEC while it is still draft
   approve-spec       Lock SPEC after explicit owner approval
   put-delivery       Add or replace one draft PR Delivery from JSON
@@ -582,21 +585,38 @@ async function startTask(args: readonly string[]): Promise<void> {
     publication: (branch: string) => readPublication(rootPath, branch),
     decodeRun: taskRunFrom,
   });
-  console.log([
-    `Plan: ${brief.plan}`,
-    ...brief.goal.map((line) => `Goal: ${line}`),
-    `Task ${brief.taskId} STARTED`,
-    `Observer identity: ${identity === null ? "none (local record)" : `${identity.machineId} / ${identity.agentId} / ${identity.repositoryId}`}`,
-    `Delivery / Stage: ${brief.deliveryId} / ${brief.stageId}`,
-    `Stage description: ${brief.stageDescription}`,
-    `Started: ${brief.startedAt}`,
-    `Forecast: ${brief.forecastMinutes} active min`,
-    `Folders: ${brief.folders.join(", ")}`,
-    `Story: ${brief.story}`,
-    `How: ${brief.how.join("; ")}`,
-    `RED: ${brief.red}`,
-    `Checkpoint: ${brief.checkpoint ?? "none"}`,
-  ].join("\n"));
+  const render = await import("./render");
+  console.log(render.renderTaskBrief(
+    brief,
+    identity === null ? "none (local record)" : `${identity.machineId} / ${identity.agentId} / ${identity.repositoryId}`,
+  ));
+}
+
+/** Serve the tools over stdio; diagnostics go to stderr, the protocol owns stdout. */
+async function mcp(): Promise<void> {
+  dedicatedRuntime();
+  const { createPlanctlServer } = await import("../mcp/server");
+  const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
+  const { eventLogPath } = await import("../core/event-log");
+  const server = createPlanctlServer({
+    cwd: process.cwd(),
+    publication: readPublication,
+    sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
+    eventLog: eventLogPath(homedir()),
+  });
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error(`planctl mcp: serving from ${dirname(import.meta.path)}`);
+  await new Promise<void>((done) => { transport.onclose = done; });
+}
+
+/** The five tables from the event log, one set per server source commit. */
+async function stats(args: readonly string[]): Promise<void> {
+  dedicatedRuntime();
+  const { eventLogPath, readEvents, renderStats, stats: tablesOf } = await import("../core/event-log");
+  const since = optionalFlag(args, "--since") ?? "1970-01-01T00:00:00.000Z";
+  if (!Number.isFinite(Date.parse(since))) throw new Error("--since must be an ISO date");
+  console.log(renderStats(tablesOf(readEvents(eventLogPath(homedir()), since))));
 }
 
 function questionOption(value: string): { readonly label: string; readonly consequence: string } {
@@ -860,6 +880,14 @@ async function run(args: readonly string[]): Promise<number> {
   }
   if (command === "progress") {
     await progress(args);
+    return 0;
+  }
+  if (command === "mcp") {
+    await mcp();
+    return 0;
+  }
+  if (command === "stats") {
+    await stats(args);
     return 0;
   }
   if (command === "needs-owner") {

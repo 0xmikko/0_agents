@@ -504,19 +504,19 @@ function equalSets(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value) => right.includes(value));
 }
 
-function deliveryStart(id: string): string {
+export function deliveryStart(id: string): string {
   return `<!-- plan:delivery:${id}:start -->`;
 }
 
-function deliveryEnd(id: string): string {
+export function deliveryEnd(id: string): string {
   return `<!-- plan:delivery:${id}:end -->`;
 }
 
-function stageStart(id: string): string {
+export function stageStart(id: string): string {
   return `<!-- plan:stage:${id}:start -->`;
 }
 
-function stageEnd(id: string): string {
+export function stageEnd(id: string): string {
   return `<!-- plan:stage:${id}:end -->`;
 }
 
@@ -918,7 +918,8 @@ function assertParallelWrites(candidate: StageInput, existing: readonly StageInp
   }
 }
 
-function validateImplementation(body: string): void {
+/** Whole-plan checks approval runs: one active Delivery, unique Task IDs, known dependencies, no cycles. */
+export function validateImplementation(body: string): void {
   const deliveries = deliveryMetas(body);
   if (deliveries.length === 0) throw new Error("implementation has no Delivery");
   if (deliveries.filter((delivery) => delivery.active).length !== 1) {
@@ -2014,7 +2015,7 @@ function requiredNumber(record: Readonly<Record<string, unknown>>, key: string):
   return value;
 }
 
-function deliveryFrom(value: unknown): DeliveryInput {
+export function deliveryFrom(value: unknown): DeliveryInput {
   const record = object(value, "Delivery");
   if (typeof record.active !== "boolean") throw new Error("active must be boolean");
   return {
@@ -2042,7 +2043,7 @@ function tasksFrom(value: unknown): readonly TaskInput[] {
   });
 }
 
-function stageFrom(value: unknown): StageInput {
+export function stageFrom(value: unknown): StageInput {
   const record = object(value, "Stage");
   const profile = requiredString(record, "profile");
   if (profile !== "fast" && profile !== "strong") throw new Error("profile must be fast or strong");
@@ -2132,7 +2133,7 @@ function decisionFrom(value: unknown): UnattendedDecisionReceipt {
   };
 }
 
-function patchFrom(value: unknown): ExactReplacement {
+export function patchFrom(value: unknown): ExactReplacement {
   const record = object(value, "patch");
   const section = requiredString(record, "section");
   if (section !== "spec" && section !== "implementation") throw new Error("patch section must be spec or implementation");

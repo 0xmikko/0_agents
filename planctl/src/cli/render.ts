@@ -10,6 +10,7 @@ export interface ProgressPlanView {
 }
 
 import type { ProgressView } from "../core/plan-progress";
+import type { TaskBrief } from "../core/plan-update";
 
 /** The observer's read model: where the numbers came from and the plans it saw. */
 interface ProgressReport {
@@ -68,5 +69,24 @@ export function renderProgressView(view: ProgressView): string {
     publication,
     runtime,
     eligible,
+  ].join("\n");
+}
+
+/** "What do I do now": the plan and the Goal first, then the Task's scope. */
+export function renderTaskBrief(brief: TaskBrief, observer: string): string {
+  return [
+    `Plan: ${brief.plan}`,
+    ...brief.goal.map((line) => `Goal: ${line}`),
+    `Task ${brief.taskId} STARTED`,
+    `Observer identity: ${observer}`,
+    `Delivery / Stage: ${brief.deliveryId} / ${brief.stageId}`,
+    `Stage description: ${brief.stageDescription}`,
+    `Started: ${brief.startedAt}`,
+    `Forecast: ${brief.forecastMinutes} active min`,
+    `Folders: ${brief.folders.join(", ")}`,
+    `Story: ${brief.story}`,
+    `How: ${brief.how.join("; ")}`,
+    `RED: ${brief.red}`,
+    `Checkpoint: ${brief.checkpoint ?? "none"}`,
   ].join("\n");
 }

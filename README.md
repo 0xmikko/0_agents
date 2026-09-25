@@ -15,6 +15,30 @@ Configs and tooling for our coding agents — **Claude Code** and **Codex** — 
 
 Three top-level entry points; every other installer is a helper inside `lib/`.
 
+## planctl over MCP
+
+One global entry serves every repository: the server takes the repository
+from each plan path (or from `root` for `init` and a planless `progress`)
+and the integration branch from that repository's `git config
+code-production.base`. No per-repository file, no arguments.
+
+```bash
+# Claude Code, once per user
+claude mcp add --scope user planctl -- planctl mcp
+```
+
+```toml
+# Codex: ~/.codex/config.toml, once per user
+[mcp_servers.planctl]
+command = "planctl"
+args = ["mcp"]
+```
+
+Optional, after context compaction: a hook that runs `planctl progress
+--note` prints one line only when a Task is running in the current
+worktree, and nothing otherwise. Nothing about a plan is pushed at session
+start; the agent pulls it with `start_task` and `progress`.
+
 ---
 
 ## Features on Mac (`install-client-mac.sh`)

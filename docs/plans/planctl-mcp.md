@@ -1,7 +1,7 @@
 # Planctl MCP: authoring, task recovery and verified delivery
 
 Status: APPROVED  
-Spec lock: sha256:367c0c1c5dfd95bf4c81459e91a1189c44cc0dd971dd62afafccf1278a996294 owner:делать две штуки публикации - это достаточно странная идея  
+Spec lock: sha256:382dee4344bcf4aec8f8316b97ca4b39e24aa5f454f7c2e892727c1ee7ed4075 agent-unattended  
 Implementation lock: sha256:0de83f7dec47399a3c4ee1ce0e21e9ea322b77a6366aac2423647de18339fcd6 agent-unattended  
 Active Delivery: D1  
 Unattended decisions: allowed  
@@ -323,6 +323,38 @@ interface NeedsOwnerInput {
   answerForm: string;
 }
 
+interface StartTaskInput {
+  plan: string;
+  taskId: string | null;
+  checkpoint: string | null;
+  identity: TaskRunIdentity | null;
+  publication: (branch: string) => ProgressView["publication"];
+  decodeRun: (value: unknown) => TaskRun | Promise<TaskRun>;
+}
+
+interface OwnerQuestion {
+  context: string;
+  options: {
+    label: string;
+    consequence: string;
+  }[];
+  recommendation: string;
+  answerForm: string;
+}
+
+interface OwnerWaitInput extends OwnerQuestion {
+  plan: string;
+  taskId: string;
+  reason: string;
+  startedAt: string;
+}
+
+interface OwnerWaitReceipt extends OwnerWaitMarker, OwnerQuestion {
+  version: 1;
+  plan: string;
+  taskId: string;
+}
+
 interface EventRecord {
   at: string;
   repository: string;
@@ -531,23 +563,25 @@ Proven by planctl/test/plan-progress.test.ts: 2 of 8 beside 2 of 2 with a fake P
 
 ##### Tasks
 
-- [ ] MCP_009 — progress shows whole-plan and Delivery counts, PR, CI and runtime state, marks missing parts unavailable, finds the plan by branch, prints a note. (95 min)
+- [x] MCP_009 — progress shows whole-plan and Delivery counts, PR, CI and runtime state, marks missing parts unavailable, finds the plan by branch, prints a note. (95 min) — e6f39e21b6cf0277e20a9c72ba9bd9fcdef3e87f
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-progress.ts","planctl/src/core/snapshot-protocol.ts","planctl/src/core/plan-update.ts","planctl/src/cli/main.ts","planctl/src/cli/render.ts","planctl/test/plan-progress.test.ts","planctl/test/server-progress.test.ts","planctl/test/server-transitions.test.ts","planctl/test/distributed-e2e.test.ts","planctl/test/server-ingest.test.ts"],"predictedActiveMinutes":95,"predictedCredits":10,"how":"add whole-plan counts beside the active Delivery in planctl/src/core/plan-progress.ts, decode them in planctl/src/core/snapshot-protocol.ts, and return zero totals instead of throwing; read PR, CI and merge state for the Delivery branch through an injectable gh reader and the runtime commit from the manifest against the source checkout, moving progress from planctl/src/cli/main.ts into the core with the repository root as a parameter and a structured return; render the screen in planctl/src/cli/render.ts; mark a staged draft, a missing manifest and a failed gh read as unavailable without throwing; find docs/plans/*-<slug>.md from the branch of a given root when no plan is named and answer nothing when none exists; add --note printing one line for a running Task or nothing; cover counts, zero totals, PR states, runtime staleness, branch lookup, the three unavailable cases and the note in planctl/test/plan-progress.test.ts; add wholePlan to the snapshot fixtures of planctl/test/server-progress.test.ts, planctl/test/server-transitions.test.ts, planctl/test/distributed-e2e.test.ts and planctl/test/server-ingest.test.ts","red":"bun run agent:test:backend -- test/plan-progress.test.ts -t tst_unit_planctl_progress_002"} -->
-- [ ] MCP_010 — start-task without a Task returns the running or next Task; a completed Task starts again; a green parent unlocks its child. (130 min)
+- [x] MCP_010 — start-task without a Task returns the running or next Task; a completed Task starts again; a green parent unlocks its child. (130 min) — e6f39e21b6cf0277e20a9c72ba9bd9fcdef3e87f
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/core/task-run.ts","planctl/src/cli/main.ts","planctl/src/machine/sessions/session-source.ts","planctl/src/machine/app.module.ts","planctl/test/task-run.test.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":130,"predictedCredits":13,"how":"move the start, needs-owner and resume-task operations from planctl/src/cli/main.ts into planctl/src/core/plan-update.ts with the repository root as a parameter and a structured return; choose the running Task or the next one in Stage-graph order when --task is absent; add TaskRunV3 in planctl/src/core/task-run.ts with a checkpoint, the worktree and a nullable observer identity, written locally without observer configuration and read only by its own worktree, and read V3 by identity in planctl/src/machine/sessions/session-source.ts and planctl/src/machine/app.module.ts; save --checkpoint on the record; print the plan path and the Goal lines first; let a completed Task of an unmerged Delivery start again, let recordStageResult append a superseding result row without counting the Task twice and clear the Stage's closed criteria so close_stage runs them again; expose depends and branch from the Delivery reader; let a Task start when its Delivery is active or every parent Delivery has an observed green PR on its current head, and make its Delivery active through the writer; take the needs-owner question as NeedsOwnerInput, a form with context, options with consequences, recommendation and answer form, in the CLI and the record; make resume-task on a Task without an open wait return the record unchanged; cover start, complete, close, start again, complete again, close again with the criteria run again, two taskless starts on one clock, the local checkpoint, two linked worktrees with the same plan, a needs-owner form saved and cleared, and an inactive child with green, pending and red parents in planctl/test/task-run.test.ts and planctl/test/plan-update.test.ts","red":"bun run agent:test:backend -- test/task-run.test.ts test/plan-update.test.ts -t tst_unit_planctl_task_run_next"} -->
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/plan-progress.test.ts` exits 0 — whole-plan and Delivery counts, zero totals, PR states, runtime staleness, branch lookup, unavailable parts, the note
-- [ ] `cd planctl && bun run agent:test:backend -- test/task-run.test.ts` exits 0 — next Task, local checkpoint, repair with the criteria run again, parent eligibility
-- [ ] `cd planctl && bun run agent:test:backend -- test/progress.test.ts` exits 0 — the observer rendering contract is unchanged
-- [ ] Commit
+- [x] `cd planctl && bun run agent:test:backend -- test/plan-progress.test.ts` exits 0 — whole-plan and Delivery counts, zero totals, PR states, runtime staleness, branch lookup, unavailable parts, the note — e6f39e21b6cf0277e20a9c72ba9bd9fcdef3e87f
+- [x] `cd planctl && bun run agent:test:backend -- test/task-run.test.ts` exits 0 — next Task, local checkpoint, repair with the criteria run again, parent eligibility — e6f39e21b6cf0277e20a9c72ba9bd9fcdef3e87f
+- [x] `cd planctl && bun run agent:test:backend -- test/progress.test.ts` exits 0 — the observer rendering contract is unchanged — e6f39e21b6cf0277e20a9c72ba9bd9fcdef3e87f
+- [x] Commit — e6f39e21b6cf0277e20a9c72ba9bd9fcdef3e87f
 
 ##### Results
 
 <!-- plan:results:D1-S3:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| MCP_009 | e6f39e21b6cf0277e20a9c72ba9bd9fcdef3e87f | 2026-09-25T09:47:25.848Z–2026-09-25T10:07:51.838Z | 20.433166666666665 / 20.433166666666665 min | unavailable: not measured by planctl | progress answers where am I with the whole plan, PR, CI and runtime; start-task answers what do I do now, repairs a completed Task and unlocks a child Delivery under green parents — beyond writes: planctl/bench/distributed-benchmark.ts, planctl/test/distributed-correlation.test.ts, planctl/test/owner-wait.test.ts, planctl/test/planctl.test.ts |
+| MCP_010 | e6f39e21b6cf0277e20a9c72ba9bd9fcdef3e87f | 2026-09-25T09:47:25.848Z–2026-09-25T10:07:51.838Z | 20.433166666666665 / 20.433166666666665 min | unavailable: not measured by planctl | progress answers where am I with the whole plan, PR, CI and runtime; start-task answers what do I do now, repairs a completed Task and unlocks a child Delivery under green parents — beyond writes: planctl/bench/distributed-benchmark.ts, planctl/test/distributed-correlation.test.ts, planctl/test/owner-wait.test.ts, planctl/test/planctl.test.ts |
 <!-- plan:results:D1-S3:end -->
 <!-- plan:stage:D1-S3:end -->
 
@@ -791,4 +825,16 @@ Proven by planctl/test/spec-submission.test.ts: a SPEC with a vocabulary error y
 - owner_review_pending implementation sha256:f4b9018e224b9120305f49a49758ff65055ad30251aa1291a847118a0955a16d decision:eyJ2ZXJzaW9uIjoxLCJkZWNpZGVkQXQiOiIyMDI2LTA5LTI1VDA5OjU0OjI2WiIsImdvYWxQcmVzZXJ2ZWQiOiJPdXRjb21lIDIgKHRoZSB0d28gc2NyZWVucykgdW5jaGFuZ2VkOiBwcm9ncmVzcyBzaG93cyB3aG9sZS1wbGFuIGNvdW50cywgc28gUGxhblByb2dyZXNzU25hcHNob3QgZ2FpbnMgd2hvbGVQbGFuIGFuZCBldmVyeSB0eXBlZCBzbmFwc2hvdCBsaXRlcmFsIG11c3QgY2FycnkgaXQuIiwiZGVjaXNpb24iOiJBZGQgcGxhbmN0bC9iZW5jaC8gdG8gdGhlIFN0YWdlIEQxLVMzIHdyaXRlczogdGhlIGJlbmNobWFyayBidWlsZHMgYSBQbGFuUHJvZ3Jlc3NTbmFwc2hvdCBsaXRlcmFsIHRoYXQgdGhlIHR5cGVjaGVjayBub3cgcmVxdWlyZXMgdG8gY2Fycnkgd2hvbGVQbGFuLiIsImFsdGVybmF0aXZlcyI6WyJtYWtlIHdob2xlUGxhbiBvcHRpb25hbCBpbiBQbGFuUHJvZ3Jlc3NTbmFwc2hvdCAoYSBzaWxlbnQgZmFsbGJhY2sgdGhlIFNQRUMgZm9yYmlkcykiLCJzdG9wIGFuZCBhc2sgdGhlIG93bmVyIGZvciBvbmUgbGluZSBpbiBhIFN0YWdlIHdyaXRlcyBsaXN0Il0sIndoeUNvbnRpbnVlTm93IjoiQSBvbmUtbGluZSBmaXh0dXJlIHVwZGF0ZSBvdXRzaWRlIHRoZSBTdGFnZSBmb2xkZXJzIGlzIGV4YWN0bHkgdGhlIGZlbmNlIHRoZSBwbGFuIHJlbW92ZXM7IHRoZSBvd25lciBhbGxvd2VkIHVuYXR0ZW5kZWQgZGVjaXNpb25zIGluIHRoZSBwbGFuIGhlYWRlci4iLCJhZmZlY3RlZFNjb3BlIjpbInBsYW5jdGwvYmVuY2gvZGlzdHJpYnV0ZWQtYmVuY2htYXJrLnRzIl0sInJvbGxiYWNrQmFzZSI6IjllNWRhZjZjMmI0OTlmYzk1ODdmZjU1MDE4YWM2NDNiMDFlYTE2MTIiLCJ2ZXJpZmljYXRpb24iOlsiY2QgcGxhbmN0bCAmJiBidW4gcnVuIHR5cGVjaGVjayIsImNkIHBsYW5jdGwgJiYgYnVuIHJ1biBhZ2VudDp0ZXN0OmJhY2tlbmQgLS0gdGVzdC9wbGFuLXByb2dyZXNzLnRlc3QudHMiXX0
 
 - owner_review_pending implementation sha256:0de83f7dec47399a3c4ee1ce0e21e9ea322b77a6366aac2423647de18339fcd6 decision:eyJ2ZXJzaW9uIjoxLCJkZWNpZGVkQXQiOiIyMDI2LTA5LTI1VDA5OjU0OjI2WiIsImdvYWxQcmVzZXJ2ZWQiOiJPdXRjb21lIDIgKHRoZSB0d28gc2NyZWVucykgdW5jaGFuZ2VkOiBwcm9ncmVzcyBzaG93cyB3aG9sZS1wbGFuIGNvdW50cywgc28gUGxhblByb2dyZXNzU25hcHNob3QgZ2FpbnMgd2hvbGVQbGFuIGFuZCBldmVyeSB0eXBlZCBzbmFwc2hvdCBsaXRlcmFsIG11c3QgY2FycnkgaXQuIiwiZGVjaXNpb24iOiJBZGQgcGxhbmN0bC9iZW5jaC8gdG8gdGhlIFN0YWdlIEQxLVMzIHdyaXRlczogdGhlIGJlbmNobWFyayBidWlsZHMgYSBQbGFuUHJvZ3Jlc3NTbmFwc2hvdCBsaXRlcmFsIHRoYXQgdGhlIHR5cGVjaGVjayBub3cgcmVxdWlyZXMgdG8gY2Fycnkgd2hvbGVQbGFuLiIsImFsdGVybmF0aXZlcyI6WyJtYWtlIHdob2xlUGxhbiBvcHRpb25hbCBpbiBQbGFuUHJvZ3Jlc3NTbmFwc2hvdCAoYSBzaWxlbnQgZmFsbGJhY2sgdGhlIFNQRUMgZm9yYmlkcykiLCJzdG9wIGFuZCBhc2sgdGhlIG93bmVyIGZvciBvbmUgbGluZSBpbiBhIFN0YWdlIHdyaXRlcyBsaXN0Il0sIndoeUNvbnRpbnVlTm93IjoiQSBvbmUtbGluZSBmaXh0dXJlIHVwZGF0ZSBvdXRzaWRlIHRoZSBTdGFnZSBmb2xkZXJzIGlzIGV4YWN0bHkgdGhlIGZlbmNlIHRoZSBwbGFuIHJlbW92ZXM7IHRoZSBvd25lciBhbGxvd2VkIHVuYXR0ZW5kZWQgZGVjaXNpb25zIGluIHRoZSBwbGFuIGhlYWRlci4iLCJhZmZlY3RlZFNjb3BlIjpbInBsYW5jdGwvYmVuY2gvZGlzdHJpYnV0ZWQtYmVuY2htYXJrLnRzIl0sInJvbGxiYWNrQmFzZSI6IjllNWRhZjZjMmI0OTlmYzk1ODdmZjU1MDE4YWM2NDNiMDFlYTE2MTIiLCJ2ZXJpZmljYXRpb24iOlsiY2QgcGxhbmN0bCAmJiBidW4gcnVuIHR5cGVjaGVjayIsImNkIHBsYW5jdGwgJiYgYnVuIHJ1biBhZ2VudDp0ZXN0OmJhY2tlbmQgLS0gdGVzdC9wbGFuLXByb2dyZXNzLnRlc3QudHMiXX0
+
+- owner_review_pending spec sha256:382dee4344bcf4aec8f8316b97ca4b39e24aa5f454f7c2e892727c1ee7ed4075 decision:eyJ2ZXJzaW9uIjoxLCJkZWNpZGVkQXQiOiIyMDI2LTA5LTI1VDEwOjEwOjAwWiIsImdvYWxQcmVzZXJ2ZWQiOiJPdXRjb21lIDIgdW5jaGFuZ2VkOiB0aGUgb3duZXIgcXVlc3Rpb24gaXMgYSBmb3JtIHN0b3JlZCBvbiB0aGUgd2FpdCByZWNvcmQ7IHRoZSByZWNvcmQgdHlwZXMgdGhhdCBjYXJyeSBpdCBhcmUgZGVjbGFyZWQgd2hlcmUgdGhlIHBsYW4gZGVjbGFyZXMgZXZlcnkgdHlwZSBpdCBjaGFuZ2VzLiIsImRlY2lzaW9uIjoiRGVjbGFyZSBTdGFydFRhc2tJbnB1dCwgT3duZXJRdWVzdGlvbiwgT3duZXJXYWl0SW5wdXQgYW5kIE93bmVyV2FpdFJlY2VpcHQgaW4gdGhlIFNQRUMgSW50ZXJmYWNlczogU3RhZ2UgRDEtUzMgbmVjZXNzYXJpbHkgY2hhbmdlcyB0aGVtIGFuZCBjb21wbGV0aW9uIHJlZnVzZXMgYW4gdW5kZWNsYXJlZCBleHBvcnRlZCB0eXBlLiIsImFsdGVybmF0aXZlcyI6WyJzdG9wIGFuZCBhc2sgdGhlIG93bmVyIGZvciB0aGUgZGVjbGFyYXRpb24iLCJoaWRlIHRoZSB0eXBlcyBieSB1bmV4cG9ydGluZyB0aGVtIGluIGEgc2Vjb25kIGNvbW1pdCwgYnJlYWtpbmcgb25lIGNvbW1pdCBwZXIgU3RhZ2UiXSwid2h5Q29udGludWVOb3ciOiJUaGUgZGVjbGFyYXRpb24gYWRkcyBubyBzY29wZTogdGhlIGFwcHJvdmVkIFRhc2sgTUNQXzAxMCBzYXlzIHRoZSBxdWVzdGlvbiBsaXZlcyBpbiB0aGUgQ0xJIGFuZCB0aGUgcmVjb3JkOyB0aGUgb3duZXIgYWxsb3dlZCB1bmF0dGVuZGVkIGRlY2lzaW9ucyBpbiB0aGUgcGxhbiBoZWFkZXIgYW5kIHJldmlld3MgdGhlIGFtZW5kbWVudCBhZnRlcndhcmRzLiIsImFmZmVjdGVkU2NvcGUiOlsiZG9jcy9wbGFucy9wbGFuY3RsLW1jcC5tZCBJbnRlcmZhY2VzIl0sInJvbGxiYWNrQmFzZSI6ImU2ZjM5ZTIxYjZjZjAyNzdlMjBhOWM3MmJhOWJkOWZjZGVmM2U4N2YiLCJ2ZXJpZmljYXRpb24iOlsiY2QgcGxhbmN0bCAmJiBidW4gcnVuIGFnZW50OnRlc3Q6YmFja2VuZCAtLSB0ZXN0L3BsYW4tdXBkYXRlLnRlc3QudHMgLXQgdHN0X3NjcmlwdHNfcGxhbnVwZGF0ZV8wMjUiXX0
+
+- record-result D1-S3 commit:e6f39e21b6cf0277e20a9c72ba9bd9fcdef3e87f
+
+- deviation D1-S3: test IDs differ from the planned selectors: tst_unit_planctl_progress_002 and _003, tst_scripts_planupdate_027 to _029 beside tst_unit_planctl_task_run_next
+
+- deviation D1-S3: the active Delivery is read from the plan header, not from the frozen delivery metadata, so activating a child Delivery leaves the implementation hash intact
+
+- deviation D1-S3: StartTaskInput, OwnerQuestion, OwnerWaitInput and OwnerWaitReceipt were declared in Interfaces by an unattended amendment, because the Stage necessarily changes them
+
+- close D1-S3 closed commit:e6f39e21b6cf0277e20a9c72ba9bd9fcdef3e87f
 <!-- plan:execution:end -->
