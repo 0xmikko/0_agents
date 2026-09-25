@@ -1,7 +1,7 @@
 # planctl rollout: the skills on the tools and one installer
 
-Status: SPEC_DRAFT  
-Spec lock: unlocked  
+Status: SPEC_LOCKED  
+Spec lock: sha256:c8b973007e0ab1af1506ce4377f918b476c257f72728f9b93e5ca3e99fc24458 owner:Да, давай это воплотим и запустим параллельно  
 Implementation lock: unlocked  
 Active Delivery: none  
 Unattended decisions: allowed  
@@ -139,4 +139,6 @@ The parallel comparison on the second magnis-app clone is the owner's run, after
 
 <!-- plan:execution:start -->
 ## Execution log
+
+- lock-spec sha256:c8b973007e0ab1af1506ce4377f918b476c257f72728f9b93e5ca3e99fc24458 owner:Да, давай это воплотим и запустим параллельно
 <!-- plan:execution:end -->
