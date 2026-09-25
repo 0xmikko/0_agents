@@ -1045,3 +1045,93 @@ describe("the Ledger line on the last Stage", () => {
     expect(protocolLockViolations(last.body)).toEqual([]);
   });
 });
+
+describe("story errors arrive together", () => {
+  // @test-id: tst_scripts_planupdate_026
+  // @scenario: scn_plan_control_story_errors_001
+  // @covers: planctl/src/core/plan-update.ts::putStage
+  // @deterministic: yes
+  // @invariant: put-stage refuses with every story error of the Stage at once, like a compiler.
+  it("tst_scripts_planupdate_026 refuses a Stage with both story errors in one message", () => {
+    const locked = putDelivery(lockPlanSpec(draft(), "word").body, delivery()).body;
+    const base = stage("D1-S1", ["scripts/base.ts"]);
+    const task = base.tasks[0];
+    if (task === undefined) throw new Error("fixture Stage has no Task");
+    const vague = { ...task, id: "D1-S1-T1", story: "Fix the parser" };
+    const long = { ...task, id: "D1-S1-T2", story: `Reject empty names before saving them ${"and report each one ".repeat(9)}to the caller` };
+    expect(long.story.length).toBeGreaterThan(200);
+    let message = "";
+    try {
+      putStage(locked, { ...base, tasks: [vague, long] });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("D1-S1-T1 story must state a concrete observable outcome");
+    expect(message).toContain("D1-S1-T2 story must fit two lines");
+  });
+});
+
+describe("exported types are declared before completion", () => {
+  // @test-id: tst_scripts_planupdate_025
+  // @scenario: scn_plan_control_exported_type_001
+  // @covers: planctl/src/core/plan-update.ts::completeTask,applyOwnerAmendment
+  // @deterministic: yes
+  // @invariant: a commit changing an exported type absent from Interfaces is refused by name; the owner's amendment declaring it keeps the plan approved and the completion passes.
+  it("tst_scripts_planupdate_025 refuses an undeclared exported type, then completes after the owner's amendment", async () => {
+    const root = mkdtempSync(join(tmpdir(), "plan-update-types-"));
+    const git = (...args: readonly string[]): string =>
+      execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    try {
+      git("init", "-q", "-b", "main");
+      git("config", "user.email", "test@example.com");
+      git("config", "user.name", "Test");
+      let body = lockPlanSpec(draft(), "spec").body;
+      body = putDelivery(body, delivery()).body;
+      body = putStage(body, { ...stage("D1-S1", ["scripts/"]), tasks: stage("D1-S1", ["scripts/base.ts"]).tasks }).body;
+      body = putStage(body, stage("D1-S2", ["scripts/a.ts"], ["D1-S3"])).body;
+      body = putStage(body, stage("D1-S3", ["scripts/b.ts"], ["D1-S2"])).body;
+      body = putStage(body, { ...stage("D1-S4", ["docs/plans/fixture.md"]), profile: "strong", owner: "integrator", depends: ["D1-S2", "D1-S3"], parallelWith: [] }).body;
+      body = approvePlan(body, "approve").body;
+      mkdirSync(join(root, "docs/plans"), { recursive: true });
+      writeFileSync(join(root, "docs/plans/fixture.md"), body);
+      git("add", "docs/plans/fixture.md");
+      git("commit", "-qm", "plan");
+      const runPath = taskRunPath(root, "docs/plans/fixture.md", "D1-S1-T1");
+      mkdirSync(dirname(runPath), { recursive: true });
+      writeFileSync(runPath, JSON.stringify({
+        version: 1,
+        plan: "docs/plans/fixture.md",
+        deliveryId: "D1",
+        stageId: "D1-S1",
+        taskId: "D1-S1-T1",
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        baseHead: git("rev-parse", "HEAD"),
+      }));
+      mkdirSync(join(root, "scripts"), { recursive: true });
+      writeFileSync(join(root, "scripts/base.ts"), "export interface Extra {\n  readonly id: string;\n}\n");
+      git("add", "-A");
+      git("commit", "-qm", "work");
+      const commit = git("rev-parse", "HEAD");
+      const input = { plan: "docs/plans/fixture.md", taskIds: ["D1-S1-T1"], commit, result: "extra type shipped" };
+      await expect(completeTask(root, input, decodeTaskRun)).rejects.toThrow(/exported type Extra/);
+      expect(existsSync(runPath)).toBe(true);
+
+      const amended = applyOwnerAmendment(body, "declare", {
+        section: "spec",
+        find: "export interface Change {",
+        replace: "export interface Extra {\n  readonly id: string;\n}\n\nexport interface Change {",
+      }).body;
+      expect(amended).toContain("Status: APPROVED");
+      expect(amended).toMatch(/^Implementation lock: sha256:[0-9a-f]{64} owner:declare/m);
+      expect(protocolLockViolations(amended)).toEqual([]);
+      writeFileSync(join(root, "docs/plans/fixture.md"), amended);
+      git("add", "docs/plans/fixture.md");
+      git("commit", "-qm", "plan: declare Extra");
+      const done = await completeTask(root, input, decodeTaskRun);
+      expect(done.paths).toEqual(["scripts/base.ts"]);
+      expect(readFileSync(join(root, "docs/plans/fixture.md"), "utf8")).toContain(`- [x] D1-S1-T1 —`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

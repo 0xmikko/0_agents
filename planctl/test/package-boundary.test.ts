@@ -112,3 +112,25 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
     rmSync(consumer, { recursive: true, force: true });
   }
 });
+
+/*
+ * @test-id: tst_unit_planctl_package_002
+ * @scenario: scn_planctl_package_ci_001
+ * @covers: .github/workflows/planctl.yml
+ * @deterministic: yes
+ * @fixtures: none
+ * Test environment: source checkout
+ * Clients: workflow file
+ * Mocks: none
+ * Data: the package gate commands
+ */
+it("tst_unit_planctl_package_002 runs the package gate on every pull request of the source repository", () => {
+  const workflow = readFileSync(join(import.meta.dir, "../../.github/workflows/planctl.yml"), "utf8");
+  expect(workflow).toContain("pull_request:");
+  expect(workflow).toContain("working-directory: planctl");
+  expect(workflow).toContain("bun-version: 1.4.2");
+  for (const command of ["bun run agent:install", "bun run agent:verify:docs", "bun run agent:verify:pr"]) {
+    expect(workflow).toContain(`run: ${command}`);
+  }
+  expect(workflow).not.toContain("verify:commit");
+});

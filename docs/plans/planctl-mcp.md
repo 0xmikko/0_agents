@@ -445,26 +445,30 @@ Proven by planctl/test/plan-update.test.ts. It counts one invocation through the
 
 ##### Tasks
 
-- [ ] MCP_001 — A transformation passed to mutatePlanFile runs exactly once, so a criterion command inside it is executed once. (30 min)
+- [x] MCP_001 — A transformation passed to mutatePlanFile runs exactly once, so a criterion command inside it is executed once. (30 min) — 571438974c772dcd37b923b1600a4fec10ef20b7
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":30,"predictedCredits":2,"how":"evaluate transform(body) once in mutatePlanFile in planctl/src/core/plan-update.ts and reuse the result for the hard-break header; add the counting-transformation test to planctl/test/plan-update.test.ts; make appendExecution record only lock-spec, approve, amend and close-stage so a put operation leaves no line in the plan; prove a repeated put-stage adds no Execution log line in planctl/test/plan-update.test.ts","red":"bun run agent:test:backend -- test/plan-update.test.ts -t tst_scripts_planupdate_021"} -->
-- [ ] MCP_002 — complete-task records a Task from its IDs, commit and result sentence, derives paths, times and planned tests itself and returns a structured result. (80 min)
+- [x] MCP_002 — complete-task records a Task from its IDs, commit and result sentence, derives paths, times and planned tests itself and returns a structured result. (80 min) — 571438974c772dcd37b923b1600a4fec10ef20b7
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/cli/main.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":80,"predictedCredits":8,"how":"move the completion operation from planctl/src/cli/main.ts into planctl/src/core/plan-update.ts with the repository root as a parameter and a structured return the CLI prints; give mutatePlanFile, verifyStagedPlan, journalPath and journalCreatedPlan the same root parameter; derive paths from the commit, elapsed minutes as the UTC interval from the earliest start record, active minutes as that interval less the recorded owner waits and labelled an estimate, planned tests from each Task RED command, and leave usage unavailable; refuse a protected path by name unless the Task's writes name it; accept tests anywhere and files inside the Stage folders; report an existing temp root instead of refusing; accept complete-task --task --commit --result beside --from; cover the 30-minute record with a 20-minute wait, the accepted outside test, both protected-path cases and the reported temp root in planctl/test/plan-update.test.ts","red":"bun run agent:test:backend -- test/plan-update.test.ts -t tst_scripts_planupdate_022"} -->
-- [ ] MCP_003 — Closing the last Stage of a Delivery writes the header line Ledger: implemented, and a Results number below the Goal never changes closure. (40 min)
+- [x] MCP_003 — Closing the last Stage of a Delivery writes the header line Ledger: implemented, and a Results number below the Goal never changes closure. (40 min) — 571438974c772dcd37b923b1600a4fec10ef20b7
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":40,"predictedCredits":4,"how":"make closePlanStage in planctl/src/core/plan-update.ts write `Ledger: implemented` into the header when the closed Stage is the last open one of its Delivery, with no PR number; in planctl/test/plan-update.test.ts read the line back, prove an earlier Stage writes none, and close a Stage whose Results report 49.8 against a Goal of 50","red":"bun run agent:test:backend -- test/plan-update.test.ts -t tst_scripts_planupdate_023"} -->
-- [ ] MCP_007 — init derives the dated plan file from the branch, refuses the base branch, and returns the sections, vocabulary and Goal rule. (50 min)
+- [x] MCP_007 — init derives the dated plan file from the branch, refuses the base branch, and returns the sections, vocabulary and Goal rule. (50 min) — 571438974c772dcd37b923b1600a4fec10ef20b7
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/cli/main.ts","planctl/test/planctl.test.ts"],"predictedActiveMinutes":50,"predictedCredits":5,"how":"move init from planctl/src/cli/main.ts into planctl/src/core/plan-update.ts with the repository root as a parameter and a structured return the CLI prints; derive docs/plans/<date>-<slug>.md from the current branch; refuse when the branch equals code-production.base, and refuse a missing key with the message `git config code-production.base <branch>`; print and return the required sections, the vocabulary and the Goal rule; cover the name, both refusals and the contract in planctl/test/planctl.test.ts","red":"bun run agent:test:backend -- test/planctl.test.ts -t tst_scripts_planctl_011"} -->
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/plan-update.test.ts` exits 0 — one evaluation, four-input completion, folder, test and protected-path rules, the Ledger line, no log line per put
-- [ ] `cd planctl && bun run agent:test:backend -- test/planctl.test.ts` exits 0 — init names the file, refuses the base branch and the missing key, returns the contract
-- [ ] Commit
+- [x] `cd planctl && bun run agent:test:backend -- test/plan-update.test.ts` exits 0 — one evaluation, four-input completion, folder, test and protected-path rules, the Ledger line, no log line per put — 571438974c772dcd37b923b1600a4fec10ef20b7
+- [x] `cd planctl && bun run agent:test:backend -- test/planctl.test.ts` exits 0 — init names the file, refuses the base branch and the missing key, returns the contract — 571438974c772dcd37b923b1600a4fec10ef20b7
+- [x] Commit — 571438974c772dcd37b923b1600a4fec10ef20b7
 
 ##### Results
 
 <!-- plan:results:D1-S1:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| MCP_001 | 571438974c772dcd37b923b1600a4fec10ef20b7 | 2026-09-25T09:17:44.602Z–2026-09-25T09:36:49.519Z | 19.08195 / 19.08195 min | unavailable: not measured by planctl | The writer evaluates once, derives the Stage result from four inputs, writes the Ledger line and names the plan from the branch — beyond writes: planctl/src/core/plan-gate.ts, planctl/test/package-boundary.test.ts, planctl/test/plan-gate.test.ts |
+| MCP_002 | 571438974c772dcd37b923b1600a4fec10ef20b7 | 2026-09-25T09:17:44.602Z–2026-09-25T09:36:49.519Z | 19.08195 / 19.08195 min | unavailable: not measured by planctl | The writer evaluates once, derives the Stage result from four inputs, writes the Ledger line and names the plan from the branch — beyond writes: planctl/src/core/plan-gate.ts, planctl/test/package-boundary.test.ts, planctl/test/plan-gate.test.ts |
+| MCP_003 | 571438974c772dcd37b923b1600a4fec10ef20b7 | 2026-09-25T09:17:44.602Z–2026-09-25T09:36:49.519Z | 19.08195 / 19.08195 min | unavailable: not measured by planctl | The writer evaluates once, derives the Stage result from four inputs, writes the Ledger line and names the plan from the branch — beyond writes: planctl/src/core/plan-gate.ts, planctl/test/package-boundary.test.ts, planctl/test/plan-gate.test.ts |
+| MCP_007 | 571438974c772dcd37b923b1600a4fec10ef20b7 | 2026-09-25T09:17:44.602Z–2026-09-25T09:36:49.519Z | 19.08195 / 19.08195 min | unavailable: not measured by planctl | The writer evaluates once, derives the Stage result from four inputs, writes the Ledger line and names the plan from the branch — beyond writes: planctl/src/core/plan-gate.ts, planctl/test/package-boundary.test.ts, planctl/test/plan-gate.test.ts |
 <!-- plan:results:D1-S1:end -->
 <!-- plan:stage:D1-S1:end -->
 
@@ -766,4 +770,10 @@ Proven by planctl/test/spec-submission.test.ts: a SPEC with a vocabulary error y
 - replace-stage D1-S5
 
 - approve sha256:6edd2c38739f9ce50ace6d0f5040566d28f3c8edf5adba3c16e567f8b7414fd5 owner:делать две штуки публикации - это достаточно странная идея
+
+- record-result D1-S1 commit:571438974c772dcd37b923b1600a4fec10ef20b7
+
+- deviation D1-S1: usage stays UsageReceipt with kind unavailable instead of null; the existing kind already says unavailable
+
+- close D1-S1 closed commit:571438974c772dcd37b923b1600a4fec10ef20b7
 <!-- plan:execution:end -->

@@ -412,47 +412,46 @@ export function howSteps(how: string | readonly string[]): readonly string[] {
   return typeof how === "string" ? [how] : [...how];
 }
 
-function assertTaskContract(task: TaskInput, stageWrites: readonly string[]): void {
-  if (!TASK_ID.test(task.id)) throw new Error(`invalid Task ID ${task.id}`);
+/** Every contract error of one Task, so a Stage refuses with all of them at
+ * once, the way a compiler reports. Unsafe characters still throw: they are
+ * not a wording error but an input the writer cannot carry.
+ * @tested-by: tst_scripts_planupdate_026
+ */
+function taskContractErrors(task: TaskInput, stageWrites: readonly string[]): readonly string[] {
+  const errors: string[] = [];
+  if (!TASK_ID.test(task.id)) errors.push(`invalid Task ID ${task.id}`);
   assertSafeInline(task.story, "Task story");
   const storyWords = task.story.trim().split(/\s+/);
   if (task.story.trim().length < 24 || storyWords.length < 4
     || /^(?:refactor|fix|improve|optimi[sz]e|update|cleanup|clean up)\b/i.test(task.story.trim())) {
-    throw new Error(`Task ${task.id} story must state a concrete observable outcome, not a vague activity`);
+    errors.push(`Task ${task.id} story must state a concrete observable outcome, not a vague activity`);
   }
   const steps = howSteps(task.how);
-  if (steps.length === 0) throw new Error(`Task ${task.id} how must have at least one step`);
+  if (steps.length === 0) errors.push(`Task ${task.id} how must have at least one step`);
   for (const step of steps) assertSafeInline(step, "Task how");
   assertSafeInline(task.red, "Task RED");
   if (task.red.includes("`")
     || !/^bun run agent:test:(?:backend|frontend|e2e)\s+--\s+\S+/.test(task.red)) {
-    throw new Error(
-      `Task ${task.id} RED must use bun run agent:test:<backend|frontend|e2e> -- <exact-target>`,
-    );
+    errors.push(`Task ${task.id} RED must use bun run agent:test:<backend|frontend|e2e> -- <exact-target>`);
   }
-  if (task.writes.length === 0) throw new Error(`Task ${task.id} must declare at least one write`);
+  if (task.writes.length === 0) errors.push(`Task ${task.id} must declare at least one write`);
   assertUnique(task.writes, `Task ${task.id} writes`);
   for (const path of task.writes) {
     assertSafeInline(path, `Task ${task.id} write`);
-    if (!coveredByWrites(stageWrites, path)) throw new Error(`Task ${task.id} write ${path} is outside Stage writes`);
+    if (!coveredByWrites(stageWrites, path)) errors.push(`Task ${task.id} write ${path} is outside Stage writes`);
   }
   const format = "format" in task ? task.format : "modern";
   if (format !== "legacy") {
     // @invariant: the writes list is the contract; the story says what changes
     // for the reader and stays short. Legacy five-line Tasks keep their
     // original contract so active approved plans remain amendable.
-    if (task.story.trim().length > 200) {
-      throw new Error(`Task ${task.id} story must fit two lines (max 200 characters)`);
-    }
+    if (task.story.trim().length > 200) errors.push(`Task ${task.id} story must fit two lines (max 200 characters)`);
     if (/\b(?:colleague|half-?landed|rename map|the new files|the old files|as discussed)\b/i.test(task.story)) {
-      throw new Error(
-        `Task ${task.id} story has an unresolved reference — name the exact paths and symbols instead`,
-      );
+      errors.push(`Task ${task.id} story has an unresolved reference — name the exact paths and symbols instead`);
     }
   }
-  if (task.predictedActiveMinutes < 0 || task.predictedCredits < 0) {
-    throw new Error(`Task ${task.id} predictions must be non-negative`);
-  }
+  if (task.predictedActiveMinutes < 0 || task.predictedCredits < 0) errors.push(`Task ${task.id} predictions must be non-negative`);
+  return errors;
 }
 
 /** A write names a file, a directory (`dir/`) or a glob (`*` within one
@@ -482,7 +481,8 @@ function assertStageContract(input: StageInput): void {
   }
   for (const criterion of input.criteria) assertSafeInline(criterion, `Stage ${input.id} acceptance criterion`);
   if (!input.criteria.includes("Commit")) throw new Error(`Stage ${input.id} acceptance criteria must include Commit`);
-  for (const task of input.tasks) assertTaskContract(task, input.writes);
+  const taskErrors = input.tasks.flatMap((task) => taskContractErrors(task, input.writes));
+  if (taskErrors.length > 0) throw new Error(taskErrors.join("\n"));
   const taskActiveMinutes = input.tasks.reduce((sum, task) => sum + task.predictedActiveMinutes, 0);
   const taskCredits = input.tasks.reduce((sum, task) => sum + task.predictedCredits, 0);
   if (input.verifyActiveMinutes < 0 || input.verifyCredits < 0) {
@@ -1246,11 +1246,14 @@ export function applyOwnerAmendment(body: string, ownerWord: string, patch: Exac
   let next = amendRegion(body, patch);
   if (patch.section === "spec") {
     const specHash = protocolSpecHash(next);
-    next = replaceHeader(next, "Status", "SPEC_LOCKED");
     next = replaceHeader(next, "Spec lock", `sha256:${specHash} owner:${ownerWord}`);
-    if (state === "APPROVED") next = replaceHeader(next, "Implementation lock", "stale");
     next = appendExecution(next, `amend spec owner:${ownerWord} sha256:${specHash}`);
-    return { body: next, specHash };
+    if (state !== "APPROVED") return { body: replaceHeader(next, "Status", "SPEC_LOCKED"), specHash };
+    // The owner's word on a SPEC correction covers the unchanged contract:
+    // declaring a type must not cost a second approval.
+    const implementationHash = protocolImplementationHash(next);
+    next = replaceHeader(next, "Implementation lock", `sha256:${implementationHash} owner:${ownerWord}`);
+    return { body: next, specHash, implementationHash };
   }
   validateImplementation(next);
   const implementationHash = protocolImplementationHash(next);
@@ -1444,6 +1447,14 @@ export async function completeTask(
     state: existsSync(resolve(root, stage.tempRoot)) ? "present" : "absent",
   } as const;
   const tests = tasks.map((task) => ({ id: task.id, command: task.red }));
+  // An exported type the SPEC does not name is the one thing a commit may
+  // not change silently: the Interfaces section is the owner's contract.
+  const { undeclaredExportedTypes } = await import("./plan-gate");
+  const undeclared = await undeclaredExportedTypes(root, input.commit, body);
+  if (undeclared.length > 0) {
+    const names = undeclared.map((type) => `${type.name} in ${type.path}`).join(", ");
+    throw new Error(`exported type ${names} is missing from SPEC Interfaces; declare it there under the owner's word`);
+  }
   const receipt: StageResultReceipt = {
     version: 1,
     plan,
