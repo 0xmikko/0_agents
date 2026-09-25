@@ -33,6 +33,10 @@ describe("planctl structured owner waits", () => {
         taskId: "PLCTL_014",
         reason: "Choose the externally reachable hostname",
         startedAt: "2026-08-29T20:00:00.000Z",
+        context: "Choose the externally reachable hostname",
+        options: [{ label: "public", consequence: "reachable from the internet" }],
+        recommendation: "public",
+        answerForm: "public or private",
       });
       expect(marker.version).toBe(1);
       expect(readOwnerWait(path)).toEqual(marker);
@@ -43,6 +47,10 @@ describe("planctl structured owner waits", () => {
         taskId: "PLCTL_014",
         reason: "Question?\nMaybe this means the owner owes a response",
         startedAt: "2026-08-29T20:00:00.000Z",
+        context: "Question?",
+        options: [{ label: "yes", consequence: "an answer" }],
+        recommendation: "yes",
+        answerForm: "yes or no",
       })).toThrow("reason must be one safe line");
       expect(readOwnerWait(path)).toEqual(marker);
 

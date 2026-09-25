@@ -2,7 +2,7 @@
 
 Status: APPROVED  
 Spec lock: sha256:367c0c1c5dfd95bf4c81459e91a1189c44cc0dd971dd62afafccf1278a996294 owner:делать две штуки публикации - это достаточно странная идея  
-Implementation lock: sha256:6edd2c38739f9ce50ace6d0f5040566d28f3c8edf5adba3c16e567f8b7414fd5 owner:делать две штуки публикации - это достаточно странная идея  
+Implementation lock: sha256:0de83f7dec47399a3c4ee1ce0e21e9ea322b77a6366aac2423647de18339fcd6 agent-unattended  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -489,34 +489,37 @@ Proven by planctl/test/plan-gate.test.ts: a finding carries rule, quote, line an
 
 ##### Tasks
 
-- [ ] MCP_004 — lint returns every error at once with rule, line, quote and replacement; the writer reports all story errors together; What changes is dropped. (60 min)
+- [x] MCP_004 — lint returns every error at once with rule, line, quote and replacement; the writer reports all story errors together; What changes is dropped. (60 min) — 9e5daf6c2b499fc9587ff55018ac643b01ea1612
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-gate.ts","planctl/src/core/plan-update.ts","shared/code-production/laws/plan-format.md","planctl/test/plan-gate.test.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":60,"predictedCredits":6,"how":"extend the finding records of lint in planctl/src/core/plan-gate.ts with rule, blocking, quote and replacement and keep every lint finding an error; drop What changes from the required sections; in planctl/src/core/plan-update.ts collect every story error of assertTaskContract into one refusal instead of throwing at the first; rewrite the sections list, the writes rule, the owner screen and the Stage description in shared/code-production/laws/plan-format.md: a Stage description is the future commit message of the finished Stage, subject line first, then what was done for which Goal outcome and why this way, then how it is proven; assert rule, quote, line and replacement, three errors from one call, the two story errors in one refusal and the absent What changes finding in planctl/test/plan-gate.test.ts and planctl/test/plan-update.test.ts","red":"bun run agent:test:backend -- test/plan-gate.test.ts test/plan-update.test.ts -t tst_scripts_plangate_findings"} -->
-- [ ] MCP_005 — A commit changing an exported type absent from Interfaces is refused by name; the owner's amendment declaring it keeps the plan approved. (55 min)
+- [x] MCP_005 — A commit changing an exported type absent from Interfaces is refused by name; the owner's amendment declaring it keeps the plan approved. (55 min) — 9e5daf6c2b499fc9587ff55018ac643b01ea1612
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-gate.ts","planctl/src/core/plan-update.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":55,"predictedCredits":6,"how":"export the commit-only exported-type check from planctl/src/core/plan-gate.ts with its inputs named: root, commit and the Interfaces section; call it from recordStageResult in planctl/src/core/plan-update.ts and turn a finding into a refusal naming the type; cover refusal and acceptance in planctl/test/plan-update.test.ts; let applyOwnerAmendment on an APPROVED plan keep APPROVED and relock the implementation under the same owner word when only the SPEC changed; cover completion refused, amend, completion passes in planctl/test/plan-update.test.ts","red":"bun run agent:test:backend -- test/plan-update.test.ts -t tst_scripts_planupdate_024"} -->
-- [ ] MCP_013 — A workflow runs the package gate on every pull request of the source repository; the commit check stays the full 32-second suite. (25 min)
+- [x] MCP_013 — A workflow runs the package gate on every pull request of the source repository; the commit check stays the full 32-second suite. (25 min) — 9e5daf6c2b499fc9587ff55018ac643b01ea1612
 <!-- plan:task-meta:{"writes":[".github/workflows/planctl.yml","planctl/test/package-boundary.test.ts"],"predictedActiveMinutes":25,"predictedCredits":3,"how":"create .github/workflows/planctl.yml running agent:install, agent:verify:docs and agent:verify:pr with the declared Bun version; leave agent:verify:commit in planctl/package.json as typecheck plus the full suite, measured at 32 seconds; read the workflow's commands in planctl/test/package-boundary.test.ts","red":"bun run agent:test:backend -- test/package-boundary.test.ts -t tst_unit_planctl_package_002"} -->
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/plan-gate.test.ts` exits 0 — rule, quote, line and replacement, three errors at once, no What changes finding
-- [ ] `cd planctl && bun run agent:test:backend -- test/plan-update.test.ts` exits 0 — the exported-type refusal, the amendment that keeps approval, two story errors in one refusal
-- [ ] `cd planctl && bun run agent:test:backend -- test/package-boundary.test.ts` exits 0 — the workflow names the package gate
-- [ ] Commit
+- [x] `cd planctl && bun run agent:test:backend -- test/plan-gate.test.ts` exits 0 — rule, quote, line and replacement, three errors at once, no What changes finding — 9e5daf6c2b499fc9587ff55018ac643b01ea1612
+- [x] `cd planctl && bun run agent:test:backend -- test/plan-update.test.ts` exits 0 — the exported-type refusal, the amendment that keeps approval, two story errors in one refusal — 9e5daf6c2b499fc9587ff55018ac643b01ea1612
+- [x] `cd planctl && bun run agent:test:backend -- test/package-boundary.test.ts` exits 0 — the workflow names the package gate — 9e5daf6c2b499fc9587ff55018ac643b01ea1612
+- [x] Commit — 9e5daf6c2b499fc9587ff55018ac643b01ea1612
 
 ##### Results
 
 <!-- plan:results:D1-S2:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| MCP_004 | 9e5daf6c2b499fc9587ff55018ac643b01ea1612 | 2026-09-25T09:37:24.292Z–2026-09-25T09:46:52.340Z | 9.467466666666667 / 9.467466666666667 min | unavailable: not measured by planctl | lint reports every error at once with a replacement, completion refuses an undeclared exported type and the owner's amendment keeps approval, the package gate runs in CI |
+| MCP_005 | 9e5daf6c2b499fc9587ff55018ac643b01ea1612 | 2026-09-25T09:37:24.292Z–2026-09-25T09:46:52.340Z | 9.467466666666667 / 9.467466666666667 min | unavailable: not measured by planctl | lint reports every error at once with a replacement, completion refuses an undeclared exported type and the owner's amendment keeps approval, the package gate runs in CI |
+| MCP_013 | 9e5daf6c2b499fc9587ff55018ac643b01ea1612 | 2026-09-25T09:37:24.292Z–2026-09-25T09:46:52.340Z | 9.467466666666667 / 9.467466666666667 min | unavailable: not measured by planctl | lint reports every error at once with a replacement, completion refuses an undeclared exported type and the owner's amendment keeps approval, the package gate runs in CI |
 <!-- plan:results:D1-S2:end -->
 <!-- plan:stage:D1-S2:end -->
 
 <!-- plan:stage:D1-S3:start -->
-<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S2"],"parallelWith":[],"writes":["planctl/src/core/","planctl/src/cli/","planctl/src/machine/","planctl/test/"],"tempRoot":".tmp/code-production/planctl-mcp/D1-S3","predictedActiveMinutes":245,"predictedCredits":25,"verifyActiveMinutes":20,"verifyCredits":2} -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S2"],"parallelWith":[],"writes":["planctl/src/core/","planctl/src/cli/","planctl/src/machine/","planctl/test/","planctl/bench/"],"tempRoot":".tmp/code-production/planctl-mcp/D1-S3","predictedActiveMinutes":245,"predictedCredits":25,"verifyActiveMinutes":20,"verifyCredits":2} -->
 #### Stage D1-S3 — progress and start-task become the two screens
 
 - Owner: agent-1; Profile: strong; Depends: D1-S2; Parallel with: none.
-- Writes: `planctl/src/core/`, `planctl/src/cli/`, `planctl/src/machine/`, `planctl/test/`.
+- Writes: `planctl/src/core/`, `planctl/src/cli/`, `planctl/src/machine/`, `planctl/test/`, `planctl/bench/`.
 - Temp root: `.tmp/code-production/planctl-mcp/D1-S3` (must be absent at handoff).
 - Of which verification: 20 active min / 2 credits.
 
@@ -776,4 +779,16 @@ Proven by planctl/test/spec-submission.test.ts: a SPEC with a vocabulary error y
 - deviation D1-S1: usage stays UsageReceipt with kind unavailable instead of null; the existing kind already says unavailable
 
 - close D1-S1 closed commit:571438974c772dcd37b923b1600a4fec10ef20b7
+
+- record-result D1-S2 commit:9e5daf6c2b499fc9587ff55018ac643b01ea1612
+
+- deviation D1-S2: test IDs differ from the planned RED selectors: tst_gate_lint_004, tst_scripts_planupdate_025 and _026 instead of tst_scripts_plangate_findings and _024, which was already taken
+
+- deviation D1-S2: the exported-type check runs in completeTask before the writer, not inside recordStageResult, because the writer stays synchronous and the check parses TypeScript
+
+- close D1-S2 closed commit:9e5daf6c2b499fc9587ff55018ac643b01ea1612
+
+- owner_review_pending implementation sha256:f4b9018e224b9120305f49a49758ff65055ad30251aa1291a847118a0955a16d decision:eyJ2ZXJzaW9uIjoxLCJkZWNpZGVkQXQiOiIyMDI2LTA5LTI1VDA5OjU0OjI2WiIsImdvYWxQcmVzZXJ2ZWQiOiJPdXRjb21lIDIgKHRoZSB0d28gc2NyZWVucykgdW5jaGFuZ2VkOiBwcm9ncmVzcyBzaG93cyB3aG9sZS1wbGFuIGNvdW50cywgc28gUGxhblByb2dyZXNzU25hcHNob3QgZ2FpbnMgd2hvbGVQbGFuIGFuZCBldmVyeSB0eXBlZCBzbmFwc2hvdCBsaXRlcmFsIG11c3QgY2FycnkgaXQuIiwiZGVjaXNpb24iOiJBZGQgcGxhbmN0bC9iZW5jaC8gdG8gdGhlIFN0YWdlIEQxLVMzIHdyaXRlczogdGhlIGJlbmNobWFyayBidWlsZHMgYSBQbGFuUHJvZ3Jlc3NTbmFwc2hvdCBsaXRlcmFsIHRoYXQgdGhlIHR5cGVjaGVjayBub3cgcmVxdWlyZXMgdG8gY2Fycnkgd2hvbGVQbGFuLiIsImFsdGVybmF0aXZlcyI6WyJtYWtlIHdob2xlUGxhbiBvcHRpb25hbCBpbiBQbGFuUHJvZ3Jlc3NTbmFwc2hvdCAoYSBzaWxlbnQgZmFsbGJhY2sgdGhlIFNQRUMgZm9yYmlkcykiLCJzdG9wIGFuZCBhc2sgdGhlIG93bmVyIGZvciBvbmUgbGluZSBpbiBhIFN0YWdlIHdyaXRlcyBsaXN0Il0sIndoeUNvbnRpbnVlTm93IjoiQSBvbmUtbGluZSBmaXh0dXJlIHVwZGF0ZSBvdXRzaWRlIHRoZSBTdGFnZSBmb2xkZXJzIGlzIGV4YWN0bHkgdGhlIGZlbmNlIHRoZSBwbGFuIHJlbW92ZXM7IHRoZSBvd25lciBhbGxvd2VkIHVuYXR0ZW5kZWQgZGVjaXNpb25zIGluIHRoZSBwbGFuIGhlYWRlci4iLCJhZmZlY3RlZFNjb3BlIjpbInBsYW5jdGwvYmVuY2gvZGlzdHJpYnV0ZWQtYmVuY2htYXJrLnRzIl0sInJvbGxiYWNrQmFzZSI6IjllNWRhZjZjMmI0OTlmYzk1ODdmZjU1MDE4YWM2NDNiMDFlYTE2MTIiLCJ2ZXJpZmljYXRpb24iOlsiY2QgcGxhbmN0bCAmJiBidW4gcnVuIHR5cGVjaGVjayIsImNkIHBsYW5jdGwgJiYgYnVuIHJ1biBhZ2VudDp0ZXN0OmJhY2tlbmQgLS0gdGVzdC9wbGFuLXByb2dyZXNzLnRlc3QudHMiXX0
+
+- owner_review_pending implementation sha256:0de83f7dec47399a3c4ee1ce0e21e9ea322b77a6366aac2423647de18339fcd6 decision:eyJ2ZXJzaW9uIjoxLCJkZWNpZGVkQXQiOiIyMDI2LTA5LTI1VDA5OjU0OjI2WiIsImdvYWxQcmVzZXJ2ZWQiOiJPdXRjb21lIDIgKHRoZSB0d28gc2NyZWVucykgdW5jaGFuZ2VkOiBwcm9ncmVzcyBzaG93cyB3aG9sZS1wbGFuIGNvdW50cywgc28gUGxhblByb2dyZXNzU25hcHNob3QgZ2FpbnMgd2hvbGVQbGFuIGFuZCBldmVyeSB0eXBlZCBzbmFwc2hvdCBsaXRlcmFsIG11c3QgY2FycnkgaXQuIiwiZGVjaXNpb24iOiJBZGQgcGxhbmN0bC9iZW5jaC8gdG8gdGhlIFN0YWdlIEQxLVMzIHdyaXRlczogdGhlIGJlbmNobWFyayBidWlsZHMgYSBQbGFuUHJvZ3Jlc3NTbmFwc2hvdCBsaXRlcmFsIHRoYXQgdGhlIHR5cGVjaGVjayBub3cgcmVxdWlyZXMgdG8gY2Fycnkgd2hvbGVQbGFuLiIsImFsdGVybmF0aXZlcyI6WyJtYWtlIHdob2xlUGxhbiBvcHRpb25hbCBpbiBQbGFuUHJvZ3Jlc3NTbmFwc2hvdCAoYSBzaWxlbnQgZmFsbGJhY2sgdGhlIFNQRUMgZm9yYmlkcykiLCJzdG9wIGFuZCBhc2sgdGhlIG93bmVyIGZvciBvbmUgbGluZSBpbiBhIFN0YWdlIHdyaXRlcyBsaXN0Il0sIndoeUNvbnRpbnVlTm93IjoiQSBvbmUtbGluZSBmaXh0dXJlIHVwZGF0ZSBvdXRzaWRlIHRoZSBTdGFnZSBmb2xkZXJzIGlzIGV4YWN0bHkgdGhlIGZlbmNlIHRoZSBwbGFuIHJlbW92ZXM7IHRoZSBvd25lciBhbGxvd2VkIHVuYXR0ZW5kZWQgZGVjaXNpb25zIGluIHRoZSBwbGFuIGhlYWRlci4iLCJhZmZlY3RlZFNjb3BlIjpbInBsYW5jdGwvYmVuY2gvZGlzdHJpYnV0ZWQtYmVuY2htYXJrLnRzIl0sInJvbGxiYWNrQmFzZSI6IjllNWRhZjZjMmI0OTlmYzk1ODdmZjU1MDE4YWM2NDNiMDFlYTE2MTIiLCJ2ZXJpZmljYXRpb24iOlsiY2QgcGxhbmN0bCAmJiBidW4gcnVuIHR5cGVjaGVjayIsImNkIHBsYW5jdGwgJiYgYnVuIHJ1biBhZ2VudDp0ZXN0OmJhY2tlbmQgLS0gdGVzdC9wbGFuLXByb2dyZXNzLnRlc3QudHMiXX0
 <!-- plan:execution:end -->

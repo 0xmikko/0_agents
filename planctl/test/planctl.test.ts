@@ -412,9 +412,9 @@ describe("planctl", () => {
       const started = run(fixture.root, "start-task", fixture.plan, "--task", "PLANCTL_001");
       expect(started.status, `${started.stdout}\n${started.stderr}`).toBe(0);
       expect(started.stdout).toContain("Task PLANCTL_001 STARTED");
-      expect(started.stdout).toContain("Source: docs/plans/fixture.md");
-      expect(started.stdout).toContain("Distributed correlation: unavailable (TaskRunV1)");
-      expect(started.stdout).toContain("Writes: scripts/example.ts");
+      expect(started.stdout).toContain("Plan: docs/plans/fixture.md");
+      expect(started.stdout).toContain("Observer identity: none (local record)");
+      expect(started.stdout).toContain("Folders: scripts/example.ts");
       expect(started.stdout).toContain("RED: bun run agent:test:backend -- test/planctl.test.ts");
       const startedAt = started.stdout.match(/^Started: (.+)$/m)?.[1];
       expect(startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -496,8 +496,16 @@ describe("planctl", () => {
         fixture.plan,
         "--task",
         "PLANCTL_001",
-        "--reason",
+        "--context",
         "Choose the public hostname",
+        "--option",
+        "public: reachable from the internet",
+        "--option",
+        "private: reachable from the office only",
+        "--recommendation",
+        "public, because the Goal names external users",
+        "--answer",
+        "public or private",
       );
       expect(waiting.status, `${waiting.stdout}\n${waiting.stderr}`).toBe(0);
       const waitPath = ownerWaitPath(join(fixture.root, ".git"), "docs/plans/fixture.md", "PLANCTL_001");
@@ -510,8 +518,16 @@ describe("planctl", () => {
         fixture.plan,
         "--task",
         "PLANCTL_001",
-        "--reason",
+        "--context",
         "Choose the public hostname",
+        "--option",
+        "public: reachable from the internet",
+        "--option",
+        "private: reachable from the office only",
+        "--recommendation",
+        "public, because the Goal names external users",
+        "--answer",
+        "public or private",
       ).status).toBe(0);
       const resumed = run(fixture.root, "resume-task", fixture.plan, "--task", "PLANCTL_001");
       expect(resumed.status, `${resumed.stdout}\n${resumed.stderr}`).toBe(0);
@@ -519,8 +535,9 @@ describe("planctl", () => {
 
       const progress = run(fixture.root, "progress", fixture.plan);
       expect(progress.status, `${progress.stdout}\n${progress.stderr}`).toBe(0);
-      expect(progress.stdout).toContain("Source: local plan docs/plans/fixture.md");
-      expect(progress.stdout).toContain("Progress: 0.0% (0/1 Tasks)");
+      expect(progress.stdout).toContain("Plan      docs/plans/fixture.md (APPROVED)");
+      expect(progress.stdout).toContain("Delivery  D1 · 0 of 1 Tasks");
+      expect(progress.stdout).toContain("Now       PLANCTL_001 since");
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }

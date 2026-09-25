@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import type { TaskRun } from "./task-run";
+import type { OwnerWaitReceipt, TaskRun, TaskRunIdentity } from "./task-run";
+import type { ProgressView } from "./plan-progress";
 import { execFileSync, spawnSync } from "node:child_process";
 
 // Shared by the writer and the acceptance gate. The command opens the box.
@@ -120,6 +121,8 @@ export interface ParsedStageInput {
 export interface DeliveryMeta {
   readonly id: string;
   readonly active: boolean;
+  readonly depends: readonly string[];
+  readonly branch: string;
   readonly predictedExternalWaitMinutes: number;
 }
 
@@ -334,7 +337,7 @@ function replaceHeader(body: string, name: string, value: string): string {
   return body.replace(expression, `${name}: ${value}  `);
 }
 
-function planState(body: string): PlanState {
+export function planState(body: string): PlanState {
   const match = body.match(/^Status:\s*(SPEC_DRAFT|SPEC_LOCKED|APPROVED)\b/m);
   if (match?.[1] === "SPEC_DRAFT" || match?.[1] === "SPEC_LOCKED" || match?.[1] === "APPROVED") {
     return match[1];
@@ -876,6 +879,12 @@ export function completedStageSamples(body: string): readonly CompletedWorkSampl
     || left.sampleId.localeCompare(right.sampleId));
 }
 
+function activeDeliveryId(body: string): string | null {
+  const header = body.match(/^Active Delivery:\s*(\S+)/m);
+  const id = header === null ? "none" : capture(header, 1, "Active Delivery header");
+  return id === "none" ? null : id;
+}
+
 export function deliveryMetas(body: string): readonly DeliveryMeta[] {
 
   const values: DeliveryMeta[] = [];
@@ -886,7 +895,14 @@ export function deliveryMetas(body: string): readonly DeliveryMeta[] {
     if (typeof meta.active !== "boolean") throw new Error(`Delivery ${id} lacks active metadata`);
     // A plan rendered before the forecast existed carries no wait: it reads as 0.
     const wait = typeof meta.predictedExternalWaitMinutes === "number" ? meta.predictedExternalWaitMinutes : 0;
-    values.push({ id, active: meta.active, predictedExternalWaitMinutes: wait });
+    // A plan rendered before Deliveries depended on each other carries no depends: it reads as none.
+    const depends = Array.isArray(meta.depends) && meta.depends.every((entry) => typeof entry === "string") ? meta.depends : [];
+    const block = region(body, deliveryStart(id), deliveryEnd(id));
+    const branch = block.text.match(/^Branch: `([^`]+)`;/m);
+    if (branch === null) throw new Error(`Delivery ${id} lacks a Branch line`);
+    // The header says which Delivery is active: execution moves it without
+    // touching the frozen contract, whose metadata keeps the authored flag.
+    values.push({ id, active: activeDeliveryId(body) === id, depends, branch: capture(branch, 1, `Delivery ${id} branch`), predictedExternalWaitMinutes: wait });
   }
   return values;
 }
@@ -939,6 +955,51 @@ function validateImplementation(body: string): void {
   for (const stage of stages) visit(stage.id);
 }
 
+/** A Stage is closed when no box in it is open: Tasks and criteria alike. */
+export function stageClosed(body: string, stageId: string): boolean {
+  return !/^- \[ \] /m.test(region(body, stageStart(stageId), stageEnd(stageId)).text);
+}
+
+/** The numbered outcomes under "## The Goal": what every brief starts with. */
+export function goalLines(body: string): readonly string[] {
+  const match = body.match(/^## The Goal\n([\s\S]*?)(?=^## |<!-- plan:spec:end -->)/m);
+  if (match === null) return [];
+  return capture(match, 1, "Goal section").split("\n").map((line) => line.trim()).filter((line) => line !== "");
+}
+
+/** The next open Task of the active Delivery in Stage-graph order, or what blocks it.
+ * @tested-by: tst_unit_planctl_progress_002
+ */
+export function nextOpenTask(body: string): { readonly taskId: string | null; readonly blockedBy: string | null } {
+  const active = deliveryMetas(body).find((delivery) => delivery.active);
+  if (active === undefined) return { taskId: null, blockedBy: null };
+  let blockedBy: string | null = null;
+  for (const stage of stageInputs(body).filter((entry) => entry.deliveryId === active.id)) {
+    const open = stage.tasks.find((task) => !task.completed);
+    if (open === undefined) continue;
+    const waiting = stage.depends.find((dependency) => !stageClosed(body, dependency));
+    if (waiting === undefined) return { taskId: open.id, blockedBy: null };
+    if (blockedBy === null) blockedBy = `${stage.id} depends on ${waiting}`;
+  }
+  return { taskId: null, blockedBy };
+}
+
+/** Every start record of this plan, decoded by the caller's reader. */
+export async function runningTaskRecords(
+  root: string,
+  plan: string,
+  decodeRun: (value: unknown) => TaskRun | Promise<TaskRun>,
+): Promise<readonly TaskRun[]> {
+  const directory = dirname(taskRunPath(root, plan, "X"));
+  if (!existsSync(directory)) return [];
+  const prefix = basename(taskRunPath(root, plan, "")).replace(/\.json$/, "");
+  const runs: TaskRun[] = [];
+  for (const name of readdirSync(directory).filter((entry) => entry.startsWith(prefix) && entry.endsWith(".json"))) {
+    runs.push(await decodeRun(JSON.parse(readFileSync(join(directory, name), "utf8")) as unknown));
+  }
+  return runs;
+}
+
 function hasOpenTasks(body: string, stageId: string): boolean {
   const stage = region(body, stageStart(stageId), stageEnd(stageId));
   const tasks = stage.text.match(/##### Tasks\n\n([\s\S]*?)\n\n##### Acceptance criteria/);
@@ -946,7 +1007,7 @@ function hasOpenTasks(body: string, stageId: string): boolean {
   return /^- \[ \] /m.test(capture(tasks, 1, `Stage ${stageId} Tasks`));
 }
 
-export function taskExecutionBrief(body: string, taskId: string): TaskExecutionBrief {
+export function taskExecutionBrief(body: string, taskId: string, options: { readonly repair?: boolean } = {}): TaskExecutionBrief {
   requireState(body, "APPROVED");
   const stages = stageInputs(body);
   const stage = stages.find((candidate) => candidate.tasks.some((task) => task.id === taskId));
@@ -958,7 +1019,7 @@ export function taskExecutionBrief(body: string, taskId: string): TaskExecutionB
   const block = region(body, stageStart(stage.id), stageEnd(stage.id));
   const status = block.text.match(new RegExp(`^- \\[([ x])\\] ${taskId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} — `, "m"));
   if (status === null) throw new Error(`Task ${taskId} text does not match its contract`);
-  if (status[1] === "x") throw new Error(`Task ${taskId} is already complete`);
+  if (status[1] === "x" && options.repair !== true) throw new Error(`Task ${taskId} is already complete`);
   const blockedBy = stage.depends.filter((dependency) => hasOpenTasks(body, dependency));
   if (blockedBy.length > 0) throw new Error(`Task ${taskId} is blocked by incomplete Stage(s): ${blockedBy.join(", ")}`);
   return {
@@ -1184,10 +1245,23 @@ export function recordStageResult(
   const block = region(body, stageStart(receipt.stageId), stageEnd(receipt.stageId));
   if (block.text.includes(`| ${receipt.taskIds[0]} | ${receipt.commit}`)) throw new Error("Stage result already recorded");
   let changedBlock = block.text;
+  let superseding = false;
   for (const taskId of receipt.taskIds) {
-    const taskLine = new RegExp(`^- \\[ \\] (${taskId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} — [^\\n]+)$`, "m");
-    if (!taskLine.test(changedBlock)) throw new Error(`Task ${taskId} is not open or its text changed`);
-    changedBlock = changedBlock.replace(taskLine, `- [x] $1 — ${receipt.commit}`);
+    const escaped = taskId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const taskLine = new RegExp(`^- \\[([ x])\\] (${escaped} — .+?)(?: — [0-9a-f]{40})?$`, "m");
+    const found = changedBlock.match(taskLine);
+    if (found === null) throw new Error(`Task ${taskId} is not open or its text changed`);
+    if (found[1] === "x") superseding = true;
+    changedBlock = changedBlock.replace(taskLine, `- [x] $2 — ${receipt.commit}`);
+  }
+  if (superseding) {
+    // A repaired Task supersedes its result: the Stage's closed criteria open
+    // again so close_stage proves the changed implementation once more.
+    const criteria = changedBlock.match(/##### Acceptance criteria\n\n([\s\S]*?)\n\n##### Results/);
+    if (criteria !== null) {
+      const reopened = capture(criteria, 1, `Stage ${receipt.stageId} criteria`).replace(/^- \[x\] (.+?) — [0-9a-f]{7,40}$/gm, "- [ ] $1");
+      changedBlock = changedBlock.replace(capture(criteria, 1, `Stage ${receipt.stageId} criteria`), reopened);
+    }
   }
   const usage = receipt.usage.kind === "credits" ? `${receipt.usage.credits} credits` : `unavailable: ${receipt.usage.reason}`;
   const resultText = [
@@ -1537,6 +1611,249 @@ export function initPlan(root: string, input: InitPlanInput): InitializedPlan {
   git(root, ["add", "--", plan]);
   journalCreatedPlan(root, plan, body);
   return { plan, body, branch, base };
+}
+
+function gitCommonDir(root: string): string {
+  return git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+}
+
+/** Write a start record atomically: a partial file never counts as a running Task. */
+export function writeTaskRun(path: string, run: TaskRun): void {
+  const parent = dirname(path);
+  mkdirSync(parent, { recursive: true });
+  const temporary = mkdtempSync(join(parent, ".task-run-"));
+  const candidate = join(temporary, "receipt.json");
+  try {
+    writeFileSync(candidate, `${JSON.stringify(run, null, 2)}\n`, { mode: 0o600 });
+    renameSync(candidate, path);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
+/** "What do I do now": the plan, the Goal, and one Task with its scope. */
+export interface TaskBrief {
+  readonly plan: string;
+  readonly goal: readonly string[];
+  readonly deliveryId: string;
+  readonly stageId: string;
+  readonly taskId: string;
+  readonly stageDescription: string;
+  readonly story: string;
+  readonly folders: readonly string[];
+  readonly how: readonly string[];
+  readonly red: string;
+  readonly startedAt: string;
+  readonly forecastMinutes: number;
+  readonly checkpoint: string | null;
+}
+
+export interface StartTaskInput {
+  readonly plan: string;
+  /** null: the running Task, or the next one in Stage-graph order. */
+  readonly taskId: string | null;
+  readonly checkpoint: string | null;
+  /** The observer identity when observer configuration exists; null in a plain clone. */
+  readonly identity: TaskRunIdentity | null;
+  /** What gh reports for a Delivery branch, to unlock a child Delivery or refuse a merged one. */
+  readonly publication: (branch: string) => ProgressView["publication"];
+  readonly decodeRun: (value: unknown) => TaskRun | Promise<TaskRun>;
+}
+
+/** The owner question: what this is about, the options with their consequences, the recommendation, the form of the answer. */
+export interface NeedsOwnerInput {
+  readonly plan: string;
+  readonly taskId: string;
+  readonly context: string;
+  readonly options: readonly { readonly label: string; readonly consequence: string }[];
+  readonly recommendation: string;
+  readonly answerForm: string;
+}
+
+function observed(publication: (branch: string) => ProgressView["publication"], branch: string): ProgressView["publication"] {
+  try {
+    return publication(branch);
+  } catch (error: unknown) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Why a Delivery cannot start yet: a parent without a green PR on its current head. Null when every parent is green or merged. */
+function parentRefusal(root: string, deliveries: readonly DeliveryMeta[], delivery: DeliveryMeta, publication: StartTaskInput["publication"]): string | null {
+  for (const parentId of delivery.depends) {
+    const parent = deliveries.find((entry) => entry.id === parentId);
+    if (parent === undefined) return `Delivery ${delivery.id} depends on unknown Delivery ${parentId}`;
+    const state = observed(publication, parent.branch);
+    if (state === null) return `Delivery ${parent.id} has no PR yet`;
+    if ("error" in state) return `Delivery ${parent.id}: ${state.error}`;
+    if (state.merged) continue;
+    if (state.ci !== "green") return `Delivery ${parent.id} CI is ${state.ci}`;
+    const current = spawnSync("git", ["-C", root, "rev-parse", "--verify", `${parent.branch}^{commit}`], { encoding: "utf8" });
+    if (current.status !== 0) return `Delivery ${parent.id} branch ${parent.branch} is not known here`;
+    if (state.headSha !== current.stdout.trim()) {
+      return `Delivery ${parent.id} PR head ${state.headSha.slice(0, 7)} is not the current head ${current.stdout.trim().slice(0, 7)}`;
+    }
+  }
+  return null;
+}
+
+function taskRunOf(run: TaskRun): string | null {
+  return run.version === 1 ? null : run.worktree;
+}
+
+/** Start a Task, or return the one already running here, on one clock.
+ * Without a Task ID: the running Task, else the next open one in Stage-graph
+ * order, else the first Task of a child Delivery whose parents are green.
+ * A completed Task of an unmerged Delivery starts again for repair.
+ * @tested-by: tst_scripts_planupdate_027, tst_scripts_planupdate_028, tst_scripts_planupdate_029
+ */
+export async function startTask(root: string, input: StartTaskInput): Promise<TaskBrief> {
+  const plan = resolve(root, input.plan).slice(root.length + 1);
+  let body = readFileSync(resolve(root, plan), "utf8");
+  requireState(body, "APPROVED");
+  const runs = await runningTaskRecords(root, plan, input.decodeRun);
+  const mine = runs.filter((run) => taskRunOf(run) === null || taskRunOf(run) === root)
+    .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+  let taskId = input.taskId;
+  if (taskId === null) {
+    const running = mine[0];
+    if (running !== undefined) taskId = running.taskId;
+    else {
+      const next = nextOpenTask(body);
+      if (next.taskId !== null) taskId = next.taskId;
+      else {
+        const deliveries = deliveryMetas(body);
+        const child = deliveries.find((delivery) => !delivery.active
+          && stageInputs(body).some((stage) => stage.deliveryId === delivery.id && stage.tasks.some((task) => !task.completed))
+          && parentRefusal(root, deliveries, delivery, input.publication) === null);
+        const firstOpen = child === undefined ? undefined : stageInputs(body).filter((stage) => stage.deliveryId === child.id).flatMap((stage) => stage.tasks).find((task) => !task.completed);
+        if (firstOpen === undefined) throw new Error(`nothing to start: ${next.blockedBy ?? "every Task of the active Delivery is complete and no child Delivery is eligible"}`);
+        taskId = firstOpen.id;
+      }
+    }
+  }
+  const elsewhere = runs.find((run) => run.taskId === taskId && taskRunOf(run) !== null && taskRunOf(run) !== root);
+  if (elsewhere !== undefined) throw new Error(`Task ${taskId} is running in worktree ${taskRunOf(elsewhere)}`);
+  const stages = stageInputs(body);
+  const stage = stages.find((candidate) => candidate.tasks.some((task) => task.id === taskId));
+  if (stage === undefined) throw new Error(`unknown Task ${taskId}`);
+  const task = stage.tasks.find((candidate) => candidate.id === taskId);
+  if (task === undefined) throw new Error(`unknown Task ${taskId}`);
+  const deliveries = deliveryMetas(body);
+  const delivery = deliveries.find((entry) => entry.id === stage.deliveryId);
+  if (delivery === undefined) throw new Error(`Task ${taskId} belongs to unknown Delivery ${stage.deliveryId}`);
+  if (!delivery.active) {
+    const refusal = parentRefusal(root, deliveries, delivery, input.publication);
+    if (refusal !== null) throw new Error(`Task ${taskId} cannot start: ${refusal}`);
+    mutatePlanFile(root, plan, "activate-delivery", (current) => ({ body: replaceHeader(current, "Active Delivery", delivery.id) }));
+    body = readFileSync(resolve(root, plan), "utf8");
+  }
+  if (task.completed) {
+    const state = observed(input.publication, delivery.branch);
+    if (state !== null && "merged" in state && state.merged) throw new Error(`Task ${taskId} is complete and its Delivery ${delivery.id} is merged`);
+  }
+  const brief = taskExecutionBrief(body, taskId, { repair: task.completed });
+  const path = taskRunPath(root, plan, taskId);
+  const existing = mine.find((run) => run.taskId === taskId);
+  let run: TaskRun;
+  if (existing !== undefined) {
+    if (existing.plan !== plan || existing.stageId !== brief.stageId) throw new Error(`Task ${taskId} has a conflicting start record`);
+    if (spawnSync("git", ["-C", root, "merge-base", "--is-ancestor", existing.baseHead, "HEAD"]).status !== 0) {
+      throw new Error(`Task ${taskId} start base is not ancestral to HEAD`);
+    }
+    // A repeated start keeps the clock; it may add a checkpoint, and an
+    // observer identity that a plain-clone start could not know yet.
+    run = existing.version === 3
+      ? {
+          ...existing,
+          checkpoint: input.checkpoint ?? existing.checkpoint,
+          identity: existing.identity ?? input.identity,
+        }
+      : existing;
+    run = (await settleOwnerWait(root, plan, taskId, run)).run;
+    writeTaskRun(path, run);
+  } else {
+    run = {
+      version: 3,
+      plan,
+      deliveryId: brief.deliveryId,
+      stageId: brief.stageId,
+      taskId,
+      startedAt: new Date().toISOString(),
+      baseHead: git(root, ["rev-parse", "HEAD"]),
+      worktree: root,
+      branch: git(root, ["branch", "--show-current"]),
+      checkpoint: input.checkpoint,
+      identity: input.identity,
+      ownerWait: null,
+      accumulatedOwnerWaitSeconds: 0,
+      lastAccountedOwnerWaitStartedAt: null,
+    };
+    writeTaskRun(path, run);
+  }
+  return {
+    plan,
+    goal: goalLines(body),
+    deliveryId: brief.deliveryId,
+    stageId: brief.stageId,
+    taskId,
+    stageDescription: brief.stageDescription,
+    story: brief.story,
+    folders: stage.writes,
+    how: howSteps(brief.how),
+    red: brief.red,
+    startedAt: run.startedAt,
+    forecastMinutes: brief.predictedActiveMinutes,
+    checkpoint: run.version === 3 ? run.checkpoint : null,
+  };
+}
+
+/** Account and clear an open owner wait on a record; nothing to clear changes nothing. */
+async function settleOwnerWait(root: string, plan: string, taskId: string, run: TaskRun): Promise<{ readonly run: TaskRun; readonly marker: OwnerWaitReceipt | null }> {
+  const waits = await import("./task-run");
+  const path = waits.ownerWaitPath(gitCommonDir(root), plan, taskId);
+  const marker = waits.readOwnerWait(path);
+  if (marker === null) return { run, marker: null };
+  const updated = waits.accountOwnerWait(run, marker, new Date().toISOString());
+  writeTaskRun(taskRunPath(root, plan, taskId), updated);
+  waits.clearOwnerWait(path);
+  return { run: updated, marker };
+}
+
+/** Record that a started Task needs one owner answer, as a form the owner can act on.
+ * @tested-by: tst_scripts_planupdate_027
+ */
+export async function needsOwner(root: string, input: NeedsOwnerInput): Promise<OwnerWaitReceipt> {
+  const plan = resolve(root, input.plan).slice(root.length + 1);
+  const body = readFileSync(resolve(root, plan), "utf8");
+  taskExecutionBrief(body, input.taskId, { repair: true });
+  const path = taskRunPath(root, plan, input.taskId);
+  if (!existsSync(path)) throw new Error(`Task ${input.taskId} has no start record; run planctl start-task first`);
+  const waits = await import("./task-run");
+  return waits.markOwnerWait(waits.ownerWaitPath(gitCommonDir(root), plan, input.taskId), {
+    plan,
+    taskId: input.taskId,
+    reason: input.context,
+    startedAt: new Date().toISOString(),
+    context: input.context,
+    options: input.options,
+    recommendation: input.recommendation,
+    answerForm: input.answerForm,
+  });
+}
+
+/** Clear the Task's owner wait and account its duration; without a wait the record is returned unchanged.
+ * @tested-by: tst_scripts_planupdate_027
+ */
+export async function resumeTask(
+  root: string,
+  input: { readonly plan: string; readonly taskId: string; readonly decodeRun: (value: unknown) => TaskRun | Promise<TaskRun> },
+): Promise<{ readonly run: TaskRun; readonly marker: OwnerWaitReceipt | null }> {
+  const plan = resolve(root, input.plan).slice(root.length + 1);
+  const path = taskRunPath(root, plan, input.taskId);
+  if (!existsSync(path)) throw new Error(`Task ${input.taskId} has no start record; run planctl start-task first`);
+  const run = await input.decodeRun(JSON.parse(readFileSync(path, "utf8")) as unknown);
+  return settleOwnerWait(root, plan, input.taskId, run);
 }
 
 /** The journal for a plan planctl has just created: the init event from

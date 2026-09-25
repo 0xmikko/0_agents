@@ -107,6 +107,7 @@ function progressSnapshot(input: unknown): PlanProgressSnapshot {
   const progress: PlanProgressSnapshot = {
     deliveryId: text(value.deliveryId, "plan progress deliveryId", /^D[1-9]\d*$/),
     tasks: count(value.tasks, "plan progress tasks"),
+    wholePlan: count(value.wholePlan, "plan progress wholePlan"),
     activeMinutes: amount(value.activeMinutes, "plan progress activeMinutes"),
     credits: amount(value.credits, "plan progress credits"),
     completionPercent: percentage(value.completionPercent, "plan progress completionPercent"),

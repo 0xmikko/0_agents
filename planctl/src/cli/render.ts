@@ -9,7 +9,10 @@ export interface ProgressPlanView {
   readonly estimatedDeliveryAt: string | null;
 }
 
-export interface ProgressView {
+import type { ProgressView } from "../core/plan-progress";
+
+/** The observer's read model: where the numbers came from and the plans it saw. */
+interface ProgressReport {
   readonly source: string;
   readonly status: "available" | "offline";
   readonly evidence: string;
@@ -22,7 +25,7 @@ function percentage(value: number): string {
 }
 
 /** @tested-by: tst_cli_planctl_progress_001 */
-export function renderProgress(view: ProgressView): string {
+export function renderProgress(view: ProgressReport): string {
   const plans = view.plans.length === 0
     ? ["Plans: none"]
     : view.plans.map((plan) => [
@@ -37,5 +40,33 @@ export function renderProgress(view: ProgressView): string {
     `Status: ${view.status}`,
     `Evidence: ${view.evidence}`,
     ...plans,
+  ].join("\n");
+}
+
+/** The "where am I" screen. @tested-by: tst_unit_planctl_progress_002 */
+export function renderProgressView(view: ProgressView): string {
+  const publication = view.publication === null
+    ? "Publish   none observed"
+    : "error" in view.publication
+      ? `Publish   unavailable: ${view.publication.error}`
+      : `Publish   ${view.publication.prUrl} · CI on ${view.publication.headSha.slice(0, 7)} ${view.publication.ci} (run ${view.publication.runId} attempt ${view.publication.attempt}) · merge: ${view.publication.merged ? "merged" : "not yet"}`;
+  const runtime = view.runtime === null
+    ? "Runtime   unavailable: no installed manifest"
+    : `Runtime   installed ${view.runtime.installed.slice(0, 7)} · source ${view.runtime.source.slice(0, 7)}${view.runtime.stale ? " · stale" : ""}`;
+  const delivery = view.delivery === null
+    ? "Delivery  none active"
+    : `Delivery  ${view.delivery.id} · ${view.delivery.completedTasks} of ${view.delivery.totalTasks} Tasks · closed ${view.delivery.closedStages.join(", ") || "none"} · open ${view.delivery.openStages.join(", ") || "none"}`;
+  const eligible = view.next.taskId === null
+    ? `Eligible  none${view.next.blockedBy === null ? "" : ` · blocked: ${view.next.blockedBy}`}`
+    : `Eligible  ${view.next.taskId} · blocked: none`;
+  return [
+    `Plan      ${view.plan} (${view.state})`,
+    ...view.goal.map((line) => `Goal      ${line}`),
+    view.currentTask === null ? "Now       no Task running" : `Now       ${view.currentTask.id} since ${view.currentTask.startedAt}${view.currentTask.checkpoint === null ? "" : ` · ${view.currentTask.checkpoint}`}`,
+    delivery,
+    `Plan      ${view.wholePlan.completedTasks} of ${view.wholePlan.totalTasks} Tasks · ${view.wholePlan.deliveries.map((entry) => `${entry.id} ${entry.state}`).join(", ") || "no Deliveries"}`,
+    publication,
+    runtime,
+    eligible,
   ].join("\n");
 }

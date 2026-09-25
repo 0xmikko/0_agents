@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
 import {
@@ -9,6 +9,9 @@ import {
   applyOwnerAmendment,
   closePlanStage,
   completeTask,
+  needsOwner,
+  resumeTask,
+  startTask,
   taskRunPath,
   applyUnattendedAmendment,
   lockPlanSpec,
@@ -25,7 +28,7 @@ import {
   type StageResultReceipt,
 } from "../src/core/plan-update";
 import { protocolLockViolations } from "../src/core/plan-gate";
-import { decodeTaskRun } from "../src/core/task-run";
+import { decodeTaskRun, ownerWaitPath, readOwnerWait } from "../src/core/task-run";
 
 const SPEC_START = "<!-- plan:spec:start -->";
 const SPEC_END = "<!-- plan:spec:end -->";
@@ -1131,6 +1134,150 @@ describe("exported types are declared before completion", () => {
       expect(done.paths).toEqual(["scripts/base.ts"]);
       expect(readFileSync(join(root, "docs/plans/fixture.md"), "utf8")).toContain(`- [x] D1-S1-T1 —`);
     } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the Task loop through the core", () => {
+  function approvedTwoDeliveries(): string {
+    let body = lockPlanSpec(draft(), "spec").body;
+    body = putDelivery(body, delivery()).body;
+    body = putDelivery(body, { ...delivery(false), id: "D2", title: "follow-up", branch: "feat/follow-up", depends: ["D1"], stageGraph: "D2-S1" }).body;
+    body = putStage(body, { ...stage("D1-S1", ["scripts/"]), tasks: stage("D1-S1", ["scripts/base.ts"]).tasks }).body;
+    body = putStage(body, { ...stage("D1-S2", ["scripts/a.ts"], ["D1-S3"]), depends: ["D1-S1"] }).body;
+    body = putStage(body, { ...stage("D1-S3", ["scripts/b.ts"], ["D1-S2"]), depends: ["D1-S1"] }).body;
+    body = putStage(body, { ...stage("D1-S4", ["docs/plans/fixture.md"]), profile: "strong", owner: "integrator", depends: ["D1-S2", "D1-S3"], parallelWith: [] }).body;
+    body = putStage(body, { ...stage("D2-S1", ["scripts/c.ts"]), deliveryId: "D2", depends: [] }).body;
+    return approvePlan(body, "approve").body;
+  }
+
+  function repository(body: string): { root: string; git: (...args: readonly string[]) => string } {
+    const root = mkdtempSync(join(tmpdir(), "plan-update-loop-"));
+    const git = (...args: readonly string[]): string => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    git("init", "-q", "-b", "feat/writer");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    mkdirSync(join(root, "docs/plans"), { recursive: true });
+    writeFileSync(join(root, "docs/plans/fixture.md"), body);
+    git("add", "-A");
+    git("commit", "-qm", "plan");
+    return { root, git };
+  }
+
+  function work(root: string, git: (...args: readonly string[]) => string, path: string, content: string): string {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), content);
+    git("add", "-A");
+    git("commit", "-qm", `work ${path}`);
+    return git("rev-parse", "HEAD");
+  }
+
+  const plan = "docs/plans/fixture.md";
+  const unpublished = () => null;
+  const noIdentity = { identity: null, decodeRun: decodeTaskRun, publication: unpublished };
+
+  // @test-id: tst_scripts_planupdate_027
+  // @scenario: scn_plan_control_task_loop_001
+  // @covers: planctl/src/core/plan-update.ts::startTask,completeTask,closePlanStage,needsOwner,resumeTask
+  // @deterministic: yes
+  // @invariant: a taskless start returns the running or next Task on one clock with its checkpoint; a completed Task of an unmerged Delivery starts and completes again and its Stage's criteria run again; an owner question is a form.
+  it("tst_scripts_planupdate_027 runs start, complete, close, repair, close again and the owner question through the core", async () => {
+    const { root, git } = repository(approvedTwoDeliveries());
+    try {
+      const first = await startTask(root, { plan, taskId: null, checkpoint: null, ...noIdentity });
+      expect(first.taskId).toBe("D1-S1-T1");
+      expect(first.goal).toEqual(["Ship one observable result."]);
+      expect(first.folders).toEqual(["scripts/"]);
+      expect(first.how).toEqual(["change scripts/base.ts so the declared observable behavior is implemented"]);
+      const again = await startTask(root, { plan, taskId: null, checkpoint: "RED written", ...noIdentity });
+      expect(again.taskId).toBe("D1-S1-T1");
+      expect(again.startedAt).toBe(first.startedAt);
+      expect(again.checkpoint).toBe("RED written");
+      const record = decodeTaskRun(JSON.parse(readFileSync(taskRunPath(root, plan, "D1-S1-T1"), "utf8")));
+      expect(record.version).toBe(3);
+      if (record.version === 3) expect(record.worktree).toBe(root);
+
+      const question = await needsOwner(root, {
+        plan, taskId: "D1-S1-T1",
+        context: "The parser can keep or drop empty names.",
+        options: [{ label: "keep", consequence: "empty names reach storage" }, { label: "drop", consequence: "callers see a refusal" }],
+        recommendation: "drop, because the Goal names zero invalid changes",
+        answerForm: "keep or drop",
+      });
+      expect(question.recommendation).toBe("drop, because the Goal names zero invalid changes");
+      const waitPath = ownerWaitPath(join(root, ".git"), plan, "D1-S1-T1");
+      expect(readOwnerWait(waitPath)?.options).toEqual([{ label: "keep", consequence: "empty names reach storage" }, { label: "drop", consequence: "callers see a refusal" }]);
+      expect((await resumeTask(root, { plan, taskId: "D1-S1-T1", decodeRun: decodeTaskRun })).marker?.context).toBe("The parser can keep or drop empty names.");
+      expect((await resumeTask(root, { plan, taskId: "D1-S1-T1", decodeRun: decodeTaskRun })).marker).toBeNull();
+
+      const commit = work(root, git, "scripts/base.ts", "export const base = 1;\n");
+      await completeTask(root, { plan, taskIds: ["D1-S1-T1"], commit, result: "base shipped" }, decodeTaskRun);
+      let runs = 0;
+      const close = (): "CLOSED" | "PARTIAL" => {
+        let status: "CLOSED" | "PARTIAL" = "PARTIAL";
+        mutatePlanFile(root, plan, "close", (current) => {
+          const result = closePlanStage(current, "D1-S1", { root, head: git("rev-parse", "HEAD"), run: () => { runs += 1; return 0; } });
+          status = result.status;
+          return { body: result.body };
+        });
+        git("commit", "-qm", "plan: close D1-S1");
+        return status;
+      };
+      expect(close()).toBe("CLOSED");
+
+      const repair = await startTask(root, { plan, taskId: "D1-S1-T1", checkpoint: null, ...noIdentity });
+      expect(repair.taskId).toBe("D1-S1-T1");
+      const fixed = work(root, git, "scripts/base.ts", "export const base = 2;\n");
+      const done = await completeTask(root, { plan, taskIds: ["D1-S1-T1"], commit: fixed, result: "base repaired" }, decodeTaskRun);
+      expect(done.commit).toBe(fixed);
+      const body = readFileSync(join(root, plan), "utf8");
+      expect(body.match(/^- \[x\] D1-S1-T1 — /gm)).toHaveLength(1);
+      expect(body).toContain(`— ${fixed}`);
+      expect(body.match(/^\| D1-S1-T1 \| /gm)).toHaveLength(2);
+      expect(body).toContain("- [ ] `bun test` exits 0 — behavior is proven");
+      expect(close()).toBe("CLOSED");
+      expect(runs).toBe(2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // @test-id: tst_scripts_planupdate_028
+  // @scenario: scn_plan_control_parent_delivery_001
+  // @covers: planctl/src/core/plan-update.ts::startTask
+  // @deterministic: yes
+  // @invariant: a Task of an inactive child Delivery starts when every parent has a green PR on its current head, and that makes the child active; a pending or red parent refuses by name.
+  it("tst_scripts_planupdate_028 starts an inactive child Delivery under a green parent and refuses under pending or red", async () => {
+    const { root, git } = repository(approvedTwoDeliveries());
+    try {
+      const head = git("rev-parse", "HEAD");
+      const publication = (ci: "green" | "pending" | "red", headSha = head) => () => ({ prUrl: "https://example.test/pr/1", ci, headSha, runId: "1", attempt: 1, merged: false });
+      await expect(startTask(root, { plan, taskId: "D2-S1-T1", checkpoint: null, identity: null, decodeRun: decodeTaskRun, publication: publication("pending") })).rejects.toThrow(/D1.*pending/);
+      await expect(startTask(root, { plan, taskId: "D2-S1-T1", checkpoint: null, identity: null, decodeRun: decodeTaskRun, publication: publication("red") })).rejects.toThrow(/D1.*red/);
+      await expect(startTask(root, { plan, taskId: "D2-S1-T1", checkpoint: null, identity: null, decodeRun: decodeTaskRun, publication: publication("green", "f".repeat(40)) })).rejects.toThrow(/D1.*head/);
+      const child = await startTask(root, { plan, taskId: "D2-S1-T1", checkpoint: null, identity: null, decodeRun: decodeTaskRun, publication: publication("green") });
+      expect(child.deliveryId).toBe("D2");
+      expect(readFileSync(join(root, plan), "utf8")).toMatch(/^Active Delivery: D2\s*$/m);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // @test-id: tst_scripts_planupdate_029
+  // @scenario: scn_plan_control_linked_worktree_001
+  // @covers: planctl/src/core/plan-update.ts::startTask
+  // @deterministic: yes
+  // @invariant: a linked worktree never reads another worktree's running Task as its own.
+  it("tst_scripts_planupdate_029 refuses to adopt a Task running in another worktree of the same repository", async () => {
+    const { root, git } = repository(approvedTwoDeliveries());
+    const linked = join(root, "..", `${basename(root)}-linked`);
+    try {
+      await startTask(root, { plan, taskId: null, checkpoint: "half done", ...noIdentity });
+      git("worktree", "add", "-q", "-b", "feat/other", linked);
+      await expect(startTask(linked, { plan, taskId: null, checkpoint: null, ...noIdentity })).rejects.toThrow(new RegExp(`D1-S1-T1 .*${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    } finally {
+      rmSync(linked, { recursive: true, force: true });
       rmSync(root, { recursive: true, force: true });
     }
   });

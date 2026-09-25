@@ -38,6 +38,7 @@ function plan(planRevision: string): ReportedPlanProgress {
     progress: {
       deliveryId: "D1",
       tasks: { completed: 1, total: 4 },
+      wholePlan: { completed: 1, total: 4 },
       activeMinutes: { completed: 20, remaining: 55, total: 75 },
       credits: { completed: 5, remaining: 15, total: 20 },
       completionPercent: 20 / 75 * 100,
