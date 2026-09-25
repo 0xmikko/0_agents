@@ -11,7 +11,7 @@ Unattended decisions: allowed
 
 1. One command, `bash lib/setup-code-production.sh --repo <dir> --base <branch>`, installs the new process into any consumer repository. Afterwards the runtime, hooks and workflow are installed and `code-production.base` is set. The three flow skills exist as managed copies for Claude and Codex, the planctl MCP server is registered once per user, and `planctl progress --root <dir>` answers.
 2. The three flow skills (`blueprint`, `blueprint-start`, `end-work`) name only MCP tools and read as one page each. No CLI flags, no Stage result file, no `--reason`; the reply after every write is the three lines the tool returns.
-3. A second clone of magnis-app, installed with that one command, runs a plan end to end through the tools while the first clone keeps the current process. The owner compares the two on the event log (`planctl stats`) and the plan file.
+3. A second clone of magnis-app on this machine, installed with that one command, runs the same kind of plan through the tools while the first clone keeps the current process. Both plans are measured on one yardstick: elapsed time from init to a ready PR, owner messages, agent stops, commits per Stage, CI runs and review findings.
 
 ## Why now
 
@@ -35,6 +35,23 @@ The consumer repository carries the skills it runs. Today magnis-app has its own
 The installer is one shell script in `lib/`, in the shape of `lib/install-linear-mcp.sh` and `lib/setup-planctl.sh`: it validates its two arguments, runs `agent-stack install <repo> --base <branch>`, then `lib/install-planctl-mcp.sh`, then prints the progress screen. It refuses a repository without the seven `agent:*` scripts, as `agent-stack check` does today. It never edits `.claude/settings.json`: hooks stay the consumer's.
 
 `lib/install-planctl-mcp.sh` registers the server once per user, idempotently: `claude mcp add -s user planctl -- planctl mcp` and `codex mcp add planctl -- planctl mcp`, skipping what `claude mcp get planctl` and `codex mcp get planctl` already report. `update.sh` gains the step after `install-linear-mcp.sh`.
+
+### The A/B on this machine
+
+Clone A is the existing `magnis-app` checkout with its own `.claude/skills` and `.agents/skills` copies of the old flow; nothing changes there. Clone B is a fresh clone of the same origin in another directory, for example `~/Coding/magnis-app-b`, on branches prefixed `b/` so its PRs are told apart. The one command installs the new process into B only. The managed skill copies in B shadow the machine's global skills, and A's old copies shadow them too, so each clone's agent reads its own flow. The MCP registration is per user; A's old skills never name a tool, so A's agents keep the CLI flow.
+
+The same request goes to both clones: a small feature or bug from the magnis-app backlog, one plan each, one agent each. The yardstick is one table with six rows per plan, and every number has a source that exists in both clones:
+
+| Measure | Clone A, current process | Clone B, new process |
+|---|---|---|
+| Elapsed time, init to ready PR | plan file commit time to the PR's ready event (`gh pr view --json`) | the same |
+| Owner messages | count in the session transcript | the same, and `planctl stats` owner-wait rows |
+| Agent stops | turns that ended in a question or a refusal, counted in the transcript | refused rows in `planctl stats` beside the transcript count |
+| Commits per Stage | `git log` on the plan branch | the same |
+| CI runs | `gh run list --branch` | the same, and the CI rows in `planctl stats` |
+| Review findings | the reviewer's report on the ready PR | the same |
+
+The event log adds what A cannot record: per-call durations and refusals with reasons. The transcript counts are the common ground, so the comparison never depends on the log alone.
 
 ### Interfaces
 
@@ -109,7 +126,7 @@ Each skill exists once, in `shared/skills`; `claude/skills` and `codex/skills` k
 
 ## Not verified
 
-The parallel comparison on the second magnis-app clone is the owner's run, after the merge; this plan makes it possible and does not perform it. The Codex registration is exercised with a fake `codex` on PATH; the live registration is checked at the first install. The skills are read by agents, not executed by tests; the audit proves their vocabulary, not their behavior.
+The parallel comparison on the second magnis-app clone is the owner's run, after the merge; this plan makes it possible and does not perform it. The transcript counts of owner messages and agent stops are read by hand; nothing in this plan automates them. The Codex registration is exercised with a fake `codex` on PATH; the live registration is checked at the first install. The skills are read by agents, not executed by tests; the audit proves their vocabulary, not their behavior.
 
 ## Owner request
 
