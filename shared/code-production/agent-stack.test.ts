@@ -101,9 +101,9 @@ afterEach(() => {
 describe("agent-stack", () => {
   test("tst_agent_stack_001 installs one framework-agnostic contract", () => {
     const root = fixture();
-    const installed = installStack(root);
+    const installed = installStack(root, { base: "staging" });
 
-    expect(installed.files).toHaveLength(9);
+    expect(installed.files).toHaveLength(15);
     expect(git(root, "config", "--worktree", "--get", "core.hooksPath")).toBe(".githooks");
     expect(readFileSync(join(root, ".gitignore"), "utf8")).toContain("/.worktrees/");
     expect(readFileSync(join(root, ".gitignore"), "utf8")).toContain("/.tmp/code-production/");
@@ -124,7 +124,7 @@ describe("agent-stack", () => {
     const root = fixture();
     writeFileSync(join(root, "package.json"), packageJson("agent:test:e2e"));
 
-    expect(() => installStack(root)).toThrow("missing required script agent:test:e2e");
+    expect(() => installStack(root, { base: "staging" })).toThrow("missing required script agent:test:e2e");
   });
 
   test("tst_agent_stack_003 never overwrites a repository-owned hook", () => {
@@ -132,24 +132,24 @@ describe("agent-stack", () => {
     mkdirSync(join(root, ".githooks"), { recursive: true });
     writeFileSync(join(root, ".githooks/pre-commit"), "#!/bin/sh\necho project-hook\n");
 
-    expect(() => installStack(root)).toThrow("refusing to overwrite unmanaged .githooks/pre-commit");
+    expect(() => installStack(root, { base: "staging" })).toThrow("refusing to overwrite unmanaged .githooks/pre-commit");
     expect(readFileSync(join(root, ".githooks/pre-commit"), "utf8")).toContain("project-hook");
   });
 
   test("tst_agent_stack_004 check detects drift and install repairs managed files", () => {
     const root = fixture();
-    installStack(root);
+    installStack(root, { base: "staging" });
     const workflow = join(root, ".github/workflows/code-production.yml");
     writeFileSync(workflow, `${readFileSync(workflow, "utf8")}# drift\n`);
 
     expect(() => checkStack(root)).toThrow("managed stack is missing or stale");
-    installStack(root);
+    installStack(root, { base: "staging" });
     expect(() => checkStack(root)).not.toThrow();
   });
 
   test("tst_agent_stack_005 hooks accept journaled plan writes and reject raw edits", () => {
     const root = fixture();
-    installStack(root);
+    installStack(root, { base: "staging" });
     const planctl = ".agents/code-production/runtime/planctl.ts";
     const plan = "docs/plans/example.md";
     const runPlan = (...args: readonly string[]): number => spawnSync(
@@ -201,7 +201,7 @@ describe("agent-stack", () => {
       "agent:verify:docs": "printf d >> docs-gate-count.txt",
       "agent:verify:pr": "printf p >> pr-gate-count.txt",
     }));
-    installStack(root);
+    installStack(root, { base: "staging" });
     git(root, "add", ".");
     git(root, "commit", "-m", "test: install stack");
     rmSync(join(root, "docs-gate-count.txt"), { force: true });
@@ -238,9 +238,9 @@ describe("agent-stack", () => {
       ciWorkflow: ".github/workflows/ci.yml",
     }));
 
-    const installed = installStack(root);
+    const installed = installStack(root, { base: "staging" });
 
-    expect(installed.files).toHaveLength(8);
+    expect(installed.files).toHaveLength(14);
     expect(installed.files).not.toContain(".github/workflows/code-production.yml");
     expect(readFileSync(workflow, "utf8")).toBe("name: Existing CI\n");
     const manifest = readFileSync(join(root, ".agents/code-production/manifest.json"), "utf8");
@@ -268,7 +268,7 @@ describe("agent-stack", () => {
       ciWorkflow: ".github/workflows/ci.yml",
     }));
 
-    expect(() => installStack(root)).toThrow("external CI workflow does not exist");
+    expect(() => installStack(root, { base: "staging" })).toThrow("external CI workflow does not exist");
   });
 
   test("tst_agent_stack_009 refuses a directory in place of an external CI workflow", () => {
@@ -279,7 +279,7 @@ describe("agent-stack", () => {
       ciWorkflow: ".github/workflows/ci.yml",
     }));
 
-    expect(() => installStack(root)).toThrow("external CI workflow must be a regular file");
+    expect(() => installStack(root, { base: "staging" })).toThrow("external CI workflow must be a regular file");
   });
 
   test("tst_agent_stack_010 refuses inconsistent external CI declarations", () => {
@@ -294,7 +294,7 @@ describe("agent-stack", () => {
     for (const [agentStack, message] of candidates) {
       const root = fixture();
       writeFileSync(join(root, "package.json"), packageJson(undefined, {}, agentStack));
-      expect(() => installStack(root)).toThrow(message);
+      expect(() => installStack(root, { base: "staging" })).toThrow(message);
     }
   });
 
@@ -311,7 +311,7 @@ describe("agent-stack", () => {
       ciWorkflow: ".github/workflows/ci.yml",
     }));
 
-    expect(() => installStack(root)).toThrow("remove it explicitly to avoid duplicate gates");
+    expect(() => installStack(root, { base: "staging" })).toThrow("remove it explicitly to avoid duplicate gates");
     expect(readFileSync(externalWorkflow, "utf8")).toBe("name: Existing CI\n");
     expect(readFileSync(managedWorkflow, "utf8")).toContain("Managed by 0_agents");
   });
@@ -327,7 +327,7 @@ describe("agent-stack", () => {
       ciWorkflow: ".github/workflows/ci.yml",
     }));
 
-    expect(() => installStack(root)).toThrow("external CI workflow must be a regular file");
+    expect(() => installStack(root, { base: "staging" })).toThrow("external CI workflow must be a regular file");
   });
 
   test("tst_agent_stack_013 keeps markerless approved plans operable through the legacy freeze", () => {
@@ -355,7 +355,7 @@ describe("agent-stack", () => {
     ].join("\n"));
     git(root, "add", plan);
     git(root, "commit", "-m", "plan: add legacy fixture");
-    installStack(root);
+    installStack(root, { base: "staging" });
 
     writeFileSync(planPath, readFileSync(planPath, "utf8")
       .replace("Original contract.", "Owner-amended contract.")
@@ -367,5 +367,31 @@ describe("agent-stack", () => {
     });
     expect(`${committed.stdout}${committed.stderr}`).not.toMatch(/no journal|missing canonical protocol/i);
     expect(committed.status).toBe(0);
+  });
+
+  test("tst_agent_stack_014 install --base writes the integration branch and check names the command when it is missing", () => {
+    const root = fixture();
+    installStack(root, { base: "staging" });
+    expect(git(root, "config", "--get", "code-production.base")).toBe("staging");
+    expect(() => checkStack(root)).not.toThrow();
+    git(root, "config", "--unset", "code-production.base");
+    expect(() => checkStack(root)).toThrow("git config code-production.base <branch>");
+  });
+
+  test("tst_agent_stack_015 install writes the three flow skills as managed copies and check keeps them honest", () => {
+    const root = fixture();
+    mkdirSync(join(root, ".claude/skills/quick-fix"), { recursive: true });
+    writeFileSync(join(root, ".claude/skills/quick-fix/SKILL.md"), "# quick-fix\n");
+    const installed = installStack(root, { base: "staging" });
+    const copies = ["blueprint", "blueprint-start", "end-work"].flatMap((name) => [`.claude/skills/${name}/SKILL.md`, `.agents/skills/${name}/SKILL.md`]);
+    for (const copy of copies) {
+      expect(installed.files).toContain(copy);
+      expect(readFileSync(join(root, copy), "utf8")).toBe(readFileSync(resolve(import.meta.dir, `../skills/${copy.split("/")[2]}/SKILL.md`), "utf8"));
+    }
+    expect(readFileSync(join(root, ".claude/skills/quick-fix/SKILL.md"), "utf8")).toBe("# quick-fix\n");
+    writeFileSync(join(root, ".claude/skills/blueprint/SKILL.md"), "# edited by hand\n");
+    expect(() => checkStack(root)).toThrow(".claude/skills/blueprint/SKILL.md");
+    installStack(root, { base: "staging" });
+    expect(() => checkStack(root)).not.toThrow();
   });
 });

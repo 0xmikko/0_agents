@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -38,6 +38,19 @@ interface ManagedFile {
   readonly target: string;
   readonly executable: boolean;
   readonly guarded: boolean;
+}
+
+/** The three flow skills every consumer carries as copies: the repository's own copy shadows the machine's. */
+const FLOW_SKILLS = ["blueprint", "blueprint-start", "end-work"] as const;
+
+/** One copy per agent: Claude reads .claude/skills, Codex reads .agents/skills. */
+function skillFiles(sourceRoot: string): readonly Omit<ManagedFile, "content">[] {
+  return FLOW_SKILLS.flatMap((name) => [".claude/skills", ".agents/skills"].map((home) => ({
+    source: join(sourceRoot, "../skills", name, "SKILL.md"),
+    target: `${home}/${name}/SKILL.md`,
+    executable: false,
+    guarded: false,
+  })));
 }
 
 export interface StackReport {
@@ -179,7 +192,7 @@ function managedFiles(sourceRoot: string, ci: CiContract): readonly ManagedFile[
     },
   ];
   const selected = ci.kind === "external" ? files.filter((file) => file.target !== ".github/workflows/code-production.yml") : files;
-  return selected.map((file) => ({
+  return [...selected, ...skillFiles(sourceRoot)].map((file) => ({
     ...file,
     content: readFileSync(file.source, "utf8"),
   }));
@@ -239,7 +252,13 @@ function ensureWorktreeIgnore(root: string): void {
   writeFileSync(target, `${current}${separator}\n# Managed local agent state\n${entries.join("\n")}\n`);
 }
 
-export function installStack(rootArg: string, sourceRoot = import.meta.dir): StackReport {
+export interface AgentStackInstallOptions {
+  /** The integration branch this repository's plans branch from; written to code-production.base. */
+  readonly base?: string;
+}
+
+/** @tested-by: tst_agent_stack_014, tst_agent_stack_015 */
+export function installStack(rootArg: string, options: AgentStackInstallOptions = {}, sourceRoot = import.meta.dir): StackReport {
   const root = resolve(rootArg);
   assertRepository(root);
   const contract = readPackage(root);
@@ -250,7 +269,15 @@ export function installStack(rootArg: string, sourceRoot = import.meta.dir): Sta
   ensureWorktreeIgnore(root);
   git(root, ["config", "extensions.worktreeConfig", "true"]);
   git(root, ["config", "--worktree", "core.hooksPath", ".githooks"]);
+  if (options.base !== undefined) git(root, ["config", "code-production.base", options.base]);
   return { root, files: files.map((file) => file.target), scripts: Object.keys(contract.scripts) };
+}
+
+function assertBaseBranch(root: string): void {
+  const configured = spawnSync("git", ["-C", root, "config", "--get", "code-production.base"], { encoding: "utf8" });
+  if (configured.status !== 0 || configured.stdout.trim() === "") {
+    throw new Error("code-production.base is not set; run: git config code-production.base <branch>");
+  }
 }
 
 export function checkStack(rootArg: string, sourceRoot = import.meta.dir): StackReport {
@@ -269,15 +296,19 @@ export function checkStack(rootArg: string, sourceRoot = import.meta.dir): Stack
   if (git(root, ["config", "--worktree", "--get", "core.hooksPath"]) !== ".githooks") {
     throw new Error("core.hooksPath must be .githooks");
   }
+  assertBaseBranch(root);
   return { root, files: files.map((file) => file.target), scripts: Object.keys(contract.scripts) };
 }
 
-const HELP = `Usage: agent-stack <command> [repository]
+const HELP = `Usage: agent-stack <command> [repository] [--base <branch>]
 
 Commands:
   install [repo]   Validate package.json, vendor the deterministic runtime,
-                   install managed Git hooks/GitHub workflow and select hooks
-  check [repo]     Refuse missing scripts, stale managed files or wrong hooks
+                   install managed Git hooks/GitHub workflow, the three flow
+                   skills as copies, select hooks, and with --base write
+                   code-production.base, the branch plans branch from
+  check [repo]     Refuse missing scripts, stale managed files, wrong hooks
+                   or a missing code-production.base
   --help           Show this help
 
 The repository defaults to the current directory. Read:
@@ -294,9 +325,13 @@ function main(args: readonly string[]): void {
     console.log(HELP);
     return;
   }
-  const root = args[1] ?? process.cwd();
+  const baseIndex = args.indexOf("--base");
+  const base = baseIndex === -1 ? undefined : args[baseIndex + 1];
+  if (baseIndex !== -1 && (base === undefined || base.startsWith("--"))) throw new Error("--base needs a branch name");
+  const positional = args.slice(1).filter((arg, index, all) => arg !== "--base" && all[index - 1] !== "--base");
+  const root = positional[0] ?? process.cwd();
   const report = command === "install"
-    ? installStack(root)
+    ? installStack(root, base === undefined ? {} : { base })
     : command === "check"
       ? checkStack(root)
       : (() => { throw new Error(`unknown command ${command}`); })();

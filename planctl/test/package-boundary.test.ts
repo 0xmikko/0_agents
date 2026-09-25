@@ -74,7 +74,7 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
     const installed = installStack(consumer);
 
     // Four runtime programs, vocabulary, three hooks, and the workflow.
-    expect(installed.files).toHaveLength(9);
+    expect(installed.files).toHaveLength(15);
     for (const [source, target] of CANONICAL_RUNTIME) {
       expect(readFileSync(join(consumer, target), "utf8")).toBe(
         readFileSync(join(REPOSITORY_ROOT, "planctl", source), "utf8"),
