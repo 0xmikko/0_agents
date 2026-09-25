@@ -9,7 +9,7 @@ Unattended decisions: allowed
 <!-- plan:spec:start -->
 ## The Goal
 
-1. One command, `bash lib/setup-code-production.sh --repo <dir> --base <branch>`, installs the new process into any consumer repository. Afterwards the runtime, hooks and workflow are installed, `code-production.base` is set, the three flow skills exist as managed copies for Claude and Codex, the planctl MCP server is registered once per user, and `planctl progress --root <dir>` answers.
+1. One command, `bash lib/setup-code-production.sh --repo <dir> --base <branch>`, installs the new process into any consumer repository. Afterwards the runtime, hooks and workflow are installed and `code-production.base` is set. The three flow skills exist as managed copies for Claude and Codex, the planctl MCP server is registered once per user, and `planctl progress --root <dir>` answers.
 2. The three flow skills (`blueprint`, `blueprint-start`, `end-work`) name only MCP tools and read as one page each. No CLI flags, no Stage result file, no `--reason`; the reply after every write is the three lines the tool returns.
 3. A second clone of magnis-app, installed with that one command, runs a plan end to end through the tools while the first clone keeps the current process. The owner compares the two on the event log (`planctl stats`) and the plan file.
 
@@ -56,7 +56,7 @@ interface ManagedFile {
 
 ### The three skills
 
-`blueprint` opens with `init` (root, title), reads the returned sections, vocabulary and Goal rule, writes the SPEC as one text and sends it with `submit_spec` (the returned `baseRevision` from `init`, the owner's request, the whole SPEC). It shows the owner the three-line reply verbatim and stops. After the owner's word it calls `approve_spec`, then `put_delivery` and `put_stage` with the returned revisions, reading each reply's findings, and stops again with the reply. After the second word: `approve_plan`. No file is edited by hand; no `mdurl` call; no Stage result file.
+`blueprint` opens with `init` (root, title) and reads the returned sections, vocabulary and Goal rule. It writes the SPEC as one text and sends it with `submit_spec`: the `baseRevision` from `init`, the owner's request, the whole SPEC. It shows the owner the three-line reply verbatim and stops. After the owner's word it calls `approve_spec`, then `put_delivery` and `put_stage` with the returned revisions, reading each reply's findings, and stops again with the reply. After the second word: `approve_plan`. No file is edited by hand; no `mdurl` call; no Stage result file.
 
 `blueprint-start` opens with `start_task` (plan) and follows the brief: RED with the printed command, GREEN, the diff review, one commit. Then `complete_task` takes the plan, the Task IDs, the commit and the result sentence. It closes a Stage with `close_stage` and continues with `start_task` again. It records a question with `needs_owner` as the four-part form and clears it with `resume_task`. It asks `progress` for the whole picture and after a context compaction. Delivery: push, CI, ready, the PR URL and the plan URL from the last reply.
 
