@@ -1,8 +1,8 @@
 # planctl rollout: the skills on the tools and one installer
 
-Status: SPEC_LOCKED  
+Status: APPROVED  
 Spec lock: sha256:c8b973007e0ab1af1506ce4377f918b476c257f72728f9b93e5ca3e99fc24458 owner:Да, давай это воплотим и запустим параллельно  
-Implementation lock: unlocked  
+Implementation lock: sha256:22a8ac79ac1165add0c49cd1210ddabee24dfdc3a8b4f8766caa8cb7889fda16 owner:Да, давай его исполним и развернем  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -268,4 +268,6 @@ Proven by planctl/test/instruction-audit.test.ts. The three skills carry no plan
 ## Execution log
 
 - lock-spec sha256:c8b973007e0ab1af1506ce4377f918b476c257f72728f9b93e5ca3e99fc24458 owner:Да, давай это воплотим и запустим параллельно
+
+- approve sha256:22a8ac79ac1165add0c49cd1210ddabee24dfdc3a8b4f8766caa8cb7889fda16 owner:Да, давай его исполним и развернем
 <!-- plan:execution:end -->
