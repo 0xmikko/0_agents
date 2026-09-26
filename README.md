@@ -32,6 +32,10 @@ bash ~/Coding/0_agents/lib/setup-code-production.sh --repo ~/Coding/magnis-app -
 The registration alone is `bash lib/install-planctl-mcp.sh` (also a step of
 `update.sh`): `claude mcp add -s user planctl -- planctl mcp` and
 `codex mcp add planctl -- planctl mcp`, skipping what is already registered.
+It then approves every tool of the server for both agents, the way each
+stores "Always allow" itself (Codex: one `approval_mode = "approve"` table
+per tool in `~/.codex/config.toml`; Claude: `mcp__planctl` in the
+permissions of `~/.claude/settings.json`), so no tool call asks.
 
 Optional, after context compaction: a hook that runs `planctl progress
 --note` prints one line only when a Task is running in the current

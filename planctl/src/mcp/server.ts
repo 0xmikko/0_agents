@@ -489,6 +489,11 @@ export async function dispatchTool(deps: ServerDependencies, name: string, args:
   return result;
 }
 
+/** The names of the tools the server serves, for the installer that approves them. */
+export function toolNames(): readonly string[] {
+  return Object.keys(TOOLS);
+}
+
 /** The planctl tools over stdio. @tested-by: tst_unit_planctl_mcp_001 */
 export function createPlanctlServer(deps: ServerDependencies): Server {
   const server = new Server({ name: "planctl", version: "0.1.0" }, { capabilities: { tools: {} } });

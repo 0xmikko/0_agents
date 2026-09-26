@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -37,20 +37,36 @@ describe("setup-code-production", () => {
    * @scenario: scn_planctl_setup_mcp_001
    * @covers: lib/install-planctl-mcp.sh
    * @deterministic: yes
-   * @invariant: the registration runs once per user for Claude and Codex; a second run adds nothing.
+   * @invariant: the registration runs once per user for Claude and Codex and approves every tool of the server for both, so no call asks; a second run adds nothing.
    */
-  it("tst_unit_planctl_setup_001 registers planctl mcp once for Claude and Codex", () => {
+  it("tst_unit_planctl_setup_001 registers planctl mcp once for Claude and Codex and approves every tool", () => {
     const agents = fakeAgents();
+    const home = mkdtempSync(join(tmpdir(), "home-"));
+    mkdirSync(join(home, ".codex"));
+    writeFileSync(join(home, ".codex/config.toml"), 'approval_policy = "on-request"\n\n[mcp_servers.planctl]\ncommand = "planctl"\nargs = ["mcp"]\n');
+    mkdirSync(join(home, ".claude"));
+    writeFileSync(join(home, ".claude/settings.json"), `${JSON.stringify({ permissions: { allow: ["Bash(*)"], deny: ["Bash(sudo *)"] } }, null, 2)}\n`);
     try {
       for (let run = 0; run < 2; run += 1) {
-        const result = spawnSync("bash", [join(REPO, "lib/install-planctl-mcp.sh")], { encoding: "utf8", env: { ...process.env, PATH: `${agents.bin}:${process.env.PATH ?? ""}` } });
+        const result = spawnSync("bash", [join(REPO, "lib/install-planctl-mcp.sh")], { encoding: "utf8", env: { ...process.env, HOME: home, PATH: `${agents.bin}:${process.env.PATH ?? ""}` } });
         expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
       }
       const calls = readFileSync(agents.log, "utf8").trim().split("\n");
       expect(calls.filter((line) => line === "claude mcp add -s user planctl -- planctl mcp")).toHaveLength(1);
       expect(calls.filter((line) => line === "codex mcp add planctl -- planctl mcp")).toHaveLength(1);
+      const tools = execFileSync("bun", [join(REPO, "planctl/src/cli/main.ts"), "mcp", "--tools"], { encoding: "utf8" }).trim().split("\n");
+      expect(tools).toContain("submit_spec");
+      const codex = readFileSync(join(home, ".codex/config.toml"), "utf8");
+      for (const tool of tools) {
+        expect(codex.split(`[mcp_servers.planctl.tools.${tool}]\napproval_mode = "approve"\n`)).toHaveLength(2);
+      }
+      expect(codex.startsWith('approval_policy = "on-request"\n\n[mcp_servers.planctl]\ncommand = "planctl"\nargs = ["mcp"]\n')).toBe(true);
+      const claude = JSON.parse(readFileSync(join(home, ".claude/settings.json"), "utf8")) as { permissions: { allow: string[]; deny: string[] } };
+      expect(claude.permissions.allow).toEqual(["Bash(*)", "mcp__planctl"]);
+      expect(claude.permissions.deny).toEqual(["Bash(sudo *)"]);
     } finally {
       rmSync(agents.bin, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
     }
   });
 
