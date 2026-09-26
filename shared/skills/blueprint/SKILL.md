@@ -11,8 +11,10 @@ that reply to the owner verbatim.
 
 ## SPEC
 
-1. Create `feat/<slug>` from the repository's base branch in its own
-   worktree. Call `init` with `root` (the worktree) and a `title`. It creates
+1. Call `progress` with `root` (the worktree). When the branch already has a
+   plan, it names it: continue on that plan and never call `init` again.
+   Otherwise create `feat/<slug>` from the repository's base branch in its
+   own worktree and call `init` with `root` and a `title`. It creates
    `docs/plans/<date>-<slug>.md`, stages and journals it, and returns the
    required sections, the vocabulary and the Goal rule. Commit the plan.
 2. Explore existing code before proposing new mechanisms. Agree on the Goal,
