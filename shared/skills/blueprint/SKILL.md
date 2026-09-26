@@ -22,7 +22,8 @@ that reply to the owner verbatim.
    invariants. The SPEC says what will be; the past appears only as one
    sentence "now X" where X is being fixed.
 3. Write the SPEC as one text with the returned sections, in the vocabulary,
-   and send it with `submit_spec`: the plan, the `baseRevision` from `init`,
+   and send it with `submit_spec`: the plan, the `baseRevision` that `init`
+   or `progress` returned,
    the owner's request in their words, and the whole SPEC. The tool fixes
    line endings and vocabulary itself, returns every lint error at once with
    its line and replacement, and asks the model once about the changed lines.
