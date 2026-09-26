@@ -11,9 +11,10 @@
 #   5. lib/install-runtimes.sh     (claude native binary + codex npm — upgrade)
 #   6. mdurl shared skill check    (Claude/Codex use repo symlinks from shared/skills)
 #   7. lib/install-linear-mcp.sh   (Linear MCP register; OAuth login skipped)
-#   8. lib/install-lazyvim.sh      (only if --with-lazyvim or detected nvim use)
-#   9. lib/install-completions.sh  (zsh completions for zellij/gh/bun/codex/...)
-#  10. lib/omarchy_hotkey.sh       (auto-detected Omarchy desktop only)
+#   8. lib/install-planctl-mcp.sh  (planctl MCP register for Claude and Codex, once per user)
+#   9. lib/install-lazyvim.sh      (only if --with-lazyvim or detected nvim use)
+#  10. lib/install-completions.sh  (zsh completions for zellij/gh/bun/codex/...)
+#  11. lib/omarchy_hotkey.sh       (auto-detected Omarchy desktop only)
 #
 # Per-step failures DO stop the run (set -e). Intentional skips via flags.
 #
@@ -26,8 +27,8 @@
 #   update.sh --planctl-role <machine|server> --planctl-config <absolute.toml>
 #   update.sh --skip <name>       # skip a specific step (repeatable):
 #                                   git, install, bin, codex-config, runtimes,
-#                                   mdurl-skill, linear-mcp, lazyvim, completions,
-#                                   omarchy-hotkey
+#                                   mdurl-skill, linear-mcp, planctl-mcp, lazyvim,
+#                                   completions, omarchy-hotkey
 
 set -euo pipefail
 
@@ -169,6 +170,14 @@ else
   # The script handles already-registered case as ✓; OAuth login is interactive
   # and a no-op when token is fresh, so safe to re-run.
   bash "$REPO_DIR/lib/install-linear-mcp.sh" || warn "install-linear-mcp.sh exited non-zero (continuing)"
+fi
+
+# ─── 8. install-planctl-mcp.sh ───────────────────────────────────────────
+if should_skip planctl-mcp; then
+  ok "skipping install-planctl-mcp.sh"
+else
+  say "install-planctl-mcp.sh"
+  bash "$REPO_DIR/lib/install-planctl-mcp.sh"
 fi
 
 # ─── 8. install-lazyvim.sh (opt-in) ──────────────────────────────────────

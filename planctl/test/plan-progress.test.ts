@@ -202,6 +202,9 @@ describe("where am I", () => {
       expect(progressNote(draft)).toBeNull();
       execFileSync("git", ["checkout", "-qb", "feat/elsewhere"], { cwd: root });
       expect(await planProgress(root, { plan: null, publication: () => null, sourceCommit: null, decodeRun: decodeTaskRun })).toBeNull();
+      // a plan named before the date prefix existed is found by its bare slug
+      writeFileSync(join(root, "docs/plans/elsewhere.md"), createDraftPlan("Older fixture"));
+      expect((await planProgress(root, { plan: null, publication: () => null, sourceCommit: null, decodeRun: decodeTaskRun }))?.plan).toBe("docs/plans/elsewhere.md");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

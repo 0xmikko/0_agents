@@ -171,7 +171,11 @@ describe("planctl mcp", () => {
       const plan = (started.structuredContent as { plan: string }).plan;
       const absolute = join(root, plan);
       const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result.");
-      const submitted = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: protocolSpecHash(readFileSync(absolute, "utf8")), ownerRequest: "Reject empty names", spec });
+      // A plan continued in a later session has no init reply: progress names the revision submit_spec needs.
+      const seen = await dispatchTool(deps, "progress", { root });
+      expect((seen.structuredContent as { revision?: string }).revision).toBe(protocolSpecHash(readFileSync(absolute, "utf8")));
+      expect(text(seen)).toContain(`Revision  ${protocolSpecHash(readFileSync(absolute, "utf8"))}`);
+      const submitted = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec });
       expect(submitted.isError ?? false, text(submitted)).toBe(false);
       const submission = submitted.structuredContent as { revision: string; url: string; reply: string; checkStatus: string };
       expect(submission.checkStatus).toBe("checked");

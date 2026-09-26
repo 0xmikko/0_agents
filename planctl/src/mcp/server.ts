@@ -260,7 +260,8 @@ const TOOLS = {
       });
       if (note === true) return reply({ note: progressNote(view) }, progressNote(view) ?? "");
       if (view === null) return reply({ plan: null }, "");
-      return reply({ ...view }, renderProgressView(view));
+      const revision = planRevision(readFileSync(resolve(target.root, view.plan), "utf8"), view.state);
+      return reply({ ...view, revision }, `${renderProgressView(view)}\nRevision  ${revision}`);
     },
   }),
   start_task: tool({
@@ -353,6 +354,11 @@ type ToolName = keyof typeof TOOLS;
 /** The tools that write the plan: each republishes it and returns url and reply. */
 const WRITERS: ReadonlySet<ToolName> = new Set<ToolName>(["submit_spec", "approve_spec", "approve_plan", "put_delivery", "put_stage", "remove_stage", "amend", "add_deviation", "complete_task", "close_stage"]);
 
+/** The revision a write must name: the SPEC hash while the SPEC is a draft, the implementation hash after. */
+function planRevision(saved: string, state: string): string {
+  return state === "SPEC_DRAFT" ? protocolSpecHash(saved) : protocolImplementationHash(saved);
+}
+
 /** After a write: publish the saved bytes and add url and the owner reply; a publish failure is an error, never a stale URL.
  * @tested-by: tst_unit_planctl_mcp_002
  */
@@ -362,9 +368,7 @@ function published(deps: ServerDependencies, args: Record<string, unknown>, resu
   const structured = result.structuredContent ?? {};
   const saved = readFileSync(resolve(root, plan), "utf8");
   const state = typeof structured.state === "string" ? structured.state : planState(saved);
-  const revision = typeof structured.revision === "string"
-    ? structured.revision
-    : state === "SPEC_DRAFT" ? protocolSpecHash(saved) : protocolImplementationHash(saved);
+  const revision = typeof structured.revision === "string" ? structured.revision : planRevision(saved, state);
   const findings = Array.isArray(structured.findings) ? structured.findings as readonly { blocking?: unknown }[] : null;
   const checks = "checkStatus" in structured && findings !== null
     ? { errors: findings.filter((finding) => finding.blocking === true).length, notes: findings.filter((finding) => finding.blocking === false).length }
@@ -483,6 +487,11 @@ export async function dispatchTool(deps: ServerDependencies, name: string, args:
   }
   appendEvent(deps.eventLog, eventOf(deps, name, args, result, at, Date.now() - began));
   return result;
+}
+
+/** The names of the tools the server serves, for the installer that approves them. */
+export function toolNames(): readonly string[] {
+  return Object.keys(TOOLS);
 }
 
 /** The planctl tools over stdio. @tested-by: tst_unit_planctl_mcp_001 */

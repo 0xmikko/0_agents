@@ -41,7 +41,7 @@ edited directly.
 
 Authoring:
   init               Create and stage a SPEC_DRAFT plan
-  mcp                Serve the tools over stdio for Claude and Codex
+  mcp                Serve the tools over stdio for Claude and Codex; --tools lists their names
   stats              The five tables from ~/.local/share/planctl/events.jsonl
   set-spec           Replace and stage SPEC while it is still draft
   approve-spec       Lock SPEC after explicit owner approval
@@ -595,7 +595,11 @@ async function startTask(args: readonly string[]): Promise<void> {
 /** Serve the tools over stdio; diagnostics go to stderr, the protocol owns stdout. */
 async function mcp(args: readonly string[]): Promise<void> {
   dedicatedRuntime();
-  const { createPlanctlServer } = await import("../mcp/server");
+  const { createPlanctlServer, toolNames } = await import("../mcp/server");
+  if (args.includes("--tools")) {
+    console.log(toolNames().join("\n"));
+    return;
+  }
   const { commandPublisher } = await import("../mcp/publish");
   const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
   const { eventLogPath } = await import("../core/event-log");
