@@ -262,6 +262,16 @@ ${spec}<!-- plan:spec:end -->
       const glossary = check(body.replace("empty names", "empty label"));
       expect(glossary.status).toBe(1);
       expect(glossary.stdout).toContain("say name instead of label");
+      // Only the vocabulary table names synonyms; another table on the page
+      // (parts, states, places) is not a list of words to replace.
+      writeFileSync(join(root, "docs/graph.md"), [
+        "| Term | Meaning | Not |", "|---|---|---|", "| name | input name | label |", "",
+        "| Part | State | Where |", "|---|---|---|", "| The indexer: pull, admit, write | not built | plan |", "",
+      ].join("\n"));
+      const shaped = check(body.replace("empty names", "empty label in the plan"));
+      expect(shaped.status).toBe(1);
+      expect(shaped.stdout).toContain("say name instead of label");
+      expect(shaped.stdout).not.toContain("instead of plan");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
