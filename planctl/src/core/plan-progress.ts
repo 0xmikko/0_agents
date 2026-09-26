@@ -177,7 +177,7 @@ function planByBranch(root: string): string | null {
   const slug = branch.slice(branch.lastIndexOf("/") + 1).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const directory = resolve(root, "docs/plans");
   if (slug === "" || !existsSync(directory)) return null;
-  const name = readdirSync(directory).find((entry) => entry.endsWith(`-${slug}.md`));
+  const name = readdirSync(directory).find((entry) => entry === `${slug}.md` || entry.endsWith(`-${slug}.md`));
   return name === undefined ? null : `docs/plans/${name}`;
 }
 
