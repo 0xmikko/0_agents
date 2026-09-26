@@ -11,20 +11,23 @@ that reply to the owner verbatim.
 
 ## SPEC
 
-1. Call `progress` with `root` (the worktree). When the branch already has a
-   plan, it names it: continue on that plan and never call `init` again.
-   Otherwise create `feat/<slug>` from the repository's base branch in its
-   own worktree and call `init` with `root` and a `title`. It creates
-   `docs/plans/<date>-<slug>.md`, stages and journals it, and returns the
-   required sections, the vocabulary and the Goal rule. Commit the plan.
+1. Call `progress` with `root`, the worktree you are in. When the branch
+   already has a plan, it names it: continue on that plan and never call
+   `init` again. Otherwise call `init` with the same `root` and a `title`:
+   it names the plan after the branch, `docs/plans/<date>-<slug>.md`, stages
+   and journals it, and returns the required sections, the vocabulary and
+   the Goal rule. Only when `init` refuses because the root is on the base
+   branch, create `feat/<slug>` from that branch in its own worktree and
+   call `init` there. Never create a branch or a worktree otherwise. Commit
+   the plan.
 2. Explore existing code before proposing new mechanisms. Agree on the Goal,
    the flows, the measures, the constraints, the reuse and the testable
    invariants. The SPEC says what will be; the past appears only as one
    sentence "now X" where X is being fixed.
 3. Write the SPEC as one text with the returned sections, in the vocabulary,
    and send it with `submit_spec`: the plan, the `baseRevision` that `init`
-   or `progress` returned,
-   the owner's request in their words, and the whole SPEC. The tool fixes
+   or `progress` returned, the owner's request in their words, and the whole
+   SPEC. The tool fixes
    line endings and vocabulary itself, returns every lint error at once with
    its line and replacement, and asks the model once about the changed lines.
    Fix the errors and resubmit with the returned revision; unchanged text
