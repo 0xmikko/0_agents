@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { authoringContract, GOAL_RULE, lint } from "./plan-gate";
+import { authoringContract, GOAL_RULE, lint, TARGET_RULE } from "./plan-gate";
 import type { GateViolation } from "./plan-gate";
 import { mutatePlanFile, planState, protocolSpecHash, replaceDraftSpec } from "./plan-update";
 import type { PlanState } from "./plan-update";
@@ -77,6 +77,7 @@ function prompt(input: SubmitSpecInput, vocabulary: readonly { readonly word: st
     `Owner request: ${input.ownerRequest}`,
     "",
     `Goal rule: ${GOAL_RULE}`,
+    `Target rule: ${TARGET_RULE}`,
     "",
     `Vocabulary, say the term instead of the word: ${vocabulary.map((pair) => `${pair.word} → ${pair.term}`).join("; ")}`,
     "",

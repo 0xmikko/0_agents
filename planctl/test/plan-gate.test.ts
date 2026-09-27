@@ -85,6 +85,30 @@ describe("findings an agent can act on", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  // @test-id: tst_gate_lint_005
+  // @scenario: scn_plan_form_findings_001
+  // @covers: planctl/src/core/plan-gate.ts::lint
+  // @deterministic: yes
+  // @invariant: The target is flows, tables and types: more than one third prose is refused with the counts, and a target without its mermaid flowchart is refused; the model SPEC passes both.
+  it("tst_gate_lint_005 refuses a target that is mostly prose or has no flowchart, with the counts", async () => {
+    const { root } = makeRepo();
+    try {
+      const diagram = "```mermaid\nflowchart LR\n  Input[\"Change (input)\"] --> Parser[\"One parser\"]\n```\n";
+      expect(spec).toContain(diagram);
+      const prose = "The stream is opened after the rules are owned.\n".repeat(6);
+      const report = await lint(spec.replace(diagram, prose), root);
+      const structure = report.violations.filter((violation) => violation.rule === "structure");
+      expect(structure.map((violation) => violation.text)).toEqual([
+        "The target: 9 of 20 lines are prose; at most one third may be. Write the flows as numbered steps naming the call and the type of each step, and the lists as tables",
+        "The target has no mermaid flowchart of the one architectural decision",
+      ]);
+      expect(structure.every((violation) => violation.line === spec.split("\n").indexOf("## The target") + 1)).toBe(true);
+      expect((await lint(spec, root)).violations.filter((violation) => violation.rule === "structure")).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("plan form", () => {

@@ -312,6 +312,7 @@ function specView(body: string, fromMarkdown: (value: string) => Root): {
   readonly specEnd: number;
   readonly specLines: readonly string[];
   readonly nodes: readonly (Root | Content)[];
+  readonly blocks: readonly Content[];
   readonly headings: readonly (Root | Content)[];
   readonly section: (name: string) => { text: string; line: number } | null;
 } {
@@ -319,7 +320,9 @@ function specView(body: string, fromMarkdown: (value: string) => Root): {
   const specStart = lines.indexOf(PROTOCOL_SPEC_START);
   const specEnd = lines.indexOf(PROTOCOL_SPEC_END);
   const specLines = specStart < 0 ? lines : lines.map((line, index) => index > specStart && index < specEnd ? line : "");
-  const nodes = markdownNodes(fromMarkdown(specLines.join("\n")));
+  const tree = fromMarkdown(specLines.join("\n"));
+  const nodes = markdownNodes(tree);
+  const blocks = tree.children;
   const headings = nodes.filter((node) => node.type === "heading");
   const section = (name: string): { text: string; line: number } | null => {
     const heading = headings.find((node) => proseText(node).toLowerCase() === name.toLowerCase());
@@ -328,7 +331,30 @@ function specView(body: string, fromMarkdown: (value: string) => Root): {
     const next = headings.find((node) => sourceLine(node) > start && node.depth <= heading.depth);
     return { text: specLines.slice(start, next === undefined ? specLines.length : sourceLine(next) - 1).join("\n"), line: start };
   };
-  return { specStart, specEnd, specLines, nodes, headings, section };
+  return { specStart, specEnd, specLines, nodes, blocks, headings, section };
+}
+
+/** What The target is made of, by source line: prose paragraphs against flows (lists), tables and types (code), and whether it carries its mermaid flowchart. */
+function targetShape(blocks: readonly Content[], headings: readonly (Root | Content)[]): { line: number; prose: number; total: number; mermaid: boolean } | null {
+  const heading = headings.find((node) => node.type === "heading" && proseText(node).toLowerCase() === "the target");
+  if (heading === undefined || heading.type !== "heading") return null;
+  const start = sourceLine(heading);
+  const next = headings.find((node) => node.type === "heading" && sourceLine(node) > start && node.depth <= heading.depth);
+  const end = next === undefined ? Number.MAX_SAFE_INTEGER : sourceLine(next);
+  let prose = 0;
+  let total = 0;
+  let mermaid = false;
+  for (const block of blocks) {
+    if (block.position === undefined) continue;
+    const line = block.position.start.line;
+    if (line <= start || line >= end) continue;
+    const lines = block.position.end.line - line + 1;
+    if (block.type === "paragraph") prose += lines;
+    else if (block.type === "list" || block.type === "table" || block.type === "code") { if (block.type === "code" && block.lang === "mermaid") mermaid = true; }
+    else continue;
+    total += lines;
+  }
+  return { line: start, prose, total, mermaid };
 }
 
 /** Exported TypeScript types a commit adds or changes that the plan's
@@ -350,10 +376,16 @@ export const GOAL_RULE = "The Goal is one to four numbered outcomes the owner wi
   + "Each outcome names its measure: a number, a count, a time, or the exact observable state before and after. "
   + "It promises only what the request asks: no vision, no how, no extra scope. Plain English, one sentence per outcome.";
 
+/** What The target is: the rule the agent reads at init and the lint measures at submission. */
+export const TARGET_RULE = "The target is flows, tables and types: numbered steps that name the call and the type of each step, "
+  + "one mermaid flowchart of the one architectural decision, tables for what is listed, the Interfaces in TypeScript. "
+  + "Prose explains a flow in a line or two and is at most one third of the section.";
+
 export interface AuthoringContract {
   readonly sections: readonly string[];
   readonly vocabulary: readonly { readonly word: string; readonly term: string }[];
   readonly goalRule: string;
+  readonly targetRule: string;
 }
 
 function vocabularyMap(root: string, synonyms: (root: string, file?: string) => Map<string, string>): Map<string, string> {
@@ -372,6 +404,7 @@ export async function authoringContract(root: string): Promise<AuthoringContract
     sections: REQUIRED_SECTIONS,
     vocabulary: [...vocabularyMap(root, synonyms)].map(([word, term]) => ({ word, term })),
     goalRule: GOAL_RULE,
+    targetRule: TARGET_RULE,
   };
 }
 
@@ -397,7 +430,7 @@ export async function lint(body: string, root: string, commit?: string): Promise
     violations.push({ kind: "protocol-shape", rule, blocking: true, line, quote, text, replacement });
   };
   const lines = body.split("\n");
-  const { specStart, specEnd, specLines, nodes, headings, section } = specView(body, fromMarkdown);
+  const { specStart, specEnd, specLines, nodes, blocks, headings, section } = specView(body, fromMarkdown);
   if ((specStart >= 0 || specEnd >= 0) && (specStart < 0 || specEnd <= specStart)) {
     return { violations: [refusal("protocol-shape", 1, "missing ordered SPEC markers")], metrics: [] };
   }
@@ -411,6 +444,11 @@ export async function lint(body: string, root: string, commit?: string): Promise
   }
   const names = section("New names");
   if (names !== null && !/^\|\s*-{3,}\s*\|\s*-{3,}/m.test(names.text)) add(names.line, "New names needs a name/reason table", "structure");
+  const shape = targetShape(blocks, headings);
+  if (shape !== null) {
+    if (shape.prose * 3 > shape.total) add(shape.line, `The target: ${shape.prose} of ${shape.total} lines are prose; at most one third may be. Write the flows as numbered steps naming the call and the type of each step, and the lists as tables`, "structure");
+    if (!shape.mermaid) add(shape.line, "The target has no mermaid flowchart of the one architectural decision", "structure");
+  }
   const vocabulary = vocabularyMap(root, synonyms);
   const fullNodes = markdownNodes(fromMarkdown(body));
   const implementationEnd = lines.indexOf("<!-- plan:implementation:end -->");
