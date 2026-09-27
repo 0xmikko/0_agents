@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, u
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import type { AuthoringContract } from "../core/plan-gate";
+import type { AuthoringContract, GateViolation } from "../core/plan-gate";
 import type { TaskBrief } from "../core/plan-update";
 import type { OwnerWaitReceipt, TaskRun, TaskRunIdentity, TaskRunV1 } from "../core/task-run";
 import type { GitWorktreeIdentity } from "../machine/sessions/session-source";
@@ -814,7 +814,7 @@ async function setSpec(args: readonly string[]): Promise<void> {
 async function lintFindings(rootPath: string, plan: string): Promise<readonly string[]> {
   const { lint } = await import(portableRuntimeFile("plan-gate.ts"));
   const report = await lint(readFileSync(resolve(rootPath, plan), "utf8"), rootPath);
-  return report.violations.map((violation) => `line ${violation.line}: ${violation.text}${violation.replacement === null ? "" : ` → ${violation.replacement}`}`);
+  return report.violations.map((violation: GateViolation) => `line ${violation.line}: ${violation.text}${violation.replacement === null ? "" : ` → ${violation.replacement}`}`);
 }
 
 /** Approval runs the same lint as submission on the same bytes; every error refuses, like the tools. */
