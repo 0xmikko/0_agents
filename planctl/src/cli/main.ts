@@ -790,6 +790,7 @@ async function init(args: readonly string[]): Promise<void> {
     ...contract.vocabulary.map((pair) => `Vocabulary: ${pair.word} → ${pair.term}`),
     `Goal rule: ${contract.goalRule}`,
     `Target rule: ${contract.targetRule}`,
+    `Example flow:\n${contract.example}`,
   ].join("\n"));
 }
 

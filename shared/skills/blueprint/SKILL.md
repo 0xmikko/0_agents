@@ -26,9 +26,11 @@ that reply to the owner verbatim.
    invariants. The SPEC says what will be; the past appears only as one
    sentence "now X" where X is being fixed.
 3. Write the SPEC as one text with the returned sections, in the vocabulary.
-   The target is flows, tables and types, not prose: numbered steps naming
-   the call and the type of each step, one mermaid flowchart, tables; the
-   tool refuses more than one third prose. Send it with `submit_spec`: the
+   The target is flows shaped like the example `init` returned: one `###`
+   heading per flow, its mermaid diagram, a few lines of explanation, its
+   implementation map (Owner, Target files, Input / wake, Output / durable
+   state, RED test), and its types in Interfaces. The tool refuses a flow
+   without its diagram or its map. Send it with `submit_spec`: the
    plan, the `baseRevision` that `init` or `progress` returned, the owner's
    request in their words, and the whole SPEC. The tool fixes line endings
    and vocabulary itself, returns every lint error at once with its line and

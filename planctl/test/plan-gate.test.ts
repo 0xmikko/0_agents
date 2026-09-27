@@ -90,21 +90,22 @@ describe("findings an agent can act on", () => {
   // @scenario: scn_plan_form_findings_001
   // @covers: planctl/src/core/plan-gate.ts::lint
   // @deterministic: yes
-  // @invariant: The target is flows, tables and types: more than one third prose is refused with the counts, and a target without its mermaid flowchart is refused; the model SPEC passes both.
-  it("tst_gate_lint_005 refuses a target that is mostly prose or has no flowchart, with the counts", async () => {
+  // @invariant: The target is flows: a flow without its mermaid diagram or its implementation map is refused by name at its heading, a target without flows is refused, and the model SPEC passes.
+  it("tst_gate_lint_005 refuses a flow without its diagram or its implementation map and a target without flows, by name", async () => {
     const { root } = makeRepo();
     try {
-      const diagram = "```mermaid\nflowchart LR\n  Input[\"Change (input)\"] --> Parser[\"One parser\"]\n```\n";
+      const diagram = "```mermaid\nflowchart LR\n  Input[\"Change (input)\"] --> Parser[\"One parser\"]\n```\n\n";
+      const map = spec.slice(spec.indexOf("| Implementation map"), spec.indexOf("### Interfaces"));
       expect(spec).toContain(diagram);
-      const prose = "The stream is opened after the rules are owned.\n".repeat(6);
-      const report = await lint(spec.replace(diagram, prose), root);
-      const structure = report.violations.filter((violation) => violation.rule === "structure");
-      expect(structure.map((violation) => violation.text)).toEqual([
-        "The target: 9 of 20 lines are prose; at most one third may be. Write the flows as numbered steps naming the call and the type of each step, and the lists as tables",
-        "The target has no mermaid flowchart of the one architectural decision",
-      ]);
-      expect(structure.every((violation) => violation.line === spec.split("\n").indexOf("## The target") + 1)).toBe(true);
-      expect((await lint(spec, root)).violations.filter((violation) => violation.rule === "structure")).toEqual([]);
+      expect(map).toContain("| RED test |");
+      const lines = spec.split("\n");
+      const flowLine = lines.indexOf("### Reject an empty name") + 1;
+      const targetLine = lines.indexOf("## The target") + 1;
+      const structure = async (body: string) => (await lint(body, root)).violations.filter((violation) => violation.rule === "structure").map((violation) => [violation.line, violation.text]);
+      expect(await structure(spec)).toEqual([]);
+      expect(await structure(spec.replace(diagram, ""))).toEqual([[flowLine, "flow «Reject an empty name» has no mermaid diagram"]]);
+      expect(await structure(spec.replace(map, ""))).toEqual([[flowLine, "flow «Reject an empty name» has no implementation map: a table with the rows Owner, Target files, Input / wake, Output / durable state, RED test"]]);
+      expect(await structure(spec.replace("### Reject an empty name\n\n", ""))).toEqual([[targetLine, "The target has no flow: one ### heading per flow, each with its mermaid diagram and its implementation map"]]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

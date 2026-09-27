@@ -8,6 +8,23 @@ The current parser accepts empty names.
 
 ## The target
 
+### Reject an empty name
+
+```mermaid
+flowchart LR
+  Input["Change (input)"] --> Parser["One parser"]
+```
+
+`parseChange` refuses an empty name before `saveChange` runs.
+
+| Implementation map | Reject an empty name |
+| --- | --- |
+| Owner | `parseChange` in `src/change.ts` |
+| Target files | `src/change.ts`; `src/save.ts` |
+| Input / wake | one `Change` from the caller |
+| Output / durable state | an accepted `Change` saved, or a refusal and nothing written |
+| RED test | `test/change.test.ts`: an empty name is refused before saving |
+
 ### Interfaces
 
 ```typescript
@@ -15,11 +32,6 @@ export interface Change {
   readonly name: string;
   readonly accepted: boolean;
 }
-```
-
-```mermaid
-flowchart LR
-  Input["Change (input)"] --> Parser["One parser"]
 ```
 
 ### What changes

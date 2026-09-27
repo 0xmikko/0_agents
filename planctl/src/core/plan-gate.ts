@@ -334,27 +334,33 @@ function specView(body: string, fromMarkdown: (value: string) => Root): {
   return { specStart, specEnd, specLines, nodes, blocks, headings, section };
 }
 
-/** What The target is made of, by source line: prose paragraphs against flows (lists), tables and types (code), and whether it carries its mermaid flowchart. */
-function targetShape(blocks: readonly Content[], headings: readonly (Root | Content)[]): { line: number; prose: number; total: number; mermaid: boolean } | null {
-  const heading = headings.find((node) => node.type === "heading" && proseText(node).toLowerCase() === "the target");
-  if (heading === undefined || heading.type !== "heading") return null;
-  const start = sourceLine(heading);
-  const next = headings.find((node) => node.type === "heading" && sourceLine(node) > start && node.depth <= heading.depth);
-  const end = next === undefined ? Number.MAX_SAFE_INTEGER : sourceLine(next);
-  let prose = 0;
-  let total = 0;
-  let mermaid = false;
-  for (const block of blocks) {
-    if (block.position === undefined) continue;
-    const line = block.position.start.line;
-    if (line <= start || line >= end) continue;
-    const lines = block.position.end.line - line + 1;
-    if (block.type === "paragraph") prose += lines;
-    else if (block.type === "list" || block.type === "table" || block.type === "code") { if (block.type === "code" && block.lang === "mermaid") mermaid = true; }
-    else continue;
-    total += lines;
-  }
-  return { line: start, prose, total, mermaid };
+/** The rows every implementation map carries. */
+const MAP_ROWS = ["Owner", "Target files", "Input / wake", "Output / durable state", "RED test"] as const;
+
+/** The flows of The target: every heading one level under it that is not a named section, each with its mermaid diagram and its implementation map. */
+function targetFlows(specLines: readonly string[], blocks: readonly Content[], headings: readonly (Root | Content)[]): { line: number; flows: readonly { name: string; line: number; diagram: boolean; map: boolean }[] } | null {
+  const target = headings.find((node) => node.type === "heading" && proseText(node).toLowerCase() === "the target");
+  if (target === undefined || target.type !== "heading") return null;
+  const start = sourceLine(target);
+  const after = headings.find((node) => node.type === "heading" && sourceLine(node) > start && node.depth <= target.depth);
+  const end = after === undefined ? Number.MAX_SAFE_INTEGER : sourceLine(after);
+  const named = new Set<string>([...REQUIRED_SECTIONS, "Interfaces", "What changes"].map((name) => name.toLowerCase()));
+  const inside = headings.flatMap((node) => node.type === "heading" && sourceLine(node) > start && sourceLine(node) < end && node.depth === target.depth + 1 ? [node] : []);
+  const flows = inside.filter((node) => !named.has(proseText(node).toLowerCase())).map((node) => {
+    const from = sourceLine(node);
+    const following = inside.find((other) => sourceLine(other) > from);
+    const to = following === undefined ? end : sourceLine(following);
+    const own = blocks.filter((block) => block.position !== undefined && block.position.start.line > from && block.position.start.line < to);
+    // The parser reads no GFM tables, so the map is found on the source lines, like the New names table.
+    const lines = specLines.slice(from, to === Number.MAX_SAFE_INTEGER ? specLines.length : to - 1);
+    return {
+      name: proseText(node),
+      line: from,
+      diagram: own.some((block) => block.type === "code" && block.lang === "mermaid"),
+      map: MAP_ROWS.every((row) => lines.some((line) => new RegExp(`^\\|\\s*${row}\\s*\\|`).test(line))),
+    };
+  });
+  return { line: start, flows };
 }
 
 /** Exported TypeScript types a commit adds or changes that the plan's
@@ -377,15 +383,21 @@ export const GOAL_RULE = "The Goal is one to four numbered outcomes the owner wi
   + "It promises only what the request asks: no vision, no how, no extra scope. Plain English, one sentence per outcome.";
 
 /** What The target is: the rule the agent reads at init and the lint measures at submission. */
-export const TARGET_RULE = "The target is flows, tables and types: numbered steps that name the call and the type of each step, "
-  + "one mermaid flowchart of the one architectural decision, tables for what is listed, the Interfaces in TypeScript. "
-  + "Prose explains a flow in a line or two and is at most one third of the section.";
+export const TARGET_RULE = "The target is flows. Each flow is one ### heading, one mermaid diagram of that flow, a few lines of explanation, "
+  + "and an implementation map table with the rows Owner, Target files, Input / wake, Output / durable state, RED test. "
+  + "The types a flow changes are declared in Interfaces. Nothing in The target is prose without its flow.";
+
+/** One flow in the shape every flow of The target takes, handed to the agent at init. */
+function flowExample(): string {
+  return readFileSync(resolve(import.meta.dir, "../../../shared/code-production/laws/flow-example.md"), "utf8").trim();
+}
 
 export interface AuthoringContract {
   readonly sections: readonly string[];
   readonly vocabulary: readonly { readonly word: string; readonly term: string }[];
   readonly goalRule: string;
   readonly targetRule: string;
+  readonly example: string;
 }
 
 function vocabularyMap(root: string, synonyms: (root: string, file?: string) => Map<string, string>): Map<string, string> {
@@ -405,6 +417,7 @@ export async function authoringContract(root: string): Promise<AuthoringContract
     vocabulary: [...vocabularyMap(root, synonyms)].map(([word, term]) => ({ word, term })),
     goalRule: GOAL_RULE,
     targetRule: TARGET_RULE,
+    example: flowExample(),
   };
 }
 
@@ -444,10 +457,13 @@ export async function lint(body: string, root: string, commit?: string): Promise
   }
   const names = section("New names");
   if (names !== null && !/^\|\s*-{3,}\s*\|\s*-{3,}/m.test(names.text)) add(names.line, "New names needs a name/reason table", "structure");
-  const shape = targetShape(blocks, headings);
-  if (shape !== null) {
-    if (shape.prose * 3 > shape.total) add(shape.line, `The target: ${shape.prose} of ${shape.total} lines are prose; at most one third may be. Write the flows as numbered steps naming the call and the type of each step, and the lists as tables`, "structure");
-    if (!shape.mermaid) add(shape.line, "The target has no mermaid flowchart of the one architectural decision", "structure");
+  const flows = targetFlows(specLines, blocks, headings);
+  if (flows !== null) {
+    if (flows.flows.length === 0) add(flows.line, "The target has no flow: one ### heading per flow, each with its mermaid diagram and its implementation map", "structure");
+    for (const flow of flows.flows) {
+      if (!flow.diagram) add(flow.line, `flow «${flow.name}» has no mermaid diagram`, "structure", flow.name);
+      if (!flow.map) add(flow.line, `flow «${flow.name}» has no implementation map: a table with the rows ${MAP_ROWS.join(", ")}`, "structure", flow.name);
+    }
   }
   const vocabulary = vocabularyMap(root, synonyms);
   const fullNodes = markdownNodes(fromMarkdown(body));

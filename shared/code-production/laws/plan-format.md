@@ -29,14 +29,14 @@ history: it says what WILL be, and the past appears only as one sentence
    scope. Plain English, one sentence per outcome.
 2. **Why now** — at most ten lines, dated: what is broken today and what it
    costs. Not a history.
-3. **The target** — how it looks when done, as flows, tables and types:
-   numbered steps that name the call and the type of each step, one mermaid
-   flowchart that underlines the one architectural decision, tables for what
-   is listed, and the **Interfaces** in TypeScript rather than prose — every
-   exported type the plan changes is declared here, because completion
-   refuses a changed exported type the SPEC does not name. Prose explains a
-   flow in a line or two; `planctl` refuses a target that is more than one
-   third prose, and one without its flowchart.
+3. **The target** — how it looks when done, as flows. Each flow is one
+   `###` heading, one mermaid diagram of that flow, a few lines of
+   explanation, and an implementation map table with the rows Owner,
+   Target files, Input / wake, Output / durable state, RED test; the
+   **Interfaces** declare in TypeScript every exported type the plan
+   changes, because completion refuses a changed exported type the SPEC
+   does not name. `init` returns one example flow; `planctl` refuses a
+   flow without its diagram or its map, and a target without flows.
 4. **Target tree** — every file the plan creates or modifies, one line of
    purpose each.
 5. **Invariants** — plain one-pass statements; each names the test that
