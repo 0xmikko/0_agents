@@ -110,6 +110,27 @@ describe("findings an agent can act on", () => {
     }
   });
 
+  // @test-id: tst_gate_lint_007
+  // @scenario: scn_plan_form_findings_001
+  // @covers: planctl/src/core/plan-gate.ts::lint
+  // @deterministic: yes
+  // @invariant: a plan is written in English: Cyrillic in the title or in SPEC prose is refused at its line with the line quoted; the owner's words in «…» and code are exempt.
+  it("tst_gate_lint_007 refuses a plan written in another language, line by line, sparing quoted owner words and code", async () => {
+    const { root } = makeRepo();
+    try {
+      const anchor = "`parseChange` refuses an empty name before `saveChange` runs.\n";
+      const language = async (body: string) => (await lint(body, root)).violations.filter((violation) => violation.rule === "language").map((violation) => [violation.line, violation.quote]);
+      const wrapped = (title: string, spec: string) => `# ${title}\n\nStatus: SPEC_DRAFT  \nSpec lock: unlocked owner:важно  \n\n<!-- plan:spec:start -->\n${spec}<!-- plan:spec:end -->\n`;
+      expect(await language(wrapped("Reject an empty name", spec))).toEqual([]);
+      expect(await language(wrapped("Пустое имя отклоняется", spec))).toEqual([[1, "# Пустое имя отклоняется"]]);
+      const russian = wrapped("Reject an empty name", spec.replace(anchor, `${anchor}Пустое имя отклоняется до сохранения.\nThe owner said «пустые имена не нужны».\n\n\`\`\`text\nкомментарий в коде\n\`\`\`\n\n`));
+      const line = russian.split("\n").indexOf("Пустое имя отклоняется до сохранения.") + 1;
+      expect(await language(russian)).toEqual([[line, "Пустое имя отклоняется до сохранения."]]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   // @test-id: tst_gate_lint_005
   // @scenario: scn_plan_form_findings_001
   // @covers: planctl/src/core/plan-gate.ts::lint

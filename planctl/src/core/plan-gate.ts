@@ -16,7 +16,7 @@ import { stageInputs, stageResultCommitPaths, MACHINABLE, protocolSpecHash, prot
 export { MACHINABLE, protocolSpecHash, protocolImplementationHash } from "./plan-update";
 
 /** Which lint rule a finding comes from; gate findings (receipts, boxes) carry none. */
-type LintRule = "structure" | "mermaid" | "typescript" | "vocabulary" | "codes" | "sentence" | "story" | "goal" | "clarity";
+type LintRule = "structure" | "mermaid" | "typescript" | "vocabulary" | "codes" | "sentence" | "story" | "goal" | "clarity" | "language";
 
 /** One finding an agent can act on: the rule, the line, the offending text
  * and the replacement when one exists. Lint errors and gate refusals block;
@@ -266,6 +266,19 @@ function lintTypes(
   return types;
 }
 
+/** A plan is written in English: Cyrillic in the title or in authored prose is refused at its line; the owner's words in «…» and code are not prose. */
+function lintLanguage(nodes: readonly (Root | Content)[], lines: readonly string[], add: AddFinding): void {
+  for (const node of nodes) {
+    if (node.type !== "text") continue;
+    const spared = node.value.replace(/«[^»]*»/g, (quoted) => " ".repeat(quoted.length));
+    const match = /[\u0400-\u04FF]/.exec(spared);
+    if (match === null) continue;
+    const offset = spared.slice(0, match.index).split("\n").length - 1;
+    const line = sourceLine(node) + offset;
+    add(line, "the plan is written in English; the owner's words may be quoted in «…»", "language", (lines[line - 1] ?? "").trim());
+  }
+}
+
 async function lintMermaid(nodes: readonly (Root | Content)[], add: AddFinding): Promise<void> {
   const diagrams = nodes.filter((node) => node.type === "code" && node.lang === "mermaid");
   if (diagrams.length === 0) return;
@@ -486,6 +499,8 @@ export async function lint(body: string, root: string, commit?: string): Promise
   const implementationEnd = lines.indexOf("<!-- plan:implementation:end -->");
   const authored = fullNodes.filter((node) => specStart < 0 || (sourceLine(node) > specStart && (implementationEnd < 0 ? sourceLine(node) < specEnd : sourceLine(node) < implementationEnd)));
   lintProse(authored, (text) => vocabularyMatches(text, vocabulary), add);
+  const title = fullNodes.find((node) => node.type === "heading" && node.depth === 1);
+  lintLanguage([...(title === undefined ? [] : markdownNodes(title)), ...authored], lines, add);
   const interfaces = section("Interfaces");
   const types = lintTypes(nodes, interfaces, ts, add);
   const target = section("Target tree");

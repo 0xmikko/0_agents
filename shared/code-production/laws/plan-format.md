@@ -16,7 +16,9 @@ lives in [development-process.md](development-process.md).
 
 ## Sections, in this order
 
-The SPEC is the part the owner reads. Eight sections, these headings, this
+The SPEC is the part the owner reads. It is written in English, title
+included; the owner's words may be quoted in «…», and `planctl` refuses
+any other line in another language. Eight sections, these headings, this
 order; `planctl` reports every missing or empty one at once. No size limit:
 the best plans ran to two thousand lines. What the SPEC never carries is
 history: it says what WILL be, and the past appears only as one sentence

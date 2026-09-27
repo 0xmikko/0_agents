@@ -25,7 +25,8 @@ that reply to the owner verbatim.
    the flows, the measures, the constraints, the reuse and the testable
    invariants. The SPEC says what will be; the past appears only as one
    sentence "now X" where X is being fixed.
-3. Write the SPEC as one text with the returned sections, in the vocabulary.
+3. Write the SPEC as one text with the returned sections, in the vocabulary,
+   in English, title included; the owner's words may be quoted in «…».
    The target is flows shaped like the example `init` returned: one `###`
    heading per flow, its mermaid diagram, a few lines of explanation, its
    implementation map (Owner, Target files, Input / wake, Output / durable
