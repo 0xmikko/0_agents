@@ -80,7 +80,8 @@ const COMMAND_HELP: Readonly<Record<string, string>> = {
 Creates docs/plans/<date>-<slug>.md from the branch (or the named file),
 stages it, journals it, and prints the authoring contract: the sections,
 the vocabulary pairs and the Goal rule. Refuses the integration branch and
-a missing code-production.base. Commit the plan before locking SPEC.
+a missing code-production.base. The plan stays staged under one journal
+through authoring; it is committed once, after approve-plan.
 `,
   "set-spec": `Usage: planctl set-spec <plan.md> --from <spec.md>
 

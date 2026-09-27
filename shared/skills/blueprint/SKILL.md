@@ -18,8 +18,9 @@ that reply to the owner verbatim.
    and journals it, and returns the required sections, the vocabulary and
    the Goal rule. Only when `init` refuses because the root is on the base
    branch, create `feat/<slug>` from that branch in its own worktree and
-   call `init` there. Never create a branch or a worktree otherwise. Commit
-   the plan.
+   call `init` there. Never create a branch or a worktree otherwise. Do not
+   commit: the plan stays staged under one journal until the owner approves
+   it, and every write publishes it for review.
 2. Explore existing code before proposing new mechanisms. Agree on the Goal,
    the flows, the measures, the constraints, the reuse and the testable
    invariants. The SPEC says what will be; the past appears only as one
@@ -68,7 +69,9 @@ locally and once on the published CI SHA."
 6. Show the owner the last reply and stop. This is the second hard stop: ask
    whether they approve the complete plan.
 7. After an explicit yes, call `approve_plan` with the owner's words. Approval
-   runs the same lint the puts ran and finds nothing new.
+   runs the same lint the puts ran and finds nothing new. Then commit the
+   plan once, `docs(plan): <title>`: the plan's only commit before the work
+   starts.
 
 Bad Stage: "Finish the colleague's branch: build fixes and Verify rewire."
 
