@@ -819,7 +819,7 @@ async function lintFindings(rootPath: string, plan: string): Promise<readonly st
 
 /** Approval runs the same lint as submission on the same bytes; every error refuses, like the tools. */
 async function refuseLintErrors(args: readonly string[]): Promise<void> {
-  dedicatedRuntime();
+  // The installed copy carries no lint: lint() itself says to approve through the launcher.
   const plan = args[1];
   if (plan === undefined) throw new Error("plan path is required");
   const rootPath = root();
