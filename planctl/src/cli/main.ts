@@ -812,7 +812,7 @@ async function setSpec(args: readonly string[]): Promise<void> {
 
 /** Every lint error of a plan, one line each, as the tools print them. */
 async function lintFindings(rootPath: string, plan: string): Promise<readonly string[]> {
-  const { lint } = await import("../core/plan-gate");
+  const { lint } = await import(portableRuntimeFile("plan-gate.ts"));
   const report = await lint(readFileSync(resolve(rootPath, plan), "utf8"), rootPath);
   return report.violations.map((violation) => `line ${violation.line}: ${violation.text}${violation.replacement === null ? "" : ` → ${violation.replacement}`}`);
 }
