@@ -154,11 +154,14 @@ const TOOLS = {
       const result = await submitSpec(root, { plan: relative, baseRevision, ownerRequest, spec }, deps.model);
       const errors = result.findings.filter((finding) => finding.blocking).length;
       const notes = result.findings.length - errors;
+      // A refused flow shows the shape it lacks: a continued plan never saw init's example.
+      const flowRefused = result.findings.some((finding) => finding.blocking && /^(flow «|The target has no flow)/.test(finding.text));
       return reply({ plan: relative, ...result }, [
         `Revision ${result.revision}, ${result.state}`,
         `Checks: ${errors} errors, ${notes} model notes${result.checkStatus === "checked" ? "" : ` (${result.checkStatus}${result.checkError === null ? "" : `: ${result.checkError}`})`}`,
         ...result.corrections.map((correction) => `Corrected line ${correction.line}: ${correction.after}`),
         ...result.findings.map((finding) => `line ${finding.line}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}`),
+        ...(flowRefused ? [`Example flow:\n${(await authoringContract(root)).example}`] : []),
       ].join("\n"));
     },
   }),

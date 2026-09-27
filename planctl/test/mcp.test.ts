@@ -175,8 +175,15 @@ describe("planctl mcp", () => {
       const seen = await dispatchTool(deps, "progress", { root });
       expect((seen.structuredContent as { revision?: string }).revision).toBe(protocolSpecHash(readFileSync(absolute, "utf8")));
       expect(text(seen)).toContain(`Revision  ${protocolSpecHash(readFileSync(absolute, "utf8"))}`);
-      const submitted = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec });
+      // A flow refused for its missing map gets the example flow in the same reply: a continued plan never sees init.
+      const withoutMap = spec.replace(spec.slice(spec.indexOf("| Implementation map"), spec.indexOf("### Interfaces")), "");
+      const refused = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec: withoutMap });
+      expect(refused.isError ?? false, text(refused)).toBe(false);
+      expect(text(refused)).toContain("flow «Reject an empty name» has no implementation map");
+      expect(text(refused)).toContain("Example flow:\n### Browser OAuth returns a provider URL");
+      const submitted = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (refused.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec });
       expect(submitted.isError ?? false, text(submitted)).toBe(false);
+      expect(text(submitted)).not.toContain("Example flow:");
       const submission = submitted.structuredContent as { revision: string; url: string; reply: string; checkStatus: string };
       expect(submission.checkStatus).toBe("checked");
       expect(submission.url).toBe(`http://fixture/${plan}`);
