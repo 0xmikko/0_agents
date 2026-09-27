@@ -86,6 +86,30 @@ describe("findings an agent can act on", () => {
     }
   });
 
+  // @test-id: tst_gate_lint_006
+  // @scenario: scn_plan_form_findings_001
+  // @covers: planctl/src/core/plan-gate.ts::lint
+  // @deterministic: yes
+  // @invariant: pseudocode is TypeScript with types: a code block in another language and an untyped parameter are refused at their lines; a typed function passes.
+  it("tst_gate_lint_006 refuses untyped pseudocode: another language, or a parameter without its type", async () => {
+    const { root } = makeRepo();
+    try {
+      const anchor = "`parseChange` refuses an empty name before `saveChange` runs.\n";
+      expect(spec).toContain(anchor);
+      const typed = "```typescript\nfunction contactFor(channelKey: string, observedName: string): string {\n  return channelKey + observedName;\n}\n```\n\n";
+      const untyped = "```typescript\nfunction companyFor(domainKey, observed: string): string {\n  return domainKey + observed;\n}\n```\n\n";
+      const javascript = "```javascript\nfunction prepareAddress(address) {\n  return { entities: [address] };\n}\n```\n\n";
+      const typescript = async (body: string) => (await lint(body, root)).violations.filter((violation) => violation.rule === "typescript").map((violation) => [violation.line, violation.text]);
+      expect(await typescript(spec.replace(anchor, `${anchor}\n${typed}`))).toEqual([]);
+      const withUntyped = spec.replace(anchor, `${anchor}\n${untyped}`);
+      expect(await typescript(withUntyped)).toEqual([[withUntyped.split("\n").indexOf("function companyFor(domainKey, observed: string): string {") + 1, "untyped parameter `domainKey` in `companyFor`: pseudocode is TypeScript with types"]]);
+      const withJavascript = spec.replace(anchor, `${anchor}\n${javascript}`);
+      expect(await typescript(withJavascript)).toEqual([[withJavascript.split("\n").indexOf("```javascript") + 1, "code block in `javascript`: pseudocode is TypeScript with types, in a ```typescript block"]]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   // @test-id: tst_gate_lint_005
   // @scenario: scn_plan_form_findings_001
   // @covers: planctl/src/core/plan-gate.ts::lint

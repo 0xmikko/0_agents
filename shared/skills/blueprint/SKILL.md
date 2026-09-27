@@ -30,7 +30,8 @@ that reply to the owner verbatim.
    heading per flow, its mermaid diagram, a few lines of explanation, its
    implementation map (Owner, Target files, Input / wake, Output / durable
    state, RED test), and its types in Interfaces. The tool refuses a flow
-   without its diagram or its map. Send it with `submit_spec`: the
+   without its diagram or its map. Pseudocode is TypeScript with every
+   parameter typed, never another language. Send it with `submit_spec`: the
    plan, the `baseRevision` that `init` or `progress` returned, the owner's
    request in their words, and the whole SPEC. The tool fixes line endings
    and vocabulary itself, returns every lint error at once with its line and

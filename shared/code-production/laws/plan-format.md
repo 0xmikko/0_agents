@@ -37,6 +37,9 @@ history: it says what WILL be, and the past appears only as one sentence
    changes, because completion refuses a changed exported type the SPEC
    does not name. `init` returns one example flow; `planctl` refuses a
    flow without its diagram or its map, and a target without flows.
+   Pseudocode is TypeScript with types, in a ```typescript block, every
+   parameter typed; `planctl` refuses another language and an untyped
+   parameter.
 4. **Target tree** — every file the plan creates or modifies, one line of
    purpose each.
 5. **Invariants** — plain one-pass statements; each names the test that

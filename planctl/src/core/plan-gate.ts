@@ -223,7 +223,15 @@ function lintTypes(
 ): Set<string> {
   const types = new Set<string>();
   for (const node of nodes) {
-    if (node.type !== "code" || !["ts", "tsx", "typescript"].includes(node.lang ?? "")) continue;
+    if (node.type !== "code") continue;
+    if (!["ts", "tsx", "typescript"].includes(node.lang ?? "")) {
+      // Pseudocode in another language, or in none, carries no types: refused where it starts.
+      const code = /\b(function|const|let|return|class)\b|=>/.test(node.value);
+      if (code && (node.lang === null || node.lang === undefined || ["js", "javascript", "jsx", "pseudo", "pseudocode"].includes(node.lang))) {
+        add(sourceLine(node), `code block in \`${node.lang ?? "no language"}\`: pseudocode is TypeScript with types, in a \`\`\`typescript block`, "typescript");
+      }
+      continue;
+    }
     const source = ts.createSourceFile("plan.ts", node.value, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const parsed = ts.transpileModule(node.value, { reportDiagnostics: true });
     for (const diagnostic of parsed.diagnostics ?? []) {
@@ -234,6 +242,14 @@ function lintTypes(
     const visit = (syntax: import("typescript").Node): void => {
       if (ts.isInterfaceDeclaration(syntax) || ts.isTypeAliasDeclaration(syntax)) {
         if (interfaces !== null && sourceLine(node) > interfaces.line && sourceLine(node) <= interfaces.line + interfaces.text.split("\n").length) types.add(syntax.name.text);
+      }
+      if (ts.isFunctionLike(syntax)) {
+        for (const parameter of syntax.parameters) {
+          if (parameter.type !== undefined) continue;
+          const row = source.getLineAndCharacterOfPosition(parameter.getStart(source)).line;
+          const owner = "name" in syntax && syntax.name !== undefined && ts.isIdentifier(syntax.name) ? syntax.name.text : "a function";
+          add(sourceLine(node) + row + 1, `untyped parameter \`${parameter.name.getText(source)}\` in \`${owner}\`: pseudocode is TypeScript with types`, "typescript");
+        }
       }
       if (ts.isInterfaceDeclaration(syntax) || ts.isTypeLiteralNode(syntax)) {
         const seen = new Set<number>();
