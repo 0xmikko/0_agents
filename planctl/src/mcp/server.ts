@@ -232,11 +232,17 @@ const TOOLS = {
     run: async (deps, { plan, ownerWord, patch }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
       const replacement = patchFrom(patch);
+      // The same lint as submission, at every write: an amendment may leave old errors, never add one.
+      const current = readFileSync(resolve(root, relative), "utf8");
+      const before = (await lint(current, root)).violations.map((violation) => `${violation.text}|${violation.quote}`);
+      const after = (await lint(applyOwnerAmendment(current, ownerWord, replacement).body, root)).violations;
+      const added = after.filter((violation) => !before.includes(`${violation.text}|${violation.quote}`));
+      if (added.length > 0) throw new Error(`amendment adds ${added.length} error(s):\n${describeFindings(added)}`);
       mutatePlanFile(root, relative, "amend", (body) => applyOwnerAmendment(body, ownerWord, replacement));
       const saved = readFileSync(resolve(root, relative), "utf8");
       return reply(
-        { plan: relative, section: replacement.section, specRevision: protocolSpecHash(saved), implementationRevision: protocolImplementationHash(saved) },
-        `${replacement.section} amended under "${ownerWord}"`,
+        { plan: relative, section: replacement.section, specRevision: protocolSpecHash(saved), implementationRevision: protocolImplementationHash(saved), findings: after },
+        [`${replacement.section} amended under "${ownerWord}"`, `Checks: ${after.length} errors`, ...(after.length > 0 ? [describeFindings(after)] : [])].join("\n"),
       );
     },
   }),

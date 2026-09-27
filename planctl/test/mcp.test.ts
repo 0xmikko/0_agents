@@ -193,6 +193,14 @@ describe("planctl mcp", () => {
       const locked = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec" });
       expect(locked.isError ?? false, text(locked)).toBe(false);
       expect((locked.structuredContent as { revision: string }).revision).toBe(submission.revision);
+      // An amendment never adds a lint error: the SPEC stays in English and in shape at every write.
+      const russian = await dispatchTool(deps, "amend", { plan: absolute, ownerWord: "spec", patch: { section: "spec", find: "Reject empty names before saving.", replace: "Отклонять пустые имена до сохранения." } });
+      expect(russian.isError).toBe(true);
+      expect(text(russian)).toContain("amendment adds 1 error(s)");
+      expect(text(russian)).toContain("the plan is written in English");
+      const amended = await dispatchTool(deps, "amend", { plan: absolute, ownerWord: "spec", patch: { section: "spec", find: "Reject empty names before saving.", replace: "Reject empty names before saving, at the parser." } });
+      expect(amended.isError ?? false, text(amended)).toBe(false);
+      expect(text(amended)).toContain("Checks: 0 errors");
       const withDelivery = await dispatchTool(deps, "put_delivery", { plan: absolute, delivery: { ...delivery, stageGraph: "D1-S1 -> D1-S2 -> D1-S3" } });
       expect(withDelivery.isError ?? false, text(withDelivery)).toBe(false);
       const first = await dispatchTool(deps, "put_stage", { plan: absolute, stage });

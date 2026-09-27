@@ -53,7 +53,7 @@ const STAGE: StageInput = {
   profile: "strong",
   depends: [],
   parallelWith: [],
-  writes: ["scripts/example.ts"],
+  writes: ["scripts/example.ts", "scripts/example.test.ts", "scripts/example-helpers.ts"],
   tempRoot: ".tmp/code-production/fixture/D1-S1",
   predictedActiveMinutes: 13,
   predictedCredits: 3,
@@ -63,7 +63,7 @@ const STAGE: StageInput = {
   tasks: [{
     id: "PLANCTL_001",
     story: "extend the canonical writer facade exposed by scripts/example.ts",
-    writes: ["scripts/example.ts"],
+    writes: ["scripts/example.ts", "scripts/example.test.ts", "scripts/example-helpers.ts"],
     predictedActiveMinutes: 10,
     predictedCredits: 2,
     how: "extend scripts/example.ts through the canonical plan-update mutation engine",
@@ -164,6 +164,37 @@ describe("planctl", () => {
    * Mocks: none
    * Data: one SPEC, Delivery, Stage and Task
    */
+  /**
+   * @test-id: tst_scripts_planctl_012
+   * @scenario: scn_planctl_cli_lint_001
+   * @covers: planctl/src/cli/main.ts::approve-spec,set-spec
+   * @deterministic: yes
+   * @invariant: the CLI approvals run the same lint as the tools: a SPEC in another language is refused with its lines, set-spec reports the errors it saved, and the corrected SPEC locks.
+   */
+  it("tst_scripts_planctl_012 refuses to approve a SPEC the lint refuses and reports set-spec errors", () => {
+    const fixture = fixtureRepository();
+    try {
+      expect(run(fixture.root, "init", fixture.plan, "--title", "Fixture plan").status).toBe(0);
+      git(fixture.root, "commit", "-qm", "docs: open the plan");
+      expect(run(fixture.root, "clear-transaction", fixture.plan, "--commit", git(fixture.root, "rev-parse", "HEAD")).status).toBe(0);
+      const russian = join(fixture.root, "russian.md");
+      writeFileSync(russian, readFileSync(fixture.spec, "utf8").replace("Reject empty names before saving.", "Отклонять пустые имена до сохранения."));
+      const saved = run(fixture.root, "set-spec", fixture.plan, "--from", russian);
+      expect(saved.status, `${saved.stdout}\n${saved.stderr}`).toBe(0);
+      expect(saved.stdout).toContain("Checks: 1 errors");
+      expect(saved.stdout).toContain("the plan is written in English");
+      const refused = run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes");
+      expect(refused.status).toBe(1);
+      expect(refused.stderr).toContain("lint has 1 error(s)");
+      expect(refused.stderr).toContain("the plan is written in English");
+      expect(readFileSync(fixture.plan, "utf8")).toContain("Status: SPEC_DRAFT");
+      expect(run(fixture.root, "set-spec", fixture.plan, "--from", fixture.spec).status).toBe(0);
+      expect(run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes").status).toBe(0);
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   it("tst_scripts_planctl_002 authors and locks a plan through the canonical writer", () => {
     const fixture = fixtureRepository();
     try {
@@ -381,7 +412,7 @@ describe("planctl", () => {
     try {
       const expandedStage: StageInput = {
         ...STAGE,
-        writes: ["scripts/example.ts", "scripts/second.ts"],
+        writes: [...STAGE.writes, "scripts/second.ts"],
         predictedActiveMinutes: 21,
         predictedCredits: 4,
         verifyActiveMinutes: 3,

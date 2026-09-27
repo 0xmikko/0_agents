@@ -794,7 +794,7 @@ async function init(args: readonly string[]): Promise<void> {
   ].join("\n"));
 }
 
-function setSpec(args: readonly string[]): void {
+async function setSpec(args: readonly string[]): Promise<void> {
   const plan = args[1];
   if (plan === undefined) throw new Error("plan path is required");
   const rootPath = root();
@@ -804,6 +804,27 @@ function setSpec(args: readonly string[]): void {
   // hand left no journal, and the managed pre-commit refuses a staged marker
   // plan that has none.
   mutatePlanFile(rootPath, target.relative, "set-spec", (body: string) => replaceDraftSpec(body, spec));
+  // The installed copy carries no lint; the launcher reports every error the saved SPEC has, like submit_spec.
+  if (basename(import.meta.dir) !== "cli") return;
+  const findings = await lintFindings(rootPath, target.relative);
+  console.log([`Checks: ${findings.length} errors`, ...findings].join("\n"));
+}
+
+/** Every lint error of a plan, one line each, as the tools print them. */
+async function lintFindings(rootPath: string, plan: string): Promise<readonly string[]> {
+  const { lint } = await import("../core/plan-gate");
+  const report = await lint(readFileSync(resolve(rootPath, plan), "utf8"), rootPath);
+  return report.violations.map((violation) => `line ${violation.line}: ${violation.text}${violation.replacement === null ? "" : ` → ${violation.replacement}`}`);
+}
+
+/** Approval runs the same lint as submission on the same bytes; every error refuses, like the tools. */
+async function refuseLintErrors(args: readonly string[]): Promise<void> {
+  dedicatedRuntime();
+  const plan = args[1];
+  if (plan === undefined) throw new Error("plan path is required");
+  const rootPath = root();
+  const findings = await lintFindings(rootPath, addressedPath(rootPath, plan).relative);
+  if (findings.length > 0) throw new Error(`lint has ${findings.length} error(s):\n${findings.join("\n")}`);
 }
 
 async function configCommand(args: readonly string[]): Promise<void> {
@@ -861,9 +882,10 @@ async function run(args: readonly string[]): Promise<number> {
     return 0;
   }
   if (command === "set-spec") {
-    setSpec(args);
+    await setSpec(args);
     return 0;
   }
+  if (command === "approve-spec" || command === "approve-plan") await refuseLintErrors(args);
   if (command === "config") {
     await configCommand(args);
     return 0;
