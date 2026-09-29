@@ -279,6 +279,12 @@ function assertSafeInline(value: string, name: string): void {
   }
 }
 
+/** The owner's word is the approval itself, one short line; a pasted message is refused by its length. */
+function assertOwnerWord(value: string): void {
+  assertSafeInline(value, "owner word");
+  if (value.length > 80) throw new Error(`owner word is ${value.length} characters; record the owner's approval word, not their message (at most 80)`);
+}
+
 export const DELIVERY_DESCRIPTION_HINT =
   "the pull request text as of the merge — what changed for people, what changed in the code, how it was proven, what is not in this PR; paragraphs separated by one blank line";
 export const DELIVERY_WAIT_HINT =
@@ -1037,7 +1043,7 @@ export function taskExecutionBrief(body: string, taskId: string, options: { read
 
 export function lockPlanSpec(body: string, ownerWord: string): MutationResult {
   requireState(body, "SPEC_DRAFT");
-  assertSafeInline(ownerWord, "owner word");
+  assertOwnerWord(ownerWord);
   const specHash = protocolSpecHash(body);
   let next = replaceHeader(body, "Status", "SPEC_LOCKED");
   next = replaceHeader(next, "Spec lock", `sha256:${specHash} owner:${ownerWord}`);
@@ -1131,7 +1137,7 @@ export function moveImplementationRecord(body: string, id: string, beforeId: str
 
 export function approvePlan(body: string, ownerWord: string): MutationResult {
   requireState(body, "SPEC_LOCKED");
-  assertSafeInline(ownerWord, "owner word");
+  assertOwnerWord(ownerWord);
   validateImplementation(body);
   // The forecast lines are the prediction the approval freezes: recomputed
   // once more here so no Stage change can leave a Delivery line behind.
@@ -1317,7 +1323,7 @@ export function applyOwnerAmendment(body: string, ownerWord: string, patch: Exac
   if (state !== "APPROVED" && !(state === "SPEC_LOCKED" && patch.section === "spec")) {
     throw new Error("owner amendment requires APPROVED plan or a SPEC amendment in SPEC_LOCKED");
   }
-  assertSafeInline(ownerWord, "owner word");
+  assertOwnerWord(ownerWord);
   let next = amendRegion(body, patch);
   if (patch.section === "spec") {
     const specHash = protocolSpecHash(next);
@@ -1369,8 +1375,7 @@ export function recordDeviation(body: string, stageId: string, text: string): Mu
 export function recordStageApproval(body: string, stageId: string, ownerWord: string): MutationResult {
   requireState(body, "APPROVED");
   if (!body.includes(stageStart(stageId))) throw new Error(`unknown Stage ${stageId}`);
-  assertNonEmpty(ownerWord, "owner word");
-  assertSafeInline(ownerWord, "owner word");
+  assertOwnerWord(ownerWord);
   const date = new Date().toISOString().slice(0, 10);
   return { body: appendExecution(body, `approve-stage ${stageId} owner:${ownerWord} — owner, ${date}`) };
 }

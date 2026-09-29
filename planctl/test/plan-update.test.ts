@@ -518,6 +518,11 @@ describe("the owner's word on a Stage", () => {
     expect(stageApproved(approved, "D1-S2")).toBe(false);
     expect(() => recordStageApproval(body, "D1-S9", "да")).toThrow(/unknown Stage/);
     expect(() => recordStageApproval(body, "D1-S1", "")).toThrow(/owner word/);
+    // The owner's word is the approval itself, never a pasted message: one line, at most 80 characters.
+    const message = "Окей, тогда давай мы это все сделаем и посмотрим. У нас сейчас все наши модули и LinkedIn.";
+    expect(() => lockPlanSpec(draft(), message)).toThrow(`owner word is ${message.length} characters; record the owner's approval word, not their message (at most 80)`);
+    expect(() => recordStageApproval(body, "D1-S1", message)).toThrow(/at most 80/);
+    expect(lockPlanSpec(draft(), "Окей, делаем.").body).toContain("owner:Окей, делаем.");
     // an unjournaled mention elsewhere in the plan is not an approval
     const forged = body.replace("## Execution log", "## Execution log\n\nThe owner said approve-stage D1-S2 owner:да in chat.");
     expect(stageApproved(forged, "D1-S2")).toBe(false);

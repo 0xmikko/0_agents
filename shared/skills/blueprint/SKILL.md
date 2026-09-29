@@ -41,7 +41,8 @@ that reply to the owner verbatim.
    calls nothing.
 4. Show the owner the reply and stop. This is the first hard stop: ask
    whether they approve the SPEC.
-5. After an explicit yes, call `approve_spec` with the owner's words.
+5. After an explicit yes, call `approve_spec` with the owner's word: the
+   approval itself, one short line, never their whole message.
 
 Bad Goal: "Make development faster."
 
@@ -74,7 +75,7 @@ locally and once on the published CI SHA."
    refuses an exported type the SPEC does not name.
 6. Show the owner the last reply and stop. This is the second hard stop: ask
    whether they approve the complete plan.
-7. After an explicit yes, call `approve_plan` with the owner's words. Approval
+7. After an explicit yes, call `approve_plan` with the owner's word. Approval
    runs the same lint the puts ran and finds nothing new. Then commit the
    plan once, `docs(plan): <title>`: the plan's only commit before the work
    starts.

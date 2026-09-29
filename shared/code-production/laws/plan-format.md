@@ -56,7 +56,9 @@ history: it says what WILL be, and the past appears only as one sentence
    apart from inferred ones.
 
 Amendments and Deviations are Execution log lines `planctl` writes under the
-owner's word or the agent's decision; nobody hand-authors them.
+owner's word or the agent's decision; nobody hand-authors them. The owner's
+word is the approval itself, one line of at most 80 characters; `planctl`
+refuses a pasted message.
 
 ## The implementation contract
 
