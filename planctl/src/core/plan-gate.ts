@@ -407,9 +407,8 @@ export async function undeclaredExportedTypes(root: string, commit: string, body
 export const REQUIRED_SECTIONS = ["The Goal", "Why now", "The target", "Target tree", "Invariants", "Reuse", "New names", "Not verified"] as const;
 
 /** What a Goal is: the rule the agent reads at init and the model checks at submission. */
-export const GOAL_RULE = "The Goal is one to four numbered outcomes the owner will see when the work is done. "
-  + "Each outcome names its measure: a number, a count, a time, or the exact observable state before and after. "
-  + "It promises only what the request asks: no vision, no how, no extra scope. Plain English, one sentence per outcome.";
+export const GOAL_RULE = "The Goal is one to six numbered outcomes the owner reads as a whole: what will be done, in what order, "
+  + "who calls whom and what results. A measure where one exists. It promises only what the request asks: no vision, no backstory, no extra scope. Plain English.";
 
 /** What The target is: the rule the agent reads at init and the lint measures at submission. */
 export const TARGET_RULE = "The target is flows. Each flow is one ### heading, one mermaid diagram of that flow, a few lines of explanation, "

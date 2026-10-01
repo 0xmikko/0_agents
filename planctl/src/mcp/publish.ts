@@ -22,10 +22,10 @@ export function commandPublisher(command: string): Publisher {
 }
 
 /** The three fixed lines the agent shows the owner after any write; the Checks line only after a submission. */
-export function ownerReply(url: string, revision: string, state: string, checks: { readonly errors: number; readonly notes: number } | null): string {
+export function ownerReply(url: string, revision: string, state: string, checks: { readonly errors: number } | null): string {
   return [
     `Plan: ${url}`,
     `Revision ${revision}, ${state}`,
-    ...(checks === null ? [] : [`Checks: ${checks.errors} errors, ${checks.notes} model notes`]),
+    ...(checks === null ? [] : [`Checks: ${checks.errors} errors`]),
   ].join("\n");
 }

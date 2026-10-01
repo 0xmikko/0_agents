@@ -26,11 +26,10 @@ the best plans ran to two thousand lines. What the SPEC never carries is
 history: it says what WILL be, and the past appears only as one sentence
 "now X" where X is being fixed.
 
-1. **The Goal** — first, always. One to four numbered outcomes the owner
-   will see when the work is done. Each outcome names its measure: a
-   number, a count, a time, or the exact observable state before and after.
-   It promises only what the request asks: no vision, no how, no extra
-   scope. Plain English, one sentence per outcome.
+1. **The Goal** — first, always. One to six numbered outcomes the owner
+   reads as a whole: what will be done, in what order, who calls whom and
+   what results. A measure where one exists. It promises only what the
+   request asks: no vision, no backstory, no extra scope. Plain English.
 2. **Why now** — at most ten lines, dated: what is broken today and what it
    costs. Not a history.
 3. **The target** — how it looks when done, as flows. Each flow is one

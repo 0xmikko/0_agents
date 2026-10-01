@@ -272,7 +272,7 @@ describe("planctl", () => {
       expect(named.stdout).toContain(`Plan: ${plan}`);
       expect(named.stdout).toContain("Sections: The Goal, Why now, The target");
       expect(named.stdout).toMatch(/Vocabulary: .+ → .+/);
-      expect(named.stdout).toContain("Goal rule: The Goal is one to four numbered outcomes");
+      expect(named.stdout).toContain("Goal rule: The Goal is one to six numbered outcomes");
       expect(named.stdout).toContain("Target rule: The target is flows.");
       expect(named.stdout).toContain("Example flow:\n### Browser OAuth returns a provider URL");
       expect(run(fixture.root, "verify-staged", plan).status).toBe(0);

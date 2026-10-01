@@ -35,12 +35,10 @@ that reply to the owner verbatim.
    parameter typed, never another language. Send it with `submit_spec`: the
    plan, the `baseRevision` that `init` or `progress` returned, the owner's
    request in their words, the whole SPEC, and a `title` when the one from
-   `init` must change. The tool fixes line endings
-   and vocabulary itself, returns every lint error at once with its line and
-   replacement, and asks a model once about changed Goal outcomes only.
-   A model note is advice, not an error: act on it when it is right, never
-   resubmit to silence it. Fix the errors and resubmit with the returned
-   revision; unchanged text calls nothing.
+   `init` must change. The tool fixes line endings and vocabulary itself and
+   returns every lint error at once with its line and replacement; no model
+   reads the plan. Fix the errors and resubmit with the returned revision;
+   unchanged text changes nothing.
 4. Show the owner the reply and stop. This is the first hard stop: ask
    whether they approve the SPEC.
 5. After an explicit yes, call `approve_spec` with the owner's word: the

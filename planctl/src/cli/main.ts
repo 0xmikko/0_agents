@@ -606,13 +606,11 @@ async function mcp(args: readonly string[]): Promise<void> {
   const { commandPublisher } = await import("../mcp/publish");
   const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
   const { eventLogPath } = await import("../core/event-log");
-  const { claudeModelRunner } = await import("../core/spec-submission");
   const server = createPlanctlServer({
     cwd: process.cwd(),
     publication: readPublication,
     sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
     eventLog: eventLogPath(homedir()),
-    model: claudeModelRunner,
     publisher: commandPublisher(optionalFlag(args, "--publisher") ?? "mdurl"),
   });
   const transport = new StdioServerTransport();

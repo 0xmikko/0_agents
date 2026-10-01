@@ -51,8 +51,6 @@ interface ServerDependencies {
   readonly sourceCommit: string;
   /** The events.jsonl every call appends one line to. */
   readonly eventLog: string;
-  /** The one bounded model call submit_spec makes for the changed lines. */
-  readonly model: (prompt: string, deadlineMs: number) => Promise<string>;
   /** Publishes the saved bytes after every write and returns the URL. */
   readonly publisher: (root: string, plan: string) => string;
 }
@@ -147,18 +145,17 @@ const TOOLS = {
     },
   }),
   submit_spec: tool({
-    description: "Replace the whole SPEC of a draft, and its title when given. Fixes line endings and vocabulary itself, returns every lint error at once and the model's notes on the changed lines. Refuses a stale revision, a locked plan and a title in another language.",
+    description: "Replace the whole SPEC of a draft, and its title when given. Fixes line endings and vocabulary itself, returns every lint error at once. Refuses a stale revision, a locked plan and a title in another language.",
     schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string(), title: z.string().optional() }),
     run: async (deps, { plan, baseRevision, ownerRequest, spec, title }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
-      const result = await submitSpec(root, title === undefined ? { plan: relative, baseRevision, ownerRequest, spec } : { plan: relative, baseRevision, ownerRequest, spec, title }, deps.model);
+      const result = await submitSpec(root, title === undefined ? { plan: relative, baseRevision, ownerRequest, spec } : { plan: relative, baseRevision, ownerRequest, spec, title });
       const errors = result.findings.filter((finding) => finding.blocking).length;
-      const notes = result.findings.length - errors;
       // A refused flow shows the shape it lacks: a continued plan never saw init's example.
       const flowRefused = result.findings.some((finding) => finding.blocking && /^(flow «|The target has no flow)/.test(finding.text));
       return reply({ plan: relative, ...result }, [
         `Revision ${result.revision}, ${result.state}`,
-        `Checks: ${errors} errors, ${notes} model notes${result.checkStatus === "checked" ? "" : ` (${result.checkStatus}${result.checkError === null ? "" : `: ${result.checkError}`})`}`,
+        `Checks: ${errors} errors`,
         ...result.corrections.map((correction) => `Corrected line ${correction.line}: ${correction.after}`),
         ...result.findings.map((finding) => `line ${finding.line}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}`),
         ...(flowRefused ? [`Example flow:\n${(await authoringContract(root)).example}`] : []),
@@ -382,7 +379,7 @@ function published(deps: ServerDependencies, args: Record<string, unknown>, resu
   const revision = typeof structured.revision === "string" ? structured.revision : planRevision(saved, state);
   const findings = Array.isArray(structured.findings) ? structured.findings as readonly { blocking?: unknown }[] : null;
   const checks = "checkStatus" in structured && findings !== null
-    ? { errors: findings.filter((finding) => finding.blocking === true).length, notes: findings.filter((finding) => finding.blocking === false).length }
+    ? { errors: findings.filter((finding) => finding.blocking === true).length }
     : null;
   let url: string;
   try {
