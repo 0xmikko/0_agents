@@ -32,7 +32,7 @@ const {
   taskRunPath,
   verifyStagedPlan,
 } = await import(PLAN_UPDATE_FILE);
-const { authoringContract, protocolImplementationHash, protocolLockViolations } = await import(portableRuntimeFile("plan-gate.ts"));
+const { authoringContract, protocolImplementationHash, protocolLanguageViolations, protocolLockViolations } = await import(portableRuntimeFile("plan-gate.ts"));
 
 const GENERAL_HELP = `Usage: planctl <command> [arguments]
 
@@ -69,8 +69,9 @@ Execution:
   amend              Apply an explicit owner amendment
 
 Checks:
-  verify             Verify SPEC and implementation locks
+  verify             Verify SPEC and implementation locks, and that the plan is in English
   verify-staged      Verify the staged mutation journal
+  check-markdown     Exit 0 only if every mermaid block of a markdown file parses
 
 Run planctl <command> --help for exact syntax and JSON contracts.
 `;
@@ -854,9 +855,20 @@ function verify(args: readonly string[]): void {
   const plan = args[1];
   if (plan === undefined) throw new Error("plan path is required");
   const body = readFileSync(resolve(root(), plan), "utf8");
-  const violations = protocolLockViolations(body);
-  if (violations.length > 0) throw new Error(violations.join("; "));
-  console.log("planctl: locks verified");
+  const violations = [...protocolLockViolations(body), ...protocolLanguageViolations(body)];
+  if (violations.length > 0) throw new Error(violations.join("\n"));
+  console.log("planctl: locks verified, the plan is in English");
+}
+
+/** For a publisher: every mermaid block of a markdown file must parse, or the file is not published. */
+async function checkMarkdown(args: readonly string[]): Promise<void> {
+  dedicatedRuntime();
+  const file = args[1];
+  if (file === undefined) throw new Error("markdown file is required");
+  const { markdownDiagramErrors } = await import("../core/plan-gate");
+  const errors = await markdownDiagramErrors(readFileSync(resolve(process.cwd(), file), "utf8"));
+  if (errors.length > 0) throw new Error(`${file}: ${errors.length} mermaid block(s) do not parse\n${errors.join("\n")}`);
+  console.log(`planctl: ${file}: every mermaid block parses`);
 }
 
 function runEngine(args: readonly string[], engineCommand: string): number {
@@ -896,6 +908,10 @@ async function run(args: readonly string[]): Promise<number> {
   }
   if (command === "verify") {
     verify(args);
+    return 0;
+  }
+  if (command === "check-markdown") {
+    await checkMarkdown(args);
     return 0;
   }
   if (command === "start-task") {

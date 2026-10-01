@@ -60,6 +60,31 @@ const DEFAULT_CRITERION_TIMEOUT_MS = 12 * 60_000;
 const PROTOCOL_SPEC_START = "<!-- plan:spec:start -->";
 const PROTOCOL_SPEC_END = "<!-- plan:spec:end -->";
 
+const LANGUAGE_RULE = "the plan is written in English; the owner's words may be quoted in «…»";
+
+/** The lines a plan is read in: its title and its SPEC, outside fenced code, with «…» and `…` spared. Cyrillic there is refused by line. */
+function languageLines(body: string): readonly { readonly line: number; readonly quote: string }[] {
+  const lines = body.split("\n");
+  const start = lines.indexOf(PROTOCOL_SPEC_START);
+  const end = lines.indexOf(PROTOCOL_SPEC_END);
+  const found: { line: number; quote: string }[] = [];
+  let fenced = false;
+  lines.forEach((text, index) => {
+    const title = index === 0 && text.startsWith("# ");
+    const inside = start < 0 || (index > start && (end < 0 || index < end));
+    if (text.trimStart().startsWith("```")) { fenced = !fenced; return; }
+    if (fenced || !(title || inside)) return;
+    const spared = text.replace(/«[^»]*»/g, "").replace(/`[^`]*`/g, "");
+    if (/[\u0400-\u04FF]/.test(spared)) found.push({ line: index + 1, quote: text.trim() });
+  });
+  return found;
+}
+
+/** Portable: the hooks and `verify` refuse a plan in another language, draft or not, without a parser. */
+export function protocolLanguageViolations(body: string): readonly string[] {
+  return languageLines(body).map((found) => `line ${found.line}: ${LANGUAGE_RULE}: ${found.quote}`);
+}
+
 export function protocolLockViolations(body: string): readonly string[] {
   if (!body.includes(PROTOCOL_SPEC_START)) return [];
   const violations: string[] = [];
@@ -266,17 +291,12 @@ function lintTypes(
   return types;
 }
 
-/** A plan is written in English: Cyrillic in the title or in authored prose is refused at its line; the owner's words in «…» and code are not prose. */
-function lintLanguage(nodes: readonly (Root | Content)[], lines: readonly string[], add: AddFinding): void {
-  for (const node of nodes) {
-    if (node.type !== "text") continue;
-    const spared = node.value.replace(/«[^»]*»/g, (quoted) => " ".repeat(quoted.length));
-    const match = /[\u0400-\u04FF]/.exec(spared);
-    if (match === null) continue;
-    const offset = spared.slice(0, match.index).split("\n").length - 1;
-    const line = sourceLine(node) + offset;
-    add(line, "the plan is written in English; the owner's words may be quoted in «…»", "language", (lines[line - 1] ?? "").trim());
-  }
+/** Every mermaid block of a markdown document that does not parse, for a publisher that refuses it. */
+export async function markdownDiagramErrors(body: string): Promise<readonly string[]> {
+  const { fromMarkdown } = await import("mdast-util-from-markdown");
+  const errors: string[] = [];
+  await lintMermaid(markdownNodes(fromMarkdown(body)), (line, text) => { errors.push(`line ${line}: ${text}`); });
+  return errors;
 }
 
 async function lintMermaid(nodes: readonly (Root | Content)[], add: AddFinding): Promise<void> {
@@ -498,8 +518,7 @@ export async function lint(body: string, root: string, commit?: string): Promise
   const implementationEnd = lines.indexOf("<!-- plan:implementation:end -->");
   const authored = fullNodes.filter((node) => specStart < 0 || (sourceLine(node) > specStart && (implementationEnd < 0 ? sourceLine(node) < specEnd : sourceLine(node) < implementationEnd)));
   lintProse(authored, (text) => vocabularyMatches(text, vocabulary), add);
-  const title = fullNodes.find((node) => node.type === "heading" && node.depth === 1);
-  lintLanguage([...(title === undefined ? [] : markdownNodes(title)), ...authored], lines, add);
+  for (const found of languageLines(body)) add(found.line, LANGUAGE_RULE, "language", found.quote);
   const interfaces = section("Interfaces");
   const types = lintTypes(nodes, interfaces, ts, add);
   const target = section("Target tree");

@@ -171,6 +171,30 @@ describe("planctl", () => {
    * @deterministic: yes
    * @invariant: the CLI approvals run the same lint as the tools: a SPEC in another language is refused with its lines, set-spec reports the errors it saved, and the corrected SPEC locks.
    */
+  /**
+   * @test-id: tst_scripts_planctl_013
+   * @scenario: scn_planctl_cli_markdown_001
+   * @covers: planctl/src/cli/main.ts::check-markdown
+   * @deterministic: yes
+   * @invariant: check-markdown exits 0 when every mermaid block of a file parses and 1 naming the block's line when one does not; the publisher refuses on 1.
+   */
+  it("tst_scripts_planctl_013 check-markdown refuses a document whose mermaid does not parse", () => {
+    const fixture = fixtureRepository();
+    try {
+      const good = join(fixture.root, "good.md");
+      const bad = join(fixture.root, "bad.md");
+      writeFileSync(good, "# Doc\n\n```mermaid\nflowchart LR\n  A --> B\n```\n");
+      writeFileSync(bad, "# Doc\n\nText.\n\n```mermaid\nflowchart LR\n  A -- > B\n```\n");
+      expect(run(fixture.root, "check-markdown", good).status).toBe(0);
+      const refused = run(fixture.root, "check-markdown", bad);
+      expect(refused.status).toBe(1);
+      expect(refused.stderr).toContain("mermaid block(s) do not parse");
+      expect(refused.stderr).toMatch(/line \d+: mermaid/);
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   it("tst_scripts_planctl_012 refuses to approve a SPEC the lint refuses and reports set-spec errors", () => {
     const fixture = fixtureRepository();
     try {
@@ -183,6 +207,11 @@ describe("planctl", () => {
       expect(saved.status, `${saved.stdout}\n${saved.stderr}`).toBe(0);
       expect(saved.stdout).toContain("Checks: 1 errors");
       expect(saved.stdout).toContain("the plan is written in English");
+      // The hooks run verify on every staged plan, draft or not: the language check needs no parser.
+      const verified = run(fixture.root, "verify", fixture.plan);
+      expect(verified.status).toBe(1);
+      expect(verified.stderr).toContain("the plan is written in English");
+      expect(verified.stderr).toContain("Отклонять пустые имена до сохранения.");
       const refused = run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes");
       expect(refused.status).toBe(1);
       expect(refused.stderr).toContain("lint has 1 error(s)");
