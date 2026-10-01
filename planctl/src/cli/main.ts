@@ -805,10 +805,14 @@ async function setSpec(args: readonly string[]): Promise<void> {
   // hand left no journal, and the managed pre-commit refuses a staged marker
   // plan that has none.
   const title = optionalFlag(args, "--title");
-  mutatePlanFile(rootPath, target.relative, "set-spec", (body: string) => {
+  const candidate = (body: string): { body: string } => {
     const withSpec = replaceDraftSpec(body, spec).body;
     return title === undefined ? { body: withSpec } : replaceDraftTitle(withSpec, title);
-  });
+  };
+  // Every writer refuses another language before writing; this one needs no parser for that.
+  const language = protocolLanguageViolations(candidate(readFileSync(resolve(rootPath, target.relative), "utf8")).body);
+  if (language.length > 0) throw new Error(language.join("\n"));
+  mutatePlanFile(rootPath, target.relative, "set-spec", candidate);
   // The installed copy carries no lint; the launcher reports every error the saved SPEC has, like submit_spec.
   if (basename(import.meta.dir) !== "cli") return;
   const findings = await lintFindings(rootPath, target.relative);

@@ -203,19 +203,23 @@ describe("planctl", () => {
       expect(run(fixture.root, "clear-transaction", fixture.plan, "--commit", git(fixture.root, "rev-parse", "HEAD")).status).toBe(0);
       const russian = join(fixture.root, "russian.md");
       writeFileSync(russian, readFileSync(fixture.spec, "utf8").replace("Reject empty names before saving.", "Отклонять пустые имена до сохранения."));
+      // Every writer refuses another language before writing, the installed copy included: set-spec needs no parser for that.
+      const before = readFileSync(fixture.plan, "utf8");
       const saved = run(fixture.root, "set-spec", fixture.plan, "--from", russian);
-      expect(saved.status, `${saved.stdout}\n${saved.stderr}`).toBe(0);
-      expect(saved.stdout).toContain("Checks: 1 errors");
-      expect(saved.stdout).toContain("the plan is written in English");
-      // The hooks run verify on every staged plan, draft or not: the language check needs no parser.
-      const verified = run(fixture.root, "verify", fixture.plan);
-      expect(verified.status).toBe(1);
-      expect(verified.stderr).toContain("the plan is written in English");
-      expect(verified.stderr).toContain("Отклонять пустые имена до сохранения.");
+      expect(saved.status).toBe(1);
+      expect(saved.stderr).toContain("the plan is written in English");
+      expect(saved.stderr).toContain("Отклонять пустые имена до сохранения.");
+      expect(readFileSync(fixture.plan, "utf8")).toBe(before);
+      // The full lint reports what it saved; approval refuses on it. The hooks run verify on every staged plan.
+      writeFileSync(join(fixture.root, "long.md"), readFileSync(fixture.spec, "utf8").replace("Reject empty names before saving.", `Reject empty names before saving. ${"word ".repeat(31)}ends.`));
+      const long = run(fixture.root, "set-spec", fixture.plan, "--from", join(fixture.root, "long.md"));
+      expect(long.status, `${long.stdout}\n${long.stderr}`).toBe(0);
+      expect(long.stdout).toContain("Checks: 1 errors");
+      expect(long.stdout).toContain("sentence exceeds thirty words");
       const refused = run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes");
       expect(refused.status).toBe(1);
       expect(refused.stderr).toContain("lint has 1 error(s)");
-      expect(refused.stderr).toContain("the plan is written in English");
+      expect(refused.stderr).toContain("sentence exceeds thirty words");
       expect(readFileSync(fixture.plan, "utf8")).toContain("Status: SPEC_DRAFT");
       expect(run(fixture.root, "set-spec", fixture.plan, "--from", fixture.spec).status).toBe(0);
       expect(run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes").status).toBe(0);
