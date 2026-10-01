@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { authoringContract, GOAL_RULE, lint, TARGET_RULE } from "./plan-gate";
 import type { GateViolation } from "./plan-gate";
-import { mutatePlanFile, planState, protocolSpecHash, replaceDraftSpec } from "./plan-update";
+import { mutatePlanFile, planState, protocolSpecHash, replaceDraftSpec, replaceDraftTitle } from "./plan-update";
 import type { PlanState } from "./plan-update";
 
 export interface SubmitSpecInput {
@@ -11,6 +11,8 @@ export interface SubmitSpecInput {
   readonly baseRevision: string;
   readonly ownerRequest: string;
   readonly spec: string;
+  /** A new title for the draft; absent keeps the one init wrote. */
+  readonly title?: string;
 }
 
 /** What a submission returns; the server adds the published url and the reply. */
@@ -146,11 +148,15 @@ export async function submitSpec(root: string, input: SubmitSpecInput, model: Mo
   const contract = await authoringContract(root);
   const corrected = correct(input.spec, contract.vocabulary);
   const before = currentSpec(body);
-  if (corrected.text === before) {
+  const sameTitle = input.title === undefined || body.startsWith(`# ${input.title}\n`);
+  if (corrected.text === before && sameTitle) {
     const report = await lint(body, root);
     return { revision: current, state, corrections: corrected.corrections, findings: report.violations, checkStatus: "no_change", checkError: null };
   }
-  mutatePlanFile(root, plan, "set-spec", (draft) => replaceDraftSpec(draft, corrected.text));
+  mutatePlanFile(root, plan, "set-spec", (draft) => {
+    const withSpec = replaceDraftSpec(draft, corrected.text).body;
+    return input.title === undefined ? { body: withSpec } : replaceDraftTitle(withSpec, input.title);
+  });
   const saved = readFileSync(resolve(root, plan), "utf8");
   const report = await lint(saved, root);
   const changed = changedLines(before, corrected.text);

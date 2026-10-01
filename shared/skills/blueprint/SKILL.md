@@ -34,7 +34,8 @@ that reply to the owner verbatim.
    without its diagram or its map. Pseudocode is TypeScript with every
    parameter typed, never another language. Send it with `submit_spec`: the
    plan, the `baseRevision` that `init` or `progress` returned, the owner's
-   request in their words, and the whole SPEC. The tool fixes line endings
+   request in their words, the whole SPEC, and a `title` when the one from
+   `init` must change. The tool fixes line endings
    and vocabulary itself, returns every lint error at once with its line and
    replacement, and asks the model once about the changed lines.
    Fix the errors and resubmit with the returned revision; unchanged text

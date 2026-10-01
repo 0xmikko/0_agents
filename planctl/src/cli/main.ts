@@ -26,6 +26,7 @@ const {
   mutatePlanFile,
   needsOwner: needsOwnerOperation,
   replaceDraftSpec,
+  replaceDraftTitle,
   resumeTask: resumeTaskOperation,
   startTask: startTaskOperation,
   taskRunPath,
@@ -83,9 +84,10 @@ the vocabulary pairs and the Goal rule. Refuses the integration branch and
 a missing code-production.base. The plan stays staged under one journal
 through authoring; it is committed once, after approve-plan.
 `,
-  "set-spec": `Usage: planctl set-spec <plan.md> --from <spec.md>
+  "set-spec": `Usage: planctl set-spec <plan.md> --from <spec.md> [--title <text>]
 
-Replaces only the marked SPEC in SPEC_DRAFT and stages the plan.
+Replaces only the marked SPEC in SPEC_DRAFT, and the title when given, and
+stages the plan. A title in another language is refused.
 `,
   "approve-spec": `Usage: planctl approve-spec <plan.md> --owner-word <receipt>
 
@@ -803,7 +805,11 @@ async function setSpec(args: readonly string[]): Promise<void> {
   // Through the journaled writer, like every other mutation: a SPEC written by
   // hand left no journal, and the managed pre-commit refuses a staged marker
   // plan that has none.
-  mutatePlanFile(rootPath, target.relative, "set-spec", (body: string) => replaceDraftSpec(body, spec));
+  const title = optionalFlag(args, "--title");
+  mutatePlanFile(rootPath, target.relative, "set-spec", (body: string) => {
+    const withSpec = replaceDraftSpec(body, spec).body;
+    return title === undefined ? { body: withSpec } : replaceDraftTitle(withSpec, title);
+  });
   // The installed copy carries no lint; the launcher reports every error the saved SPEC has, like submit_spec.
   if (basename(import.meta.dir) !== "cli") return;
   const findings = await lintFindings(rootPath, target.relative);

@@ -175,9 +175,16 @@ describe("planctl mcp", () => {
       const seen = await dispatchTool(deps, "progress", { root });
       expect((seen.structuredContent as { revision?: string }).revision).toBe(protocolSpecHash(readFileSync(absolute, "utf8")));
       expect(text(seen)).toContain(`Revision  ${protocolSpecHash(readFileSync(absolute, "utf8"))}`);
+      // The title is part of the submission: submit_spec renames the draft, and a title in another language is refused at the door.
+      const renamed = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec, title: "Gamma plan, renamed" });
+      expect(renamed.isError ?? false, text(renamed)).toBe(false);
+      expect(readFileSync(absolute, "utf8").startsWith("# Gamma plan, renamed\n")).toBe(true);
+      const cyrillic = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (renamed.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec, title: "План гамма" });
+      expect(cyrillic.isError).toBe(true);
+      expect(text(cyrillic)).toContain("the plan is written in English, title included");
       // A flow refused for its missing map gets the example flow in the same reply: a continued plan never sees init.
       const withoutMap = spec.replace(spec.slice(spec.indexOf("| Implementation map"), spec.indexOf("### Interfaces")), "");
-      const refused = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec: withoutMap });
+      const refused = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (renamed.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec: withoutMap });
       expect(refused.isError ?? false, text(refused)).toBe(false);
       expect(text(refused)).toContain("flow «Reject an empty name» has no implementation map");
       expect(text(refused)).toContain("Example flow:\n### Browser OAuth returns a provider URL");

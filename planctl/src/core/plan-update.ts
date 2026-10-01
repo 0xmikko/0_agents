@@ -356,8 +356,23 @@ function requireState(body: string, expected: PlanState): void {
   if (actual !== expected) throw new Error(`operation requires ${expected}; plan is ${actual}`);
 }
 
-export function createDraftPlan(title: string): string {
+/** A plan is written in English, title included: a title in another script is refused at the door. */
+function assertPlanTitle(title: string): void {
   assertSafeInline(title, "plan title");
+  if (/[\u0400-\u04FF]/.test(title)) throw new Error("the plan is written in English, title included");
+}
+
+/** Rename a draft: the first line is the title, and submission carries it beside the SPEC. */
+export function replaceDraftTitle(body: string, title: string): MutationResult {
+  requireState(body, "SPEC_DRAFT");
+  assertPlanTitle(title);
+  const end = body.indexOf("\n");
+  if (end === -1 || !body.startsWith("# ")) throw new Error("the plan's first line is not its title");
+  return { body: `# ${title}${body.slice(end)}` };
+}
+
+export function createDraftPlan(title: string): string {
+  assertPlanTitle(title);
   return [
     `# ${title}`,
     "",

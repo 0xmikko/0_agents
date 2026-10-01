@@ -147,11 +147,11 @@ const TOOLS = {
     },
   }),
   submit_spec: tool({
-    description: "Replace the whole SPEC of a draft. Fixes line endings and vocabulary itself, returns every lint error at once and the model's notes on the changed lines. Refuses a stale revision and a locked plan.",
-    schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string() }),
-    run: async (deps, { plan, baseRevision, ownerRequest, spec }) => {
+    description: "Replace the whole SPEC of a draft, and its title when given. Fixes line endings and vocabulary itself, returns every lint error at once and the model's notes on the changed lines. Refuses a stale revision, a locked plan and a title in another language.",
+    schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string(), title: z.string().optional() }),
+    run: async (deps, { plan, baseRevision, ownerRequest, spec, title }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
-      const result = await submitSpec(root, { plan: relative, baseRevision, ownerRequest, spec }, deps.model);
+      const result = await submitSpec(root, title === undefined ? { plan: relative, baseRevision, ownerRequest, spec } : { plan: relative, baseRevision, ownerRequest, spec, title }, deps.model);
       const errors = result.findings.filter((finding) => finding.blocking).length;
       const notes = result.findings.length - errors;
       // A refused flow shows the shape it lacks: a continued plan never saw init's example.

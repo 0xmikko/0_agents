@@ -261,6 +261,9 @@ describe("planctl", () => {
       expect(onBase.status).not.toBe(0);
       expect(onBase.stderr).toContain(`integration branch ${base}`);
       git(fixture.root, "checkout", "-qb", "feat/graph-Indexing_llm");
+      const russian = run(fixture.root, "init", "--title", "План индексации");
+      expect(russian.status).not.toBe(0);
+      expect(russian.stderr).toContain("the plan is written in English, title included");
       const named = run(fixture.root, "init", "--title", "Fixture plan");
       expect(named.status, `${named.stdout}\n${named.stderr}`).toBe(0);
       const today = new Date().toISOString().slice(0, 10);
