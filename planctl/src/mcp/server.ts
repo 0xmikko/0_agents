@@ -224,7 +224,7 @@ const TOOLS = {
     },
   }),
   amend: tool({
-    description: "Apply one exact replacement to the SPEC or the implementation under the owner's word; on an approved plan a SPEC correction keeps the approval.",
+    description: "Apply one exact replacement to the SPEC, the implementation or the title under the owner's word; on an approved plan a SPEC correction keeps the approval.",
     schema: z.object({ plan: z.string(), ownerWord: z.string(), patch: z.record(z.string(), z.unknown()) }),
     run: async (deps, { plan, ownerWord, patch }) => {
       const { root, plan: relative } = located(deps.cwd, plan);

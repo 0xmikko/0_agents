@@ -208,6 +208,17 @@ describe("planctl mcp", () => {
       const amended = await dispatchTool(deps, "amend", { plan: absolute, ownerWord: "spec", patch: { section: "spec", find: "Reject empty names before saving.", replace: "Reject empty names before saving, at the parser." } });
       expect(amended.isError ?? false, text(amended)).toBe(false);
       expect(text(amended)).toContain("Checks: 0 errors");
+      // The title of a locked plan changes through amend too, under the owner's word, in English, never by hand.
+      const retitled = await dispatchTool(deps, "amend", { plan: absolute, ownerWord: "title", patch: { section: "title", find: "Gamma plan, renamed", replace: "Gamma plan, approved" } });
+      expect(retitled.isError ?? false, text(retitled)).toBe(false);
+      expect(readFileSync(absolute, "utf8").startsWith("# Gamma plan, approved\n")).toBe(true);
+      expect(readFileSync(absolute, "utf8")).toContain("amend title owner:title");
+      const wrongFind = await dispatchTool(deps, "amend", { plan: absolute, ownerWord: "title", patch: { section: "title", find: "Gamma plan, renamed", replace: "Gamma plan, again" } });
+      expect(wrongFind.isError).toBe(true);
+      expect(text(wrongFind)).toContain("title is");
+      const russianTitle = await dispatchTool(deps, "amend", { plan: absolute, ownerWord: "title", patch: { section: "title", find: "Gamma plan, approved", replace: "План гамма" } });
+      expect(russianTitle.isError).toBe(true);
+      expect(text(russianTitle)).toContain("the plan is written in English, title included");
       const withDelivery = await dispatchTool(deps, "put_delivery", { plan: absolute, delivery: { ...delivery, stageGraph: "D1-S1 -> D1-S2 -> D1-S3" } });
       expect(withDelivery.isError ?? false, text(withDelivery)).toBe(false);
       const first = await dispatchTool(deps, "put_stage", { plan: absolute, stage });

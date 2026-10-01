@@ -90,5 +90,6 @@ Good Task story: Restore `creditOperationMarket` in
 `src/onchain/market/credit/index.ts`.
 
 After approval, the plan changes only through the tools: `amend` under the
-owner's word for scope, and `start_task`, `complete_task`, `add_deviation`
-and `close_stage` for execution.
+owner's word for scope and for the title (section `title`), and
+`start_task`, `complete_task`, `add_deviation` and `close_stage` for
+execution. Nothing imports the engine directly.

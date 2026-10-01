@@ -165,7 +165,7 @@ export interface UnattendedDecisionReceipt {
 }
 
 export interface ExactReplacement {
-  readonly section: "spec" | "implementation";
+  readonly section: "spec" | "implementation" | "title";
   readonly find: string;
   readonly replace: string;
 }
@@ -362,13 +362,23 @@ function assertPlanTitle(title: string): void {
   if (/[\u0400-\u04FF]/.test(title)) throw new Error("the plan is written in English, title included");
 }
 
+/** The plan's title: its first line. */
+function planTitle(body: string): string {
+  const end = body.indexOf("\n");
+  if (end === -1 || !body.startsWith("# ")) throw new Error("the plan's first line is not its title");
+  return body.slice(2, end);
+}
+
+function replaceTitle(body: string, title: string): string {
+  assertPlanTitle(title);
+  return `# ${title}${body.slice(body.indexOf("\n"))}`;
+}
+
 /** Rename a draft: the first line is the title, and submission carries it beside the SPEC. */
 export function replaceDraftTitle(body: string, title: string): MutationResult {
   requireState(body, "SPEC_DRAFT");
-  assertPlanTitle(title);
-  const end = body.indexOf("\n");
-  if (end === -1 || !body.startsWith("# ")) throw new Error("the plan's first line is not its title");
-  return { body: `# ${title}${body.slice(end)}` };
+  planTitle(body);
+  return { body: replaceTitle(body, title) };
 }
 
 export function createDraftPlan(title: string): string {
@@ -1335,10 +1345,16 @@ function amendRegion(body: string, patch: ExactReplacement): string {
 export function applyOwnerAmendment(body: string, ownerWord: string, patch: ExactReplacement): MutationResult {
   const state = planState(body);
   // @tested-by: tst_scripts_planupdate_020
-  if (state !== "APPROVED" && !(state === "SPEC_LOCKED" && patch.section === "spec")) {
+  if (state !== "APPROVED" && !(state === "SPEC_LOCKED" && patch.section !== "implementation")) {
     throw new Error("owner amendment requires APPROVED plan or a SPEC amendment in SPEC_LOCKED");
   }
   assertOwnerWord(ownerWord);
+  if (patch.section === "title") {
+    // The title sits outside both locks: it changes under the owner's word, in English, and the log says so.
+    const current = planTitle(body);
+    if (patch.find !== current) throw new Error(`title is "${current}", not "${patch.find}"`);
+    return { body: appendExecution(replaceTitle(body, patch.replace), `amend title owner:${ownerWord}`) };
+  }
   let next = amendRegion(body, patch);
   if (patch.section === "spec") {
     const specHash = protocolSpecHash(next);
@@ -2158,7 +2174,7 @@ function decisionFrom(value: unknown): UnattendedDecisionReceipt {
 export function patchFrom(value: unknown): ExactReplacement {
   const record = object(value, "patch");
   const section = requiredString(record, "section");
-  if (section !== "spec" && section !== "implementation") throw new Error("patch section must be spec or implementation");
+  if (section !== "spec" && section !== "implementation" && section !== "title") throw new Error("patch section must be spec, implementation or title");
   return { section, find: requiredString(record, "find"), replace: requiredString(record, "replace") };
 }
 
