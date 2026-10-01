@@ -122,6 +122,8 @@ describe("findings an agent can act on", () => {
       const language = async (body: string) => (await lint(body, root)).violations.filter((violation) => violation.rule === "language").map((violation) => [violation.line, violation.quote]);
       const wrapped = (title: string, spec: string) => `# ${title}\n\nStatus: SPEC_DRAFT  \nSpec lock: unlocked owner:важно  \n\n<!-- plan:spec:start -->\n${spec}<!-- plan:spec:end -->\n`;
       expect(await language(wrapped("Reject an empty name", spec))).toEqual([]);
+      // A plan without the SPEC markers is history: the rule does not reach it.
+      expect(await language("# Старый план\n\nСтарый текст без маркеров.\n")).toEqual([]);
       expect(await language(wrapped("Пустое имя отклоняется", spec))).toEqual([[1, "# Пустое имя отклоняется"]]);
       const russian = wrapped("Reject an empty name", spec.replace(anchor, `${anchor}Пустое имя отклоняется до сохранения.\nThe owner said «пустые имена не нужны».\n\n\`\`\`text\nкомментарий в коде\n\`\`\`\n\n`));
       const line = russian.split("\n").indexOf("Пустое имя отклоняется до сохранения.") + 1;
