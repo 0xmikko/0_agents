@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { dispatchTool } from "../src/mcp/server";
+import { planJournalPath } from "../src/core/plan-update";
 import { protocolSpecHash } from "../src/core/plan-update";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
@@ -139,7 +140,7 @@ describe("planctl mcp", () => {
       const malformed = await client.callTool({ name: "start_task", arguments: { plan: absolute, task: 42 } });
       expect(malformed.isError).toBe(true);
       expect(text(malformed)).toContain("task");
-      expect(existsSync(join(root, ".git/plan-update-journal.json"))).toBe(true);
+      expect(existsSync(planJournalPath(root, plan))).toBe(true);
     }
     expect(existsSync(join(home, ".git"))).toBe(false);
   }, 120_000);
