@@ -68,7 +68,7 @@ describe("submit_spec", () => {
    * @scenario: scn_planctl_spec_submission_002
    * @covers: planctl/src/core/spec-submission.ts::submitSpec
    * @deterministic: yes
-   * @invariant: one bounded model call per changed submission with the owner request, the Goal rule, the vocabulary and the changed lines; unchanged text calls nothing; a timeout or invalid output ends in unavailable without retry.
+   * @invariant: one bounded model call per submission that changes a Goal outcome, with the owner request, the Goal rule and the changed Goal lines only; a change outside the Goal and unchanged text call nothing; a timeout or invalid output ends in unavailable without retry.
    */
   it("tst_unit_planctl_spec_submission_002 calls the model once per change and reports unavailable on timeout or invalid output", async () => {
     const root = repository();
@@ -86,16 +86,25 @@ describe("submit_spec", () => {
       expect(prompts).toHaveLength(1);
       expect(prompts[0]).toContain("Reject empty names before saving");
       expect(prompts[0]).toContain("The Goal is one to four numbered outcomes");
-      expect(prompts[0]).toContain("blueprint document");
       expect(prompts[0]).toContain("Ship one observable result.");
+      // The model judges the Goal only: no vocabulary, no Target rule, no line from another section.
+      expect(prompts[0]).not.toContain("blueprint document");
+      expect(prompts[0]).not.toContain("Target rule");
+      expect(prompts[0]).not.toContain("The current parser accepts empty names.");
 
       const unchanged = await submitSpec(root, { plan: PLAN, baseRevision: checked.revision, ownerRequest: "Reject empty names before saving", spec }, runner);
       expect(unchanged.checkStatus).toBe("no_change");
       expect(unchanged.revision).toBe(checked.revision);
       expect(prompts).toHaveLength(1);
 
+      // A change outside the Goal calls nothing: the deterministic lint already judged it.
+      const elsewhere = await submitSpec(root, { plan: PLAN, baseRevision: checked.revision, ownerRequest: "Reject empty names before saving", spec: spec.replace("Reject empty names before saving.", "Reject empty names before saving, in the parser.") }, runner);
+      expect(elsewhere.checkStatus).toBe("checked");
+      expect(elsewhere.findings.filter((finding) => !finding.blocking)).toEqual([]);
+      expect(prompts).toHaveLength(1);
+
       const slow: ModelRunner = () => Promise.reject(new Error("deadline of 15 seconds passed"));
-      const timedOut = await submitSpec(root, { plan: PLAN, baseRevision: checked.revision, ownerRequest: "x", spec: spec.replace("Ship one observable result.", "Ship two observable results.") }, slow);
+      const timedOut = await submitSpec(root, { plan: PLAN, baseRevision: elsewhere.revision, ownerRequest: "x", spec: spec.replace("Ship one observable result.", "Ship two observable results.") }, slow);
       expect(timedOut.checkStatus).toBe("unavailable");
       expect(timedOut.checkError).toContain("deadline");
       const noisy: ModelRunner = () => Promise.resolve("not json at all");

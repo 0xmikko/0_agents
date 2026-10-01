@@ -37,9 +37,10 @@ that reply to the owner verbatim.
    request in their words, the whole SPEC, and a `title` when the one from
    `init` must change. The tool fixes line endings
    and vocabulary itself, returns every lint error at once with its line and
-   replacement, and asks the model once about the changed lines.
-   Fix the errors and resubmit with the returned revision; unchanged text
-   calls nothing.
+   replacement, and asks a model once about changed Goal outcomes only.
+   A model note is advice, not an error: act on it when it is right, never
+   resubmit to silence it. Fix the errors and resubmit with the returned
+   revision; unchanged text calls nothing.
 4. Show the owner the reply and stop. This is the first hard stop: ask
    whether they approve the SPEC.
 5. After an explicit yes, call `approve_spec` with the owner's word: the

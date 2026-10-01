@@ -159,7 +159,7 @@ describe("planctl mcp", () => {
       publication: () => null,
       sourceCommit: "s".repeat(40),
       eventLog: join(home, "events-002.jsonl"),
-      model: () => Promise.resolve(JSON.stringify({ findings: [{ rule: "clarity", line: 3, quote: "Ship one observable result.", message: "say which result", replacement: null }] })),
+      model: () => Promise.resolve(JSON.stringify({ findings: [{ rule: "goal", line: 3, quote: "Ship one observable result.", message: "say which result", replacement: null }] })),
       publisher: (repository: string, plan: string) => {
         received.push({ plan, bytes: readFileSync(join(repository, plan), "utf8") });
         return `http://fixture/${plan}`;
@@ -179,6 +179,8 @@ describe("planctl mcp", () => {
       const renamed = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec, title: "Gamma plan, renamed" });
       expect(renamed.isError ?? false, text(renamed)).toBe(false);
       expect(readFileSync(absolute, "utf8").startsWith("# Gamma plan, renamed\n")).toBe(true);
+      // The Goal changed with this first submission: the model is asked once and its note rides the reply.
+      expect(text(renamed)).toContain("Checks: 0 errors, 1 model notes");
       const cyrillic = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (renamed.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec, title: "План гамма" });
       expect(cyrillic.isError).toBe(true);
       expect(text(cyrillic)).toContain("the plan is written in English, title included");
@@ -194,7 +196,8 @@ describe("planctl mcp", () => {
       const submission = submitted.structuredContent as { revision: string; url: string; reply: string; checkStatus: string };
       expect(submission.checkStatus).toBe("checked");
       expect(submission.url).toBe(`http://fixture/${plan}`);
-      expect(submission.reply).toBe(`Plan: http://fixture/${plan}\nRevision ${submission.revision}, SPEC_DRAFT\nChecks: 0 errors, 1 model notes`);
+      // This submission changes nothing in the Goal: no model call, no note.
+      expect(submission.reply).toBe(`Plan: http://fixture/${plan}\nRevision ${submission.revision}, SPEC_DRAFT\nChecks: 0 errors, 0 model notes`);
       expect(received.at(-1)?.bytes).toBe(readFileSync(absolute, "utf8"));
 
       const locked = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec" });

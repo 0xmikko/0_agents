@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { authoringContract, GOAL_RULE, lint, TARGET_RULE } from "./plan-gate";
+import { authoringContract, GOAL_RULE, lint } from "./plan-gate";
 import type { GateViolation } from "./plan-gate";
 import { mutatePlanFile, planState, protocolSpecHash, replaceDraftSpec, replaceDraftTitle } from "./plan-update";
 import type { PlanState } from "./plan-update";
@@ -71,25 +71,34 @@ function changedLines(before: string, after: string): readonly { readonly line: 
   return after.split("\n").map((text, index) => ({ line: index + 1, text })).filter((entry) => entry.text.trim() !== "" && !previous.has(entry.text));
 }
 
-function prompt(input: SubmitSpecInput, vocabulary: readonly { readonly word: string; readonly term: string }[], changed: readonly { readonly line: number; readonly text: string }[]): string {
+/** The lines of the Goal section inside a SPEC text, one-based. */
+function goalLineNumbers(spec: string): ReadonlySet<number> {
+  const numbers = new Set<number>();
+  let inside = false;
+  spec.split("\n").forEach((text, index) => {
+    if (/^## /.test(text)) inside = /^## the goal$/i.test(text.trim());
+    else if (inside) numbers.add(index + 1);
+  });
+  return numbers;
+}
+
+/** The model judges the Goal outcomes only; everything else is the deterministic lint. */
+function prompt(input: SubmitSpecInput, changed: readonly { readonly line: number; readonly text: string }[]): string {
   return [
-    "You check the changed lines of a plan SPEC. Answer with JSON only: {\"findings\": [{\"rule\": \"goal\" | \"clarity\" | \"vocabulary\", \"line\": number, \"quote\": string, \"message\": string, \"replacement\": string | null}]}.",
-    "Report only what breaks the Goal rule, hides what will be behind history or reasons, or uses a rejected word. An empty findings array is a good answer.",
+    "You check the changed Goal outcomes of a plan SPEC against the Goal rule. Answer with JSON only: {\"findings\": [{\"rule\": \"goal\", \"line\": number, \"quote\": string, \"message\": string, \"replacement\": string | null}]}.",
+    "Report only an outcome that breaks the Goal rule: no measure, a mechanism instead of what the owner sees, or more than the request asks. At most one finding per outcome. An empty findings array is a good answer.",
     "",
     `Owner request: ${input.ownerRequest}`,
     "",
     `Goal rule: ${GOAL_RULE}`,
-    `Target rule: ${TARGET_RULE}`,
     "",
-    `Vocabulary, say the term instead of the word: ${vocabulary.map((pair) => `${pair.word} → ${pair.term}`).join("; ")}`,
-    "",
-    "Changed lines:",
+    "Changed Goal lines:",
     ...changed.map((entry) => `${entry.line}: ${entry.text}`),
   ].join("\n");
 }
 
 interface ModelFinding {
-  readonly rule: "goal" | "clarity" | "vocabulary";
+  readonly rule: "goal";
   readonly line: number;
   readonly quote: string;
   readonly message: string;
@@ -109,7 +118,7 @@ function decodeFindings(output: string): readonly ModelFinding[] {
   return (parsed as { findings: unknown[] }).findings.map((entry) => {
     if (typeof entry !== "object" || entry === null) throw new Error("invalid output: a finding is not an object");
     const finding = entry as Record<string, unknown>;
-    if (finding.rule !== "goal" && finding.rule !== "clarity" && finding.rule !== "vocabulary") throw new Error("invalid output: unknown rule");
+    if (finding.rule !== "goal") throw new Error("invalid output: unknown rule");
     if (typeof finding.line !== "number" || typeof finding.quote !== "string" || typeof finding.message !== "string") throw new Error("invalid output: finding fields");
     if (finding.replacement !== null && typeof finding.replacement !== "string") throw new Error("invalid output: replacement");
     return { rule: finding.rule, line: finding.line, quote: finding.quote, message: finding.message, replacement: finding.replacement };
@@ -159,13 +168,14 @@ export async function submitSpec(root: string, input: SubmitSpecInput, model: Mo
   });
   const saved = readFileSync(resolve(root, plan), "utf8");
   const report = await lint(saved, root);
-  const changed = changedLines(before, corrected.text);
+  const goal = goalLineNumbers(corrected.text);
+  const changed = changedLines(before, corrected.text).filter((entry) => goal.has(entry.line));
   let advice: readonly GateViolation[] = [];
   let checkStatus: SubmitSpecResult["checkStatus"] = "checked";
   let checkError: string | null = null;
   try {
     const offset = saved.split("\n").indexOf(SPEC_START) + 1;
-    advice = decodeFindings(await model(prompt(input, contract.vocabulary, changed), MODEL_DEADLINE_MS)).map((finding) => ({
+    advice = changed.length === 0 ? [] : decodeFindings(await model(prompt(input, changed), MODEL_DEADLINE_MS)).map((finding) => ({
       kind: "protocol-shape",
       rule: finding.rule,
       blocking: false,
