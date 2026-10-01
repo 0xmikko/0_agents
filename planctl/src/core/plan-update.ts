@@ -1381,6 +1381,7 @@ export function applyUnattendedAmendment(
 ): MutationResult {
   requireState(body, "APPROVED");
   if (!/^Unattended decisions:\s*allowed\s*$/m.test(body)) throw new Error("unattended decisions are not allowed");
+  if (patch.section === "title") throw new Error("an unattended amendment changes the SPEC or the implementation, never the title");
   assertDecision(decision);
   let next = amendRegion(body, patch);
   const changedHash = patch.section === "spec" ? protocolSpecHash(next) : protocolImplementationHash(next);

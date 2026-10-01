@@ -375,6 +375,18 @@ describe("plan-update", () => {
     expect(result.body).toContain("owner_review_pending");
     expect(result.body).toContain("Status: APPROVED");
     expect(result.body).toContain("D1-S2 -> D1-S3");
+    // The title is the owner's to change: an unattended decision never touches it.
+    expect(() => applyUnattendedAmendment(body, {
+      version: 1,
+      decidedAt: "2026-08-27T23:00:00Z",
+      goalPreserved: "one observable result still ships",
+      decision: "rename the plan",
+      alternatives: ["keep the title"],
+      whyContinueNow: "the change is bounded and reversible",
+      affectedScope: ["title"],
+      rollbackBase: "b".repeat(40),
+      verification: ["bun run agent:test:backend -- test/plan-update.test.ts"],
+    }, { section: "title", find: "Fixture plan", replace: "Renamed plan" })).toThrow(/never the title/);
   });
 
   // @test-id: tst_scripts_planupdate_005
