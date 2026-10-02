@@ -1,8 +1,8 @@
 # One plan across two repositories
 
-Status: SPEC_LOCKED  
+Status: APPROVED  
 Spec lock: sha256:83fbbd5233813f4b648809abee976f6eb50dd4b8b3a0cb8b3ddbb52dde117dc5 owner:Сделай возможность работать в двух репозиториях  
-Implementation lock: unlocked  
+Implementation lock: sha256:c856b330f5fcdae7f898a2263113d57fa852d03f065abd3ef2a50e0c0441729f owner:Сделай возможность работать в двух репозиториях  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -242,9 +242,9 @@ Forecast: 250 active min / 0 credits across 4 Stages; longest dependency path 25
 
 What changed for people. A plan in the app can carry a Delivery whose branch, commits and PR live in the catalog checkout. The agent names the repository once and sets one config line on the machine. Start, complete, close and progress then act there with the same tools.
 
-What changed in the code. DeliveryInput and DeliveryMeta carry repository. deliveryRoot resolves the checkout from code-production.repository.<name>. startTask, completeTask, closePlanStage and planProgress act in that checkout; the server and the CLI pass the plan root and let the core resolve the rest.
+What changed in the code. DeliveryInput and DeliveryMeta carry repository. The function deliveryRoot resolves the checkout from the config line code-production.repository.<name>. The functions startTask, completeTask, closePlanStage and planProgress act in that checkout. The server and the CLI pass the plan root and let the core resolve the rest.
 
-How it was proven. Unit tests on a second fixture repository. The field round-trips; start refuses a missing line and a wrong branch; completion refuses a commit from the plan's repository; close runs a criterion in the checkout; progress shows two Publish lines.
+How it was proven. Unit tests on a second fixture repository. The field round-trips. Start refuses a missing line and a wrong branch. Completion refuses a commit from the plan's repository. Close runs a criterion in the checkout. Progress shows two Publish lines.
 
 Not in this PR. A Delivery in a third repository is the same mechanism; the catalog's own hooks and gates stay the catalog's.
 
@@ -259,7 +259,7 @@ Not in this PR. A Delivery in a third repository is the same mechanism; the cata
 
 feat(planctl): a Delivery names its repository
 
-Done for the first and second Goal outcomes: a Delivery carries an optional repository name, rendered in its metadata line and read back by deliveryMetas, and deliveryRoot resolves the checkout from one git config line of the plan's repository, refusing a missing line with the command that sets it. The plan stays portable: it names the repository, never a path.
+Done for the first and second Goal outcomes. A Delivery carries an optional repository name, rendered in its metadata line and read back by deliveryMetas. The function deliveryRoot resolves the checkout from one git config line of the plan's repository and refuses a missing line with the command that sets it. The plan stays portable: it names the repository, never a path.
 
 Proven by the plan-update tests on the field round trip and on deliveryRoot, the MCP test on put_delivery with repository, and the instruction audit on the skill and the law.
 
@@ -298,7 +298,7 @@ Proven by the plan-update tests on the field round trip and on deliveryRoot, the
 
 feat(planctl): start a Task in the Delivery's checkout
 
-Done for the first Goal outcome: startTask asks deliveryRoot for the checkout of the Task's Delivery, refuses a checkout on another branch naming both branches, and records worktree and baseHead from that checkout while the start record stays in the plan's repository. The blueprint-start skill creates the branch in the checkout and sets the config line before the first start.
+Done for the first Goal outcome. The function startTask asks deliveryRoot for the checkout of the Task's Delivery. A checkout on another branch is refused naming both branches. The start record stays in the plan's repository, with worktree and baseHead taken from that checkout. The blueprint-start skill creates the branch in the checkout and sets the config line before the first start.
 
 Proven by the plan-update test on a second fixture repository and the instruction audit.
 
@@ -334,7 +334,7 @@ Proven by the plan-update test on a second fixture repository and the instructio
 
 feat(planctl): complete and close a Stage in the Delivery's checkout
 
-Done for the first Goal outcome: completeTask checks the commit's ancestry, its paths and its exported types in the Delivery's checkout and writes the result row into the plan; closePlanStage runs the criteria with the checkout as the working directory. A commit from the plan's repository handed to a catalog Delivery is refused as not descending from the start base.
+Done for the first Goal outcome. The function completeTask checks the commit's ancestry, its paths and its exported types in the Delivery's checkout and writes the result row into the plan. The function closePlanStage runs the criteria with the checkout as the working directory. A commit from the plan's repository handed to a catalog Delivery is refused as not descending from the start base.
 
 Proven by the MCP test driving a catalog Delivery through start, complete and close on a second fixture repository.
 
@@ -370,7 +370,7 @@ Proven by the MCP test driving a catalog Delivery through start, complete and cl
 
 feat(planctl): progress shows every Delivery in its own repository
 
-Done for the third Goal outcome: planProgress asks for the publication of every Delivery in its own checkout and the screen shows one Publish line per Delivery with its repository name, PR and CI; the active Delivery keeps its place.
+Done for the third Goal outcome. The function planProgress asks for the publication of every Delivery in its own checkout. The screen shows one Publish line per Delivery with its repository name, PR and CI; the active Delivery keeps its place.
 
 Proven by the plan-progress test answering two fake publications per checkout.
 
@@ -399,4 +399,6 @@ Proven by the plan-progress test answering two fake publications per checkout.
 ## Execution log
 
 - lock-spec sha256:83fbbd5233813f4b648809abee976f6eb50dd4b8b3a0cb8b3ddbb52dde117dc5 owner:Сделай возможность работать в двух репозиториях
+
+- approve sha256:c856b330f5fcdae7f898a2263113d57fa852d03f065abd3ef2a50e0c0441729f owner:Сделай возможность работать в двух репозиториях
 <!-- plan:execution:end -->
