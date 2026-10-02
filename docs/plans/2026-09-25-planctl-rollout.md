@@ -248,16 +248,16 @@ Proven by planctl/test/instruction-audit.test.ts. The three skills carry no plan
 
 - [x] ROLL_005 — blueprint authors a plan through init, submit_spec, approve_spec, put_delivery, put_stage and approve_plan, stops twice for the owner's word, and names no CLI command. (45 min) — 8b973ff
 <!-- plan:task-meta:{"writes":["shared/skills/blueprint/SKILL.md","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":45,"predictedCredits":5,"how":"rewrite shared/skills/blueprint/SKILL.md around the tools: init with root and title, the SPEC as one text through submit_spec with the returned revision and the owner's request, the three-line reply shown verbatim and the first stop, approve_spec after the word, put_delivery and put_stage with returned revisions and their findings, the second stop, approve_plan; keep the Goal examples; in planctl/test/instruction-audit.test.ts add the test that reads the three skills and refuses any planctl <command> line except stats and progress --note, any --from, --reason or JSON file, and requires the tool names of each flow","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills_002"} -->
-- [x] ROLL_006 — blueprint-start executes a plan through start_task, complete_task, close_stage, needs_owner, resume_task and progress, with the brief as the scope and the reply after every write. (50 min) — 3f6cbc9
+- [x] ROLL_006 — blueprint-start executes a plan through start_task, complete_task, close_stage, needs_owner, resume_task and progress, with the brief as the scope and the reply after every write. (50 min) — 3f6cbc9 — b6111ab
 <!-- plan:task-meta:{"writes":["shared/skills/blueprint-start/SKILL.md","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":50,"predictedCredits":5,"how":"rewrite shared/skills/blueprint-start/SKILL.md around the tools: start_task without a Task for the running or next one, the brief as the frozen scope, RED with the printed command, GREEN, the diff review, one commit, complete_task with Task IDs, commit and result sentence, close_stage, needs_owner as the four-part form before any question and resume_task after the answer, progress for the whole picture and after a compaction, the delivery by push, CI and ready with the PR URL and the plan URL from the last reply; keep the rules on parallel agents, deviations and time overruns; extend the audit test with this skill's tool names","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills_002"} -->
 - [x] ROLL_007 — end-work closes a merged Delivery with progress, planctl stats for the retro and the worktree cleanup, and never commits. (30 min) — 33f9b901a127811bd1503b5cc387bcd4182e4792
 <!-- plan:task-meta:{"writes":["shared/skills/end-work/SKILL.md","planctl/test/instruction-audit.test.ts"],"predictedActiveMinutes":30,"predictedCredits":3,"how":"rewrite shared/skills/end-work/SKILL.md: confirm the merge through progress, take the retro numbers from planctl stats --since the plan date and the plan's Results rows, post the compact retro on the PR, prove the worktree clean and remove it with its temp roots, never commit; extend the audit test with this skill's tool names","red":"bun run agent:test:backend -- test/instruction-audit.test.ts -t tst_audit_skills_002"} -->
 
 ##### Acceptance criteria
 
-- [x] `cd planctl && bun run agent:test:backend -- test/instruction-audit.test.ts` exits 0 — the three skills name only tools and every tool of their flow — 3f6cbc9f347d13297242287b4d0fc748f67e77d6
-- [x] `cd planctl && bun run agent:verify:docs` exits 0 — the audit over the repository passes with the rewritten skills — 3f6cbc9f347d13297242287b4d0fc748f67e77d6
-- [x] Commit — 3f6cbc9f347d13297242287b4d0fc748f67e77d6
+- [x] `cd planctl && bun run agent:test:backend -- test/instruction-audit.test.ts` exits 0 — the three skills name only tools and every tool of their flow — b6111abb5774b6998d3981e7629b8883e81bf7af
+- [x] `cd planctl && bun run agent:verify:docs` exits 0 — the audit over the repository passes with the rewritten skills — b6111abb5774b6998d3981e7629b8883e81bf7af
+- [x] Commit — b6111abb5774b6998d3981e7629b8883e81bf7af
 
 ##### Results
 
@@ -269,6 +269,7 @@ Proven by planctl/test/instruction-audit.test.ts. The three skills carry no plan
 | ROLL_007 | 33f9b901a127811bd1503b5cc387bcd4182e4792 | 2026-09-25T17:33:34.862Z–2026-09-25T17:36:30.382Z | 2.925333333333333 / 2.925333333333333 min | unavailable: not measured by planctl | the three flow skills name only tools and every tool of their flow; the audit proves it |
 | ROLL_005 | 8b973ff | 2026-10-02T09:32:56.315Z–2026-10-02T09:57:43.546Z | 24.787183333333335 / 24.787183333333335 min | unavailable: not measured by planctl | Keep MCP planning to two approvals, preserve SPEC wording, and report editorial advice without blocking owner decisions. — beyond writes: planctl/src/cli/main.ts, planctl/src/core/plan-gate.ts, planctl/src/core/plan-update.ts, planctl/src/core/spec-submission.ts, planctl/src/mcp/server.ts, planctl/test/mcp.test.ts, planctl/test/plan-gate.test.ts, planctl/test/plan-update.test.ts, planctl/test/planctl.test.ts, planctl/test/spec-submission.test.ts, shared/code-production/laws/development-process.md, shared/code-production/laws/plan-format.md |
 | ROLL_006 | 3f6cbc9 | 2026-10-02T11:54:41.032Z–2026-10-02T11:56:31.924Z | 1.8482 / 1.8482 min | unavailable: not measured by planctl | Use direct agent commands and reusable approval prefixes; verified that shell redirection misses the existing install rule. |
+| ROLL_006 | b6111ab | 2026-10-02T12:53:33.472Z–2026-10-02T13:02:48.354Z | 9.248033333333334 / 9.248033333333334 min | unavailable: not measured by planctl | Publication reads paginated GitHub Actions runs on the exact PR head without statusCheckRollup. Regression tst_scripts_planctl_014 failed on the Checks permission error before the fix, then passed; 62 related CLI, MCP, progress and task tests passed, and agent:verify:commit passed typecheck plus the regression. A fresh MCP progress call observed magnis-app PR 299 as green on 299c01ba42a61e84c9311b2026ef4f961a45fe20, run 37005543206 attempt 1. — beyond writes: planctl/src/cli/main.ts, planctl/test/planctl.test.ts |
 <!-- plan:results:D1-S3:end -->
 <!-- plan:stage:D1-S3:end -->
 <!-- plan:delivery:D1:end -->
@@ -302,4 +303,10 @@ Proven by planctl/test/instruction-audit.test.ts. The three skills carry no plan
 - record-result D1-S3 commit:3f6cbc9
 
 - close D1-S3 closed commit:3f6cbc9f347d13297242287b4d0fc748f67e77d6
+
+- record-result D1-S3 commit:b6111ab
+
+- deviation D1-S3: Owner-requested publication repair extends the execution-flow task into the existing CLI publication reader and its test; no token, permissions, workflow or consumer checkout was changed.
+
+- close D1-S3 closed commit:b6111abb5774b6998d3981e7629b8883e81bf7af
 <!-- plan:execution:end -->
