@@ -143,6 +143,17 @@ export function deliveryRoot(planRoot: string, delivery: DeliveryMeta): string {
   return toplevel;
 }
 
+/** The checkout of a run's Delivery when the machine knows it, else null: a record from an unconfigured checkout is someone else's. */
+function knownDeliveryRoot(planRoot: string, deliveries: readonly DeliveryMeta[], deliveryId: string): string | null {
+  const delivery = deliveries.find((entry) => entry.id === deliveryId);
+  if (delivery === undefined) return null;
+  try {
+    return deliveryRoot(planRoot, delivery);
+  } catch {
+    return null;
+  }
+}
+
 export interface StageResultReceipt {
   readonly version: 1;
   readonly plan: string;
@@ -1869,7 +1880,9 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
   let body = readFileSync(resolve(root, plan), "utf8");
   requireState(body, "APPROVED");
   const runs = await runningTaskRecords(root, plan, input.decodeRun);
-  const mine = runs.filter((run) => taskRunOf(run) === null || taskRunOf(run) === root)
+  // A run is mine when it started in this worktree or in the checkout its Delivery names on this machine.
+  const ownRoot = (run: TaskRun): boolean => taskRunOf(run) === null || taskRunOf(run) === root || taskRunOf(run) === knownDeliveryRoot(root, deliveryMetas(body), run.deliveryId);
+  const mine = runs.filter(ownRoot)
     .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
   let taskId = input.taskId;
   if (taskId === null) {
@@ -1889,7 +1902,7 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
       }
     }
   }
-  const elsewhere = runs.find((run) => run.taskId === taskId && taskRunOf(run) !== null && taskRunOf(run) !== root);
+  const elsewhere = runs.find((run) => run.taskId === taskId && !ownRoot(run));
   if (elsewhere !== undefined) throw new Error(`Task ${taskId} is running in worktree ${taskRunOf(elsewhere)}`);
   const stages = stageInputs(body);
   const stage = stages.find((candidate) => candidate.tasks.some((task) => task.id === taskId));
@@ -1899,6 +1912,12 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
   const deliveries = deliveryMetas(body);
   const delivery = deliveries.find((entry) => entry.id === stage.deliveryId);
   if (delivery === undefined) throw new Error(`Task ${taskId} belongs to unknown Delivery ${stage.deliveryId}`);
+  // A Delivery that names a repository runs in that checkout, on its own branch.
+  const checkout = deliveryRoot(root, delivery);
+  if (checkout !== root) {
+    const onBranch = git(checkout, ["branch", "--show-current"]);
+    if (onBranch !== delivery.branch) throw new Error(`checkout ${checkout} is on ${onBranch}; Delivery ${delivery.id} is ${delivery.branch}`);
+  }
   if (!delivery.active) {
     const refusal = parentRefusal(root, deliveries, delivery, input.publication);
     if (refusal !== null) throw new Error(`Task ${taskId} cannot start: ${refusal}`);
@@ -1915,7 +1934,7 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
   let run: TaskRun;
   if (existing !== undefined) {
     if (existing.plan !== plan || existing.stageId !== brief.stageId) throw new Error(`Task ${taskId} has a conflicting start record`);
-    if (spawnSync("git", ["-C", root, "merge-base", "--is-ancestor", existing.baseHead, "HEAD"]).status !== 0) {
+    if (spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", existing.baseHead, "HEAD"]).status !== 0) {
       throw new Error(`Task ${taskId} start base is not ancestral to HEAD`);
     }
     // A repeated start keeps the clock; it may add a checkpoint, and an
@@ -1937,9 +1956,9 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
       stageId: brief.stageId,
       taskId,
       startedAt: new Date().toISOString(),
-      baseHead: git(root, ["rev-parse", "HEAD"]),
-      worktree: root,
-      branch: git(root, ["branch", "--show-current"]),
+      baseHead: git(checkout, ["rev-parse", "HEAD"]),
+      worktree: checkout,
+      branch: git(checkout, ["branch", "--show-current"]),
       checkpoint: input.checkpoint,
       identity: input.identity,
       ownerWait: null,

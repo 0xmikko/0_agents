@@ -265,25 +265,28 @@ Proven by the plan-update tests on the field round trip and on deliveryRoot, the
 
 ##### Tasks
 
-- [ ] MR_001 — Add `repository` to `DeliveryInput` and `DeliveryMeta` in `planctl/src/core/plan-update.ts` and render it in the Delivery metadata line. (25 min)
+- [x] MR_001 — Add `repository` to `DeliveryInput` and `DeliveryMeta` in `planctl/src/core/plan-update.ts` and render it in the Delivery metadata line. (25 min) — 81b50f7d1347d5ba4128a9953006ffeb91662025
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":25,"predictedCredits":0,"how":"Write tst_scripts_planupdate_030 in planctl/test/plan-update.test.ts: putDelivery with repository renders it in the delivery-meta line and deliveryMetas reads it; a Delivery without it reads null. Extend DeliveryInput, DeliveryMeta, renderDelivery and deliveryMetas in planctl/src/core/plan-update.ts.","red":"bun run agent:test:backend -- test/plan-update.test.ts -t tst_scripts_planupdate_030"} -->
-- [ ] MR_002 — Add `deliveryRoot` in `planctl/src/core/plan-update.ts` and accept `repository` in `put_delivery` and `put-delivery`. (30 min)
+- [x] MR_002 — Add `deliveryRoot` in `planctl/src/core/plan-update.ts` and accept `repository` in `put_delivery` and `put-delivery`. (30 min) — 81b50f7d1347d5ba4128a9953006ffeb91662025
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/mcp.test.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":30,"predictedCredits":0,"how":"Write tst_unit_planctl_mcp_005 in planctl/test/mcp.test.ts: put_delivery with repository saves it; deliveryRoot without the config line throws naming git config code-production.repository.catalog, with it returns the configured path. Add deliveryRoot to planctl/src/core/plan-update.ts, the field to the put_delivery schema in planctl/src/mcp/server.ts and to the put-delivery help in planctl/src/cli/main.ts.","red":"bun run agent:test:backend -- test/mcp.test.ts -t tst_unit_planctl_mcp_005"} -->
-- [ ] MR_003 — Name the Delivery field and the config line in `shared/skills/blueprint/SKILL.md` and `shared/code-production/laws/plan-format.md`. (15 min)
+- [x] MR_003 — Name the Delivery field and the config line in `shared/skills/blueprint/SKILL.md` and `shared/code-production/laws/plan-format.md`. (15 min) — 81b50f7d1347d5ba4128a9953006ffeb91662025
 <!-- plan:task-meta:{"writes":["shared/skills/blueprint/SKILL.md","shared/code-production/laws/plan-format.md"],"predictedActiveMinutes":15,"predictedCredits":0,"how":"Add one sentence to the Implementation contract step of shared/skills/blueprint/SKILL.md and one to the Delivery paragraph of shared/code-production/laws/plan-format.md; the instruction audit over the skills stays green.","red":"bun run agent:test:backend -- test/instruction-audit.test.ts"} -->
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/plan-update.test.ts` exits 0 — the field round-trips and deliveryRoot refuses and resolves
-- [ ] `cd planctl && bun run agent:test:backend -- test/mcp.test.ts` exits 0 — put_delivery carries the repository
-- [ ] `cd planctl && bun run typecheck` exits 0 — the new field compiles everywhere
-- [ ] Commit
+- [x] `cd planctl && bun run agent:test:backend -- test/plan-update.test.ts` exits 0 — the field round-trips and deliveryRoot refuses and resolves — 81b50f7d1347d5ba4128a9953006ffeb91662025
+- [x] `cd planctl && bun run agent:test:backend -- test/mcp.test.ts` exits 0 — put_delivery carries the repository — 81b50f7d1347d5ba4128a9953006ffeb91662025
+- [x] `cd planctl && bun run typecheck` exits 0 — the new field compiles everywhere — 81b50f7d1347d5ba4128a9953006ffeb91662025
+- [x] Commit — 81b50f7d1347d5ba4128a9953006ffeb91662025
 
 ##### Results
 
 <!-- plan:results:D1-S1:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| MR_001 | 81b50f7d1347d5ba4128a9953006ffeb91662025 | 2026-10-02T04:39:19.007Z–2026-10-02T04:43:28.580Z | 4.15955 / 4.15955 min | unavailable: not measured by planctl | repository field round-trips; deliveryRoot refuses a missing line and resolves the checkout; skill and law name it |
+| MR_002 | 81b50f7d1347d5ba4128a9953006ffeb91662025 | 2026-10-02T04:39:19.007Z–2026-10-02T04:43:28.580Z | 4.15955 / 4.15955 min | unavailable: not measured by planctl | repository field round-trips; deliveryRoot refuses a missing line and resolves the checkout; skill and law name it |
+| MR_003 | 81b50f7d1347d5ba4128a9953006ffeb91662025 | 2026-10-02T04:39:19.007Z–2026-10-02T04:43:28.580Z | 4.15955 / 4.15955 min | unavailable: not measured by planctl | repository field round-trips; deliveryRoot refuses a missing line and resolves the checkout; skill and law name it |
 <!-- plan:results:D1-S1:end -->
 <!-- plan:stage:D1-S1:end -->
 
@@ -409,4 +412,8 @@ Proven by the plan-progress test answering two fake publications per checkout.
 - owner_review_pending implementation sha256:75330e2ffd038f594dde19b567b96a5b2e273e758df9a96e64d29896691748d7 decision:eyJ2ZXJzaW9uIjoxLCJkZWNpZGVkQXQiOiIyMDI2LTEwLTAyVDEwOjAwOjAwWiIsImdvYWxQcmVzZXJ2ZWQiOiJ0aGUgc2FtZSB0ZXN0cyBwcm92ZSB0aGUgc2FtZSBmbG93czsgb25seSB0aGVpciBpZHMgbW92ZSB0byBmcmVlIG51bWJlcnMiLCJkZWNpc2lvbiI6InJlbnVtYmVyIHRoZSBSRUQgdGVzdHMgb2YgdGhlIHBsYW4tdXBkYXRlIHN1aXRlIHRvIDAzMCBhbmQgMDMxOiAwMjggYW5kIDAyOSBhbHJlYWR5IGV4aXN0IHRoZXJlIiwiYWx0ZXJuYXRpdmVzIjpbInJldXNlIHRoZSB0YWtlbiBpZHMgYW5kIGNvbGxpZGUgd2l0aCBleGlzdGluZyB0ZXN0cyJdLCJ3aHlDb250aW51ZU5vdyI6InRoZSBjaGFuZ2UgaXMgYm91bmRlZCBhbmQgcmV2ZXJzaWJsZTsgYSB0ZXN0IGlkIGlzIGEgbmFtZSwgbm90IGEgYmVoYXZpb3IiLCJhZmZlY3RlZFNjb3BlIjpbImltcGxlbWVudGF0aW9uIl0sInJvbGxiYWNrQmFzZSI6ImE2OTY0NDBiMDcwOWFiY2JmN2ZjNGM0NTc3M2I0ODBmYWJlMDhmNDgiLCJ2ZXJpZmljYXRpb24iOlsiYnVuIHJ1biBhZ2VudDp0ZXN0OmJhY2tlbmQgLS0gdGVzdC9wbGFuLXVwZGF0ZS50ZXN0LnRzIl19
 
 - owner_review_pending implementation sha256:5ca0afe4f8482d42056d4b7dfd33e1ec0bd6405b2c90e9cf15587c904c6ca358 decision:eyJ2ZXJzaW9uIjoxLCJkZWNpZGVkQXQiOiIyMDI2LTEwLTAyVDEwOjAwOjAwWiIsImdvYWxQcmVzZXJ2ZWQiOiJ0aGUgc2FtZSB0ZXN0cyBwcm92ZSB0aGUgc2FtZSBmbG93czsgb25seSB0aGVpciBpZHMgbW92ZSB0byBmcmVlIG51bWJlcnMiLCJkZWNpc2lvbiI6InJlbnVtYmVyIHRoZSBSRUQgdGVzdHMgb2YgdGhlIHBsYW4tdXBkYXRlIHN1aXRlIHRvIDAzMCBhbmQgMDMxOiAwMjggYW5kIDAyOSBhbHJlYWR5IGV4aXN0IHRoZXJlIiwiYWx0ZXJuYXRpdmVzIjpbInJldXNlIHRoZSB0YWtlbiBpZHMgYW5kIGNvbGxpZGUgd2l0aCBleGlzdGluZyB0ZXN0cyJdLCJ3aHlDb250aW51ZU5vdyI6InRoZSBjaGFuZ2UgaXMgYm91bmRlZCBhbmQgcmV2ZXJzaWJsZTsgYSB0ZXN0IGlkIGlzIGEgbmFtZSwgbm90IGEgYmVoYXZpb3IiLCJhZmZlY3RlZFNjb3BlIjpbImltcGxlbWVudGF0aW9uIl0sInJvbGxiYWNrQmFzZSI6ImE2OTY0NDBiMDcwOWFiY2JmN2ZjNGM0NTc3M2I0ODBmYWJlMDhmNDgiLCJ2ZXJpZmljYXRpb24iOlsiYnVuIHJ1biBhZ2VudDp0ZXN0OmJhY2tlbmQgLS0gdGVzdC9wbGFuLXVwZGF0ZS50ZXN0LnRzIl19
+
+- record-result D1-S1 commit:81b50f7d1347d5ba4128a9953006ffeb91662025
+
+- close D1-S1 closed commit:81b50f7d1347d5ba4128a9953006ffeb91662025
 <!-- plan:execution:end -->
