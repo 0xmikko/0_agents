@@ -216,7 +216,7 @@ const TOOLS = {
     },
   }),
   put_delivery: tool({
-    description: "Write one PR Delivery. Refuses with every error of the Delivery at once; returns the whole-plan findings without refusing an incomplete draft.",
+    description: "Write one PR Delivery. A Delivery whose branch, commits and PR live in another repository names it with repository (a name, never a path); the checkout is one line per machine, git config code-production.repository.<name> <path>. Refuses with every error of the Delivery at once; returns the whole-plan findings without refusing an incomplete draft.",
     schema: z.object({ plan: z.string(), delivery: z.record(z.string(), z.unknown()) }),
     run: async (deps, { plan, delivery }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
