@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { dispatchTool } from "../src/mcp/server";
-import { planJournalPath } from "../src/core/plan-update";
+import { deliveryMetas, planJournalPath } from "../src/core/plan-update";
 import { protocolSpecHash } from "../src/core/plan-update";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
@@ -149,6 +149,37 @@ describe("planctl mcp", () => {
       expect(existsSync(planJournalPath(root, plan))).toBe(true);
     }
     expect(existsSync(join(home, ".git"))).toBe(false);
+  }, 120_000);
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_005
+   * @scenario: scn_planctl_mcp_repository_001
+   * @covers: planctl/src/mcp/server.ts::put_delivery
+   * @deterministic: yes
+   * @invariant: put_delivery carries the repository name into the plan, and a Delivery without one stays the plan's own.
+   */
+  it("tst_unit_planctl_mcp_005 put_delivery carries the repository of a Delivery", async () => {
+    const { root } = fixture("epsilon");
+    const deps = { cwd: home, publication: () => null, sourceCommit: "s".repeat(40), eventLog: join(home, "events-005.jsonl"), publisher: (_repository: string, plan: string) => `http://fixture/${plan}` };
+    const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result.");
+    try {
+      const started = await dispatchTool(deps, "init", { root, title: "Epsilon plan" });
+      const absolute = join(root, (started.structuredContent as { plan: string }).plan);
+      const seen = await dispatchTool(deps, "progress", { root });
+      await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec });
+      const locked = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec" });
+      expect(locked.isError ?? false, text(locked)).toBe(false);
+      const catalog = await dispatchTool(deps, "put_delivery", { plan: absolute, delivery: { ...delivery, id: "D2", title: "Catalog side", branch: "feat/catalog", active: false, stageGraph: "D2-S1", repository: "catalog" } });
+      expect(catalog.isError ?? false, text(catalog)).toBe(false);
+      const body = readFileSync(absolute, "utf8");
+      expect(body).toContain('"repository":"catalog"');
+      expect(deliveryMetas(body).find((entry) => entry.id === "D2")?.repository).toBe("catalog");
+      const own = await dispatchTool(deps, "put_delivery", { plan: absolute, delivery });
+      expect(own.isError ?? false, text(own)).toBe(false);
+      expect(deliveryMetas(readFileSync(absolute, "utf8")).find((entry) => entry.id === "D1")?.repository).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   }, 120_000);
 
   /**

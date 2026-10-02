@@ -9,6 +9,8 @@ import {
   applyOwnerAmendment,
   closePlanStage,
   completeTask,
+  deliveryMetas,
+  deliveryRoot,
   needsOwner,
   resumeTask,
   startTask,
@@ -212,11 +214,42 @@ describe("plan-update", () => {
 
   // @test-id: tst_scripts_planupdate_004
   // @scenario: scn_codeprod_002
-  // @test-id: tst_scripts_planupdate_027
+  // @test-id: tst_scripts_planupdate_030
+  // @covers: planctl/src/core/plan-update.ts::putDelivery,deliveryMetas,deliveryRoot
+  // @deterministic: yes
+  // @invariant: a Delivery names its repository and reads it back; without one it reads null; deliveryRoot is the plan's root for the plan's own Delivery, refuses a missing config line naming the command, and returns the configured checkout.
+  it("tst_scripts_planupdate_030 a Delivery names its repository and deliveryRoot resolves its checkout", () => {
+    const locked = lockPlanSpec(draft(), "spec").body;
+    const withRepository = putDelivery(locked, { ...delivery(), repository: "catalog" }).body;
+    expect(withRepository).toContain('"repository":"catalog"');
+    const named = deliveryMetas(withRepository)[0];
+    expect(named?.repository).toBe("catalog");
+    const own = deliveryMetas(putDelivery(locked, delivery()).body)[0];
+    expect(own?.repository).toBeNull();
+    const root = mkdtempSync(join(tmpdir(), "delivery-root-"));
+    const checkout = mkdtempSync(join(tmpdir(), "delivery-checkout-"));
+    const git = (cwd: string, ...args: readonly string[]): string => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
+    try {
+      git(root, "init", "-q");
+      git(checkout, "init", "-q");
+      if (own === undefined || named === undefined) throw new Error("fixture lost its Deliveries");
+      expect(deliveryRoot(root, own)).toBe(root);
+      expect(() => deliveryRoot(root, named)).toThrow("repository catalog has no checkout on this machine; run: git config code-production.repository.catalog <path>");
+      git(root, "config", "code-production.repository.catalog", checkout);
+      expect(deliveryRoot(root, named)).toBe(git(checkout, "rev-parse", "--show-toplevel"));
+      git(root, "config", "code-production.repository.catalog", join(checkout, "missing"));
+      expect(() => deliveryRoot(root, named)).toThrow(/is not a repository checkout/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+
+  // @test-id: tst_scripts_planupdate_032
   // @covers: planctl/src/core/plan-update.ts::planJournalPath,mutatePlanFile,verifyStagedPlan,clearSpentJournal
   // @deterministic: yes
   // @invariant: two plans in one worktree keep two journals: the second plan's transaction never replaces the first's, each verifies on its own, and a commit spends only the journal it carries.
-  it("tst_scripts_planupdate_027 keeps one journal per plan in one worktree", () => {
+  it("tst_scripts_planupdate_032 keeps one journal per plan in one worktree", () => {
     const root = mkdtempSync(join(tmpdir(), "two-plans-one-journal-"));
     const writer = join(import.meta.dir, "../src/core/plan-update.ts");
     const git = (...args: readonly string[]): string => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();

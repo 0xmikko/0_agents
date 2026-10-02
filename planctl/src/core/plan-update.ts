@@ -51,6 +51,8 @@ export interface DeliveryInput {
    * rounds, CI runs, external services — kept apart from active work. The
    * active-work and critical-path forecasts are derived from the Stages. */
   readonly predictedExternalWaitMinutes: number;
+  /** The repository the branch, the commits and the PR live in, by name; absent: the plan's own repository. */
+  readonly repository?: string;
   /** The pull request text as of the merge: what changed for people, what
    * changed in the code, how it was proven, what is not in this PR.
    * Paragraphs separated by one blank line; rendered under the Stage graph. */
@@ -124,6 +126,21 @@ export interface DeliveryMeta {
   readonly depends: readonly string[];
   readonly branch: string;
   readonly predictedExternalWaitMinutes: number;
+  /** The repository the Delivery lives in, by name; null for the plan's own. */
+  readonly repository: string | null;
+}
+
+/** The checkout a Delivery's operations run in: the plan's root, or the configured checkout of its named repository. */
+export function deliveryRoot(planRoot: string, delivery: DeliveryMeta): string {
+  if (delivery.repository === null) return planRoot;
+  const key = `code-production.repository.${delivery.repository}`;
+  const configured = spawnSync("git", ["-C", planRoot, "config", "--get", key], { encoding: "utf8" });
+  const path = configured.status === 0 ? configured.stdout.trim() : "";
+  if (path === "") throw new Error(`repository ${delivery.repository} has no checkout on this machine; run: git config ${key} <path>`);
+  const top = spawnSync("git", ["-C", path, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
+  const toplevel = top.status === 0 ? top.stdout.trim() : "";
+  if (toplevel === "" || toplevel !== resolve(path)) throw new Error(`${key} = ${path} is not a repository checkout`);
+  return toplevel;
 }
 
 export interface StageResultReceipt {
@@ -723,7 +740,7 @@ function renderDelivery(input: DeliveryInput, stages: readonly ForecastStage[]):
   assertSafeProse(input.description, "Delivery description", DELIVERY_DESCRIPTION_HINT);
   const waitMinutes = assertExternalWait(input.predictedExternalWaitMinutes);
   assertUnique(input.depends, "Delivery dependencies");
-  const meta = JSON.stringify({ active: input.active, depends: input.depends, predictedExternalWaitMinutes: waitMinutes });
+  const meta = JSON.stringify({ active: input.active, depends: input.depends, predictedExternalWaitMinutes: waitMinutes, ...(input.repository === undefined ? {} : { repository: input.repository }) });
   return [
     deliveryStart(input.id),
     `<!-- plan:delivery-meta:${meta} -->`,
@@ -1033,7 +1050,7 @@ export function deliveryMetas(body: string): readonly DeliveryMeta[] {
     if (branch === null) throw new Error(`Delivery ${id} lacks a Branch line`);
     // The header says which Delivery is active: execution moves it without
     // touching the frozen contract, whose metadata keeps the authored flag.
-    values.push({ id, active: activeDeliveryId(body) === id, depends, branch: capture(branch, 1, `Delivery ${id} branch`), predictedExternalWaitMinutes: wait });
+    values.push({ id, active: activeDeliveryId(body) === id, depends, branch: capture(branch, 1, `Delivery ${id} branch`), predictedExternalWaitMinutes: wait, repository: typeof meta.repository === "string" ? meta.repository : null });
   }
   return values;
 }
@@ -2163,6 +2180,7 @@ export function deliveryFrom(value: unknown): DeliveryInput {
     stageGraph: requiredString(record, "stageGraph"),
     predictedExternalWaitMinutes: typeof record.predictedExternalWaitMinutes === "number" ? record.predictedExternalWaitMinutes : Number.NaN,
     description: typeof record.description === "string" ? record.description : "",
+    ...(record.repository === undefined ? {} : { repository: requiredString(record, "repository") }),
   };
 }
 
