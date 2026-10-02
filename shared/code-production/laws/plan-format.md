@@ -14,22 +14,24 @@ owner shaped sets the tone; `planctl` and the managed hooks enforce mechanics.
 The process around plans (cadence, micro-review, the two-mode contract)
 lives in [development-process.md](development-process.md).
 
-## Sections, in this order
+## SPEC sections
 
-A plan starts as an outline: the Goal as agreed in the conversation and one
-line per flow, approved by the owner's word before anything else is written
-(`submit_outline`, `approve_outline`). The SPEC then fills exactly those
-flows; `planctl` refuses a flow outside the outline, a Goal that changed, a
-path that does not exist unless the Target tree creates it, and a line that
-repeats another. The SPEC is the part the owner reads. It is written in
-English, title included; the owner's words may be quoted in «…», and
-`planctl` refuses any other line in another language. Eight sections, these headings, this
-order; `planctl` reports every missing or empty one at once. The same lint
-runs at every write: submission reports every error, approval refuses on
-any, and an amendment that adds one is refused. No size limit:
-the best plans ran to two thousand lines. What the SPEC never carries is
-history: it says what WILL be, and the past appears only as one sentence
-"now X" where X is being fixed.
+The SPEC develops through code exploration and discussion. There are two
+approvals: the SPEC, then the implementation contract. Draft goals and flows
+can change as evidence arrives; there is no separate outline approval.
+
+The SPEC is written in English, title included; the owner's words may be
+quoted in «…». The Goal and The target headings are required so progress can
+find them. The other sections and the flow example guide authoring. Lint
+reports editorial advice separately from blocking errors. Advice about
+wording, length or layout never prevents approval or an amendment. Submission
+preserves the authored words; it normalizes line endings, not vocabulary.
+Missing files, invalid TypeScript or diagrams, untyped pseudocode and an
+invalid implementation contract remain errors. Approved content changes only
+through an amendment under the owner's word.
+
+Preserve the scenarios, evidence, decisions and file changes needed to assess
+the solution. Do not discard them to fit a heading, diagram or length limit.
 
 1. **The Goal** — first, always. One to six numbered outcomes the owner
    reads as a whole: what will be done, in what order, who calls whom and
@@ -37,14 +39,14 @@ history: it says what WILL be, and the past appears only as one sentence
    request asks: no vision, no backstory, no extra scope. Plain English.
 2. **Why now** — at most ten lines, dated: what is broken today and what it
    costs. Not a history.
-3. **The target** — how it looks when done, as flows. Each flow is one
-   `###` heading, one mermaid diagram of that flow, a few lines of
-   explanation, and an implementation map table with the rows Owner,
+3. **The target** — how it looks when done, as flows. A useful example has a
+   `###` heading, a mermaid diagram, an explanation, and an implementation
+   map table with the rows Owner,
    Target files, Input / wake, Output / durable state, RED test; the
    **Interfaces** declare in TypeScript every exported type the plan
    changes, because completion refuses a changed exported type the SPEC
-   does not name. `init` returns one example flow; `planctl` refuses a
-   flow without its diagram or its map, and a target without flows.
+   does not name. `init` returns an example flow. Missing flow diagrams and maps are
+   advice; choose the layout that explains the actual solution.
    Pseudocode is TypeScript with types, in a ```typescript block, every
    parameter typed, every name camelCase (fields, parameters, methods,
    variables; types PascalCase); `planctl` refuses another language, an
@@ -128,7 +130,7 @@ Sequential PR Deliveries, each containing Stages. `planctl` renders this owner-v
    credits, How and RED. `planctl start-task` prints that hidden contract to the
    executor. Legacy five-line Tasks remain readable but are never generated.
 
-   A Task story is one concrete change, no more than 200 characters. Stage
+   A Task story explains one concrete change; length is authoring advice. Stage
    writes are folders (`dir/`); Task writes are the files inside them. The
    commit is checked against both: a file inside the Stage folders but
    beyond the Task writes is named in the result row, not refused; a test

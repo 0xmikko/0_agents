@@ -2,7 +2,7 @@
 
 Status: APPROVED  
 Spec lock: sha256:c8b973007e0ab1af1506ce4377f918b476c257f72728f9b93e5ca3e99fc24458 owner:Да, давай это воплотим и запустим параллельно  
-Implementation lock: sha256:22a8ac79ac1165add0c49cd1210ddabee24dfdc3a8b4f8766caa8cb7889fda16 owner:Да, давай его исполним и развернем  
+Implementation lock: sha256:ed0fd4e180610f05ad210b951ce88e164755192060493f3fed5bc4462768885e owner:Оставить MCP, упростить тот же процесс  
 Active Delivery: D1  
 Unattended decisions: allowed  
 Ledger: implemented  
@@ -230,7 +230,7 @@ Proven by planctl/test/setup-code-production.test.ts with fake claude and codex 
 <!-- plan:stage:D1-S2:end -->
 
 <!-- plan:stage:D1-S3:start -->
-<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S2"],"parallelWith":[],"writes":["shared/skills/","planctl/test/"],"tempRoot":".tmp/code-production/planctl-rollout/D1-S3","predictedActiveMinutes":135,"predictedCredits":14,"verifyActiveMinutes":10,"verifyCredits":1} -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S2"],"parallelWith":[],"writes":["shared/skills/","shared/code-production/laws/","planctl/src/","planctl/test/","lib/"],"tempRoot":".tmp/code-production/planctl-rollout/D1-S3","predictedActiveMinutes":135,"predictedCredits":14,"verifyActiveMinutes":10,"verifyCredits":1} -->
 #### Stage D1-S3 — The three skills speak only the tools
 
 - Owner: agent-1; Profile: strong; Depends: D1-S2; Parallel with: none.
@@ -290,4 +290,6 @@ Proven by planctl/test/instruction-audit.test.ts. The three skills carry no plan
 - record-result D1-S3 commit:33f9b901a127811bd1503b5cc387bcd4182e4792
 
 - close D1-S3 closed commit:33f9b901a127811bd1503b5cc387bcd4182e4792
+
+- amend implementation owner:Оставить MCP, упростить тот же процесс sha256:ed0fd4e180610f05ad210b951ce88e164755192060493f3fed5bc4462768885e
 <!-- plan:execution:end -->

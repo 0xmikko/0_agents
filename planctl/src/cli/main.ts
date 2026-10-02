@@ -828,7 +828,7 @@ async function setSpec(args: readonly string[]): Promise<void> {
 async function lintFindings(rootPath: string, plan: string): Promise<readonly string[]> {
   const { lint } = await import(portableRuntimeFile("plan-gate.ts"));
   const report = await lint(readFileSync(resolve(rootPath, plan), "utf8"), rootPath);
-  return report.violations.map((violation: GateViolation) => `line ${violation.line}: ${violation.text}${violation.replacement === null ? "" : ` → ${violation.replacement}`}`);
+  return report.violations.filter((violation: GateViolation) => violation.blocking).map((violation: GateViolation) => `line ${violation.line}: ${violation.text}${violation.replacement === null ? "" : ` → ${violation.replacement}`}`);
 }
 
 /** Approval runs the same lint as submission on the same bytes; every error refuses, like the tools. */

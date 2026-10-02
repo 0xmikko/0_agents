@@ -221,19 +221,13 @@ describe("planctl", () => {
       expect(saved.stderr).toContain("the plan is written in English");
       expect(saved.stderr).toContain("Отклонять пустые имена до сохранения.");
       expect(readFileSync(fixture.plan, "utf8")).toBe(before);
-      // The full lint reports what it saved; approval refuses on it. The hooks run verify on every staged plan.
+      // Editorial advice does not block approval through the CLI either.
       writeFileSync(join(fixture.root, "long.md"), readFileSync(fixture.spec, "utf8").replace("Reject empty names before saving.", `Reject empty names before saving. ${"word ".repeat(31)}ends.`));
       const long = run(fixture.root, "set-spec", fixture.plan, "--from", join(fixture.root, "long.md"));
       expect(long.status, `${long.stdout}\n${long.stderr}`).toBe(0);
-      expect(long.stdout).toContain("Checks: 1 errors");
-      expect(long.stdout).toContain("sentence exceeds thirty words");
-      const refused = run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes");
-      expect(refused.status).toBe(1);
-      expect(refused.stderr).toContain("lint has 1 error(s)");
-      expect(refused.stderr).toContain("sentence exceeds thirty words");
-      expect(readFileSync(fixture.plan, "utf8")).toContain("Status: SPEC_DRAFT");
-      expect(run(fixture.root, "set-spec", fixture.plan, "--from", fixture.spec).status).toBe(0);
+      expect(long.stdout).toContain("Checks: 0 errors");
       expect(run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes").status).toBe(0);
+      expect(readFileSync(fixture.plan, "utf8")).toContain("Status: SPEC_LOCKED");
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }
@@ -317,7 +311,7 @@ describe("planctl", () => {
       expect(named.stdout).toContain("Sections: The Goal, Why now, The target");
       expect(named.stdout).toMatch(/Vocabulary: .+ → .+/);
       expect(named.stdout).toContain("Goal rule: The Goal is one to six numbered outcomes");
-      expect(named.stdout).toContain("Target rule: The target is flows.");
+      expect(named.stdout).toContain("Target rule: Suggested layout:");
       expect(named.stdout).toContain("Example flow:\n### Browser OAuth returns a provider URL");
       expect(run(fixture.root, "verify-staged", plan).status).toBe(0);
     } finally {

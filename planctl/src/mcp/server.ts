@@ -6,7 +6,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { z } from "zod";
 import { appendEvent } from "../core/event-log";
 import type { EventRecord } from "../core/event-log";
-import { authoringContract, lint, protocolLanguageViolations } from "../core/plan-gate";
+import { authoringContract, lint } from "../core/plan-gate";
 import type { GateViolation } from "../core/plan-gate";
 import { planProgress, progressNote } from "../core/plan-progress";
 import type { ProgressView } from "../core/plan-progress";
@@ -20,12 +20,10 @@ import {
   deliveryFrom,
   deliveryStart,
   initPlan,
-  lockPlanOutline,
   lockPlanSpec,
   mutatePlanFile,
   needsOwner,
   patchFrom,
-  planOutline,
   planState,
   protocolImplementationHash,
   protocolSpecHash,
@@ -33,7 +31,6 @@ import {
   putStage,
   recordDeviation,
   removeDraftStage,
-  replaceDraftOutline,
   resumeTask,
   stageEnd,
   stageFrom,
@@ -97,7 +94,7 @@ function refusal(text: string): ToolResult {
 }
 
 function describeFindings(findings: readonly GateViolation[]): string {
-  return findings.map((finding) => `line ${finding.line}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}`).join("\n");
+  return findings.map((finding) => `${finding.blocking ? "Error" : "Advice"} line ${finding.line}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}`).join("\n");
 }
 
 /** Every lint error of the whole plan plus what approval would refuse: duplicate IDs, unknown dependencies, cycles. */
@@ -117,7 +114,7 @@ async function refuseInsidePart(candidate: string, root: string, start: string, 
   const from = lines.indexOf(start) + 1;
   const to = lines.indexOf(end) + 1;
   const report = await lint(candidate, root);
-  const inside = report.violations.filter((violation) => violation.line >= from && violation.line <= to);
+  const inside = report.violations.filter((violation) => violation.blocking && violation.line >= from && violation.line <= to);
   if (inside.length > 0) throw new Error(`the submitted part has ${inside.length} error(s):\n${describeFindings(inside)}`);
 }
 
@@ -125,7 +122,8 @@ async function lintedApproval(deps: ServerDependencies, plan: string, operation:
   const { root, plan: relative } = located(deps.cwd, plan);
   const body = readFileSync(resolve(root, relative), "utf8");
   const report = await lint(body, root);
-  if (report.violations.length > 0) throw new Error(`lint has ${report.violations.length} error(s):\n${describeFindings(report.violations)}`);
+  const errors = report.violations.filter((finding) => finding.blocking);
+  if (errors.length > 0) throw new Error(`lint has ${errors.length} error(s):\n${describeFindings(errors)}`);
   mutatePlanFile(root, relative, operation, (current) => transform(current, ownerWord));
   return { root, plan: relative, saved: readFileSync(resolve(root, relative), "utf8") };
 }
@@ -148,46 +146,18 @@ const TOOLS = {
       ].join("\n"));
     },
   }),
-  submit_outline: tool({
-    description: "Write the outline of a draft: the Goal as agreed and one line per flow, in English. The SPEC that follows fills exactly these flows. Refuses a stale revision.",
-    schema: z.object({ plan: z.string(), baseRevision: z.string(), goal: z.string(), flows: z.array(z.object({ name: z.string(), line: z.string() })) }),
-    run: async (deps, { plan, baseRevision, goal, flows }) => {
-      const { root, plan: relative } = located(deps.cwd, plan);
-      const body = readFileSync(resolve(root, relative), "utf8");
-      const current = protocolSpecHash(body);
-      if (baseRevision !== current) throw new Error(`stale revision ${baseRevision}; the plan is at ${current}`);
-      const language = protocolLanguageViolations(replaceDraftOutline(body, { goal, flows }).body);
-      if (language.length > 0) throw new Error(language.join("\n"));
-      mutatePlanFile(root, relative, "set-outline", (draft) => replaceDraftOutline(draft, { goal, flows }));
-      const saved = readFileSync(resolve(root, relative), "utf8");
-      return reply({ plan: relative, revision: protocolSpecHash(saved), state: "SPEC_DRAFT", flows: flows.map((flow) => flow.name) }, [`Outline: ${flows.length} flow(s)`, ...flows.map((flow) => `- ${flow.name}: ${flow.line}`)].join("\n"));
-    },
-  }),
-  approve_outline: tool({
-    description: "Record the owner's word on the outline: the Goal and the flow names are fixed, and submit_spec fills them and nothing else.",
-    schema: z.object({ plan: z.string(), ownerWord: z.string() }),
-    run: async (deps, { plan, ownerWord }) => {
-      const { root, plan: relative } = located(deps.cwd, plan);
-      mutatePlanFile(root, relative, "lock-outline", (body) => lockPlanOutline(body, ownerWord));
-      const saved = readFileSync(resolve(root, relative), "utf8");
-      return reply({ plan: relative, revision: protocolSpecHash(saved), state: "SPEC_DRAFT", outline: planOutline(saved) }, `outline locked under "${ownerWord}"`);
-    },
-  }),
   submit_spec: tool({
-    description: "Replace the whole SPEC of a draft, and its title when given. Fixes line endings and vocabulary itself, returns every lint error at once. Refuses a stale revision, a locked plan and a title in another language.",
+    description: "Replace the whole SPEC of a draft, and its title when given. Preserves authored words, normalizes line endings and reports blocking errors separately from editorial advice. Refuses a stale revision, a locked plan and a title in another language.",
     schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string(), title: z.string().optional() }),
     run: async (deps, { plan, baseRevision, ownerRequest, spec, title }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
       const result = await submitSpec(root, title === undefined ? { plan: relative, baseRevision, ownerRequest, spec } : { plan: relative, baseRevision, ownerRequest, spec, title });
       const errors = result.findings.filter((finding) => finding.blocking).length;
-      // A refused flow shows the shape it lacks: a continued plan never saw init's example.
-      const flowRefused = result.findings.some((finding) => finding.blocking && /^(flow «|The target has no flow)/.test(finding.text));
       return reply({ plan: relative, ...result }, [
         `Revision ${result.revision}, ${result.state}`,
         `Checks: ${errors} errors`,
         ...result.corrections.map((correction) => `Corrected line ${correction.line}: ${correction.after}`),
-        ...result.findings.map((finding) => `line ${finding.line}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}`),
-        ...(flowRefused ? [`Example flow:\n${(await authoringContract(root)).example}`] : []),
+        ...(result.findings.length > 0 ? [describeFindings(result.findings)] : []),
       ].join("\n"));
     },
   }),
@@ -200,7 +170,7 @@ const TOOLS = {
     },
   }),
   approve_spec: tool({
-    description: "Record the owner's word on the SPEC. Runs the same lint as submission on the same bytes; every lint error refuses.",
+    description: "Record the owner's word on the SPEC. Runs the same lint as submission on the same bytes; only blocking errors refuse.",
     schema: z.object({ plan: z.string(), ownerWord: z.string() }),
     run: async (deps, { plan, ownerWord }) => {
       const done = await lintedApproval(deps, plan, "lock-spec", lockPlanSpec, ownerWord);
@@ -262,13 +232,13 @@ const TOOLS = {
       const current = readFileSync(resolve(root, relative), "utf8");
       const before = (await lint(current, root)).violations.map((violation) => `${violation.text}|${violation.quote}`);
       const after = (await lint(applyOwnerAmendment(current, ownerWord, replacement).body, root)).violations;
-      const added = after.filter((violation) => !before.includes(`${violation.text}|${violation.quote}`));
+      const added = after.filter((violation) => violation.blocking && !before.includes(`${violation.text}|${violation.quote}`));
       if (added.length > 0) throw new Error(`amendment adds ${added.length} error(s):\n${describeFindings(added)}`);
       mutatePlanFile(root, relative, "amend", (body) => applyOwnerAmendment(body, ownerWord, replacement));
       const saved = readFileSync(resolve(root, relative), "utf8");
       return reply(
         { plan: relative, section: replacement.section, specRevision: protocolSpecHash(saved), implementationRevision: protocolImplementationHash(saved), findings: after },
-        [`${replacement.section} amended under "${ownerWord}"`, `Checks: ${after.length} errors`, ...(after.length > 0 ? [describeFindings(after)] : [])].join("\n"),
+        [`${replacement.section} amended under "${ownerWord}"`, `Checks: ${after.filter((finding) => finding.blocking).length} errors`, ...(after.length > 0 ? [describeFindings(after)] : [])].join("\n"),
       );
     },
   }),

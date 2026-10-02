@@ -1152,8 +1152,8 @@ describe("story errors arrive together", () => {
   // @scenario: scn_plan_control_story_errors_001
   // @covers: planctl/src/core/plan-update.ts::putStage
   // @deterministic: yes
-  // @invariant: put-stage refuses with every story error of the Stage at once, like a compiler.
-  it("tst_scripts_planupdate_026 refuses a Stage with both story errors in one message", () => {
+  // @invariant: put-stage accepts detailed stories and reports vague outcomes and unresolved references together.
+  it("tst_scripts_planupdate_026 accepts a detailed story and reports substantive story errors together", () => {
     const locked = putDelivery(lockPlanSpec(draft(), "word").body, delivery()).body;
     const base = stage("D1-S1", ["scripts/base.ts"]);
     const task = base.tasks[0];
@@ -1161,14 +1161,16 @@ describe("story errors arrive together", () => {
     const vague = { ...task, id: "D1-S1-T1", story: "Fix the parser" };
     const long = { ...task, id: "D1-S1-T2", story: `Reject empty names before saving them ${"and report each one ".repeat(9)}to the caller` };
     expect(long.story.length).toBeGreaterThan(200);
+    expect(putStage(locked, { ...base, tasks: [long] }).body).toContain(long.story);
+    const unresolved = { ...task, id: "D1-S1-T2", story: "Reject empty names in the new files before saving them" };
     let message = "";
     try {
-      putStage(locked, { ...base, tasks: [vague, long] });
+      putStage(locked, { ...base, tasks: [vague, unresolved] });
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
     expect(message).toContain("D1-S1-T1 story must state a concrete observable outcome");
-    expect(message).toContain("D1-S1-T2 story must fit two lines");
+    expect(message).toContain("D1-S1-T2 story has an unresolved reference");
   });
 });
 

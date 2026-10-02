@@ -230,7 +230,7 @@ describe("the skills", () => {
 
 describe("the flow skills speak the tools", () => {
   const FLOWS: Readonly<Record<string, readonly string[]>> = {
-    blueprint: ["init", "submit_outline", "approve_outline", "submit_spec", "approve_spec", "put_delivery", "put_stage", "approve_plan"],
+    blueprint: ["init", "submit_spec", "approve_spec", "put_delivery", "put_stage", "approve_plan"],
     "blueprint-start": ["start_task", "complete_task", "close_stage", "needs_owner", "resume_task", "progress"],
     "end-work": ["progress", "planctl stats"],
   };

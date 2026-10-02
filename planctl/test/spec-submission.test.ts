@@ -37,27 +37,27 @@ describe("submit_spec", () => {
    * @scenario: scn_planctl_spec_submission_001
    * @covers: planctl/src/core/spec-submission.ts::submitSpec
    * @deterministic: yes
-   * @invariant: a submission fixes line endings and vocabulary itself, returns every lint error at once, refuses a stale revision and a locked plan, and approval on the same bytes finds nothing new.
+   * @invariant: a submission preserves authored words, reports editorial advice without blocking, refuses stale and locked revisions, and approval on the same bytes finds nothing new.
    */
-  it("tst_unit_planctl_spec_submission_001 corrects, reports, refuses stale and locked, and leaves approval nothing new", async () => {
+  it("tst_unit_planctl_spec_submission_001 preserves words, reports advice, and refuses stale and locked revisions", async () => {
     const root = repository();
     try {
       const base = protocolSpecHash(readFileSync(join(root, PLAN), "utf8"));
       const draft = spec.replace("The current parser accepts empty names.", `The blueprint document names the parser. ${"word ".repeat(31)}ends.`).replace(/\n/g, "\r\n");
       const result = await submitSpec(root, { plan: PLAN, baseRevision: base, ownerRequest: "Reject empty names", spec: draft });
       expect(result.state).toBe("SPEC_DRAFT");
-      expect(result.corrections).toEqual([{ line: expect.any(Number), before: expect.stringContaining("The blueprint document names the parser."), after: expect.stringContaining("The plan names the parser.") }]);
-      expect(result.corrections[0]?.after).not.toContain("blueprint document");
+      expect(result.corrections).toEqual([]);
       const saved = readFileSync(join(root, PLAN), "utf8");
       expect(saved).not.toContain("\r");
-      expect(saved).toContain("The plan names the parser.");
+      expect(saved.split("<!-- plan:spec:start -->")[1]?.split("<!-- plan:spec:end -->")[0]?.trim()).toBe(draft.replace(/\r\n/g, "\n").trim());
       expect(result.revision).toBe(protocolSpecHash(saved));
-      expect(result.findings.map((finding) => finding.rule)).toEqual(["sentence"]);
+      expect(result.findings.map((finding) => finding.rule)).toEqual(["vocabulary", "sentence"]);
+      expect(result.findings.every((finding) => !finding.blocking)).toBe(true);
       const approval = await lint(saved, root);
       expect(approval.violations.map((finding) => `${finding.line}:${finding.text}`)).toEqual(result.findings.map((finding) => `${finding.line}:${finding.text}`));
 
       await expect(submitSpec(root, { plan: PLAN, baseRevision: base, ownerRequest: "Reject empty names", spec })).rejects.toThrow(/stale revision/);
-      mutatePlanFile(root, PLAN, "lock-spec", (body) => lockPlanSpec(body.replace(`The plan names the parser. ${"word ".repeat(31)}ends.`, "The current parser accepts empty names."), "word"));
+      mutatePlanFile(root, PLAN, "lock-spec", (body) => lockPlanSpec(body, "word"));
       const locked = protocolSpecHash(readFileSync(join(root, PLAN), "utf8"));
       await expect(submitSpec(root, { plan: PLAN, baseRevision: locked, ownerRequest: "Reject empty names", spec })).rejects.toThrow(/locked/);
     } finally {

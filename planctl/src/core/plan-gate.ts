@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { execSync, spawnSync } from "node:child_process";
 import { basename, resolve } from "node:path";
 import type { Content, Root } from "mdast";
-import { currentOutline, planOutline, stageInputs, stageResultCommitPaths, MACHINABLE, protocolSpecHash, protocolImplementationHash, SPEC_SECTIONS } from "./plan-update";
+import { stageInputs, stageResultCommitPaths, MACHINABLE, protocolSpecHash, protocolImplementationHash, SPEC_SECTIONS } from "./plan-update";
 export { MACHINABLE, protocolSpecHash, protocolImplementationHash } from "./plan-update";
 
 /** Which lint rule a finding comes from; gate findings (receipts, boxes) carry none. */
@@ -32,7 +32,7 @@ export interface GateViolation {
   replacement: string | null;
 }
 
-type AddFinding = (line: number, text: string, rule: LintRule, quote?: string, replacement?: string | null) => void;
+type AddFinding = (line: number, text: string, rule: LintRule, quote?: string, replacement?: string | null, blocking?: boolean) => void;
 
 function refusal(kind: GateViolation["kind"], line: number, text: string): GateViolation {
   return { kind, rule: null, blocking: true, line, quote: "", text, replacement: null };
@@ -293,7 +293,7 @@ function lintTypes(
         const seen = new Set<number>();
         for (const member of syntax.members) {
           const row = source.getLineAndCharacterOfPosition(member.getStart(source)).line;
-          if (seen.has(row)) add(sourceLine(node) + row + 1, "put each TypeScript field on its own line", "typescript");
+          if (seen.has(row)) add(sourceLine(node) + row + 1, "put each TypeScript field on its own line", "typescript", "", null, false);
           seen.add(row);
         }
       }
@@ -450,16 +450,16 @@ export async function undeclaredExportedTypes(root: string, commit: string, body
 /** The SPEC sections every plan carries, in the order the owner reads them. */
 export const REQUIRED_SECTIONS = SPEC_SECTIONS;
 
-/** What a Goal is: the rule the agent reads at init and the model checks at submission. */
+/** Goal guidance returned at init; research and owner discussion decide the content. */
 export const GOAL_RULE = "The Goal is one to six numbered outcomes the owner reads as a whole: what will be done, in what order, "
   + "who calls whom and what results. A measure where one exists. It promises only what the request asks: no vision, no backstory, no extra scope. Plain English.";
 
-/** What The target is: the rule the agent reads at init and the lint measures at submission. */
-export const TARGET_RULE = "The target is flows. Each flow is one ### heading, one mermaid diagram of that flow, a few lines of explanation, "
+/** An authoring example, not a required layout. */
+export const TARGET_RULE = "Suggested layout: each flow is one ### heading, one mermaid diagram of that flow, a few lines of explanation, "
   + "and an implementation map table with the rows Owner, Target files, Input / wake, Output / durable state, RED test. "
-  + "The types a flow changes are declared in Interfaces. Nothing in The target is prose without its flow.";
+  + "Declare changed types in Interfaces. Preserve scenarios and evidence when another layout explains them better.";
 
-/** One flow in the shape every flow of The target takes, handed to the agent at init. */
+/** One worked example handed to the agent at init. */
 function flowExample(): string {
   return readFileSync(resolve(import.meta.dir, "../../../shared/code-production/laws/flow-example.md"), "utf8").trim();
 }
@@ -511,9 +511,10 @@ export async function lint(body: string, root: string, commit?: string): Promise
     import("../../../shared/code-production/instruction-audit"),
   ]);
   const violations: GateViolation[] = [];
-  const add: AddFinding = (line, text, rule, quote = "", replacement = null): void => {
-    violations.push({ kind: "protocol-shape", rule, blocking: true, line, quote, text, replacement });
+  const add: AddFinding = (line, text, rule, quote = "", replacement = null, blocking = true): void => {
+    violations.push({ kind: "protocol-shape", rule, blocking, line, quote, text, replacement });
   };
+  const advise: AddFinding = (line, text, rule, quote, replacement): void => add(line, text, rule, quote, replacement, false);
   const lines = body.split("\n");
   const { specStart, specEnd, specLines, nodes, blocks, headings, section } = specView(body, fromMarkdown);
   if ((specStart >= 0 || specEnd >= 0) && (specStart < 0 || specEnd <= specStart)) {
@@ -521,24 +522,14 @@ export async function lint(body: string, root: string, commit?: string): Promise
   }
   const required = REQUIRED_SECTIONS;
   for (const name of required) {
-    if (!headings.some((node) => proseText(node).toLowerCase() === name.toLowerCase())) add(specStart + 2, `missing SPEC section: ${name}`, "structure", name);
+    if (!headings.some((node) => proseText(node).toLowerCase() === name.toLowerCase())) add(specStart + 2, `missing SPEC section: ${name}`, "structure", name, null, name === "The Goal" || name === "The target");
   }
   for (const name of required) {
     const block = section(name);
     if (block !== null && (block.text.trim() === "" || /^<[^>]+>$/.test(block.text.trim()))) add(block.line, `empty SPEC section: ${name}`, "structure", name);
   }
   const names = section("New names");
-  if (names !== null && !/^\|\s*-{3,}\s*\|\s*-{3,}/m.test(names.text)) add(names.line, "New names needs a name/reason table", "structure");
-  // The approved outline is the whole-plan contract the SPEC fills: the Goal as agreed and exactly these flows.
-  const outline = planOutline(body);
-  if (outline !== null) {
-    const now = currentOutline(body);
-    const goalLine = section("The Goal")?.line ?? specStart + 2;
-    const targetLine = section("The target")?.line ?? specStart + 2;
-    if (now.goal !== outline.goal) add(goalLine, "the Goal differs from the approved outline", "structure");
-    for (const name of outline.flows) if (!now.flows.includes(name)) add(targetLine, `outline flow «${name}» is missing`, "structure", name);
-    for (const name of now.flows) if (!outline.flows.includes(name)) add(section(name)?.line ?? targetLine, `flow «${name}» is not in the approved outline`, "structure", name);
-  }
+  if (names !== null && !/^\|\s*-{3,}\s*\|\s*-{3,}/m.test(names.text)) advise(names.line, "New names needs a name/reason table", "structure");
   // Every file a plan names exists, or the Target tree creates it: an invented layer has nothing to cite.
   const creates = new Set<string>();
   const cited: { readonly line: number; readonly path: string }[] = [];
@@ -563,27 +554,27 @@ export async function lint(body: string, root: string, commit?: string): Promise
     const key = text.trim();
     if (fenced || key.startsWith("|") || key.split(/\s+/).length < 6) return;
     const first = firstSeen.get(key);
-    if (first !== undefined) add(index + 1, `line ${index + 1} repeats line ${first}`, "structure", key);
+    if (first !== undefined) advise(index + 1, `line ${index + 1} repeats line ${first}`, "structure", key);
     else firstSeen.set(key, index + 1);
   });
   const flows = targetFlows(specLines, blocks, headings);
   if (flows !== null) {
-    if (flows.flows.length === 0) add(flows.line, "The target has no flow: one ### heading per flow, each with its mermaid diagram and its implementation map", "structure");
+    if (flows.flows.length === 0) advise(flows.line, "The target has no flow: one ### heading per flow, each with its mermaid diagram and its implementation map", "structure");
     for (const flow of flows.flows) {
-      if (!flow.diagram) add(flow.line, `flow «${flow.name}» has no mermaid diagram`, "structure", flow.name);
-      if (!flow.map) add(flow.line, `flow «${flow.name}» has no implementation map: a table with the rows ${MAP_ROWS.join(", ")}`, "structure", flow.name);
+      if (!flow.diagram) advise(flow.line, `flow «${flow.name}» has no mermaid diagram`, "structure", flow.name);
+      if (!flow.map) advise(flow.line, `flow «${flow.name}» has no implementation map: a table with the rows ${MAP_ROWS.join(", ")}`, "structure", flow.name);
     }
   }
   const vocabulary = vocabularyMap(root, synonyms);
   const fullNodes = markdownNodes(fromMarkdown(body));
   const implementationEnd = lines.indexOf("<!-- plan:implementation:end -->");
   const authored = fullNodes.filter((node) => specStart < 0 || (sourceLine(node) > specStart && (implementationEnd < 0 ? sourceLine(node) < specEnd : sourceLine(node) < implementationEnd)));
-  lintProse(authored, (text) => vocabularyMatches(text, vocabulary), add);
+  lintProse(authored, (text) => vocabularyMatches(text, vocabulary), advise);
   for (const found of languageLines(body)) add(found.line, LANGUAGE_RULE, "language", found.quote);
   const interfaces = section("Interfaces");
   const types = lintTypes(nodes, interfaces, ts, add);
   const target = section("Target tree");
-  if (target !== null && /\.tsx?\b/.test(target.text) && types.size === 0) add(target.line, "Interfaces must show the TypeScript types changed by this plan", "structure");
+  if (target !== null && /\.tsx?\b/.test(target.text) && types.size === 0) advise(target.line, "Interfaces must show the TypeScript types changed by this plan", "structure");
   await lintMermaid(authored, add);
   // The common checkbox parser is also used by execution and closure.
   const contentLines = [...lines];
@@ -597,15 +588,15 @@ export async function lint(body: string, root: string, commit?: string): Promise
     if (item.section === "criteria" && text !== "Commit" && !MACHINABLE.test(text)) add(item.line + 1, "criterion must be a command with its exit code or Commit", "structure", text);
   }
   contentLines.forEach((line, index) => {
-    if (/^\s*(?:-\s+)?Predict:/.test(line)) add(index + 1, "Predict fields are not part of the plan", "structure", line.trim());
+    if (/^\s*(?:-\s+)?Predict:/.test(line)) advise(index + 1, "Predict fields are not part of the plan", "structure", line.trim());
   });
   const stages = stageInputs(body);
   for (const stage of stages) for (const task of stage.tasks) {
-    if (task.story.length > 200) add(lines.findIndex((line) => line.includes(`${task.id} — `)) + 1, "Task story exceeds 200 characters", "story", task.story);
+    if (task.story.length > 200) advise(lines.findIndex((line) => line.includes(`${task.id} — `)) + 1, "Task story exceeds 200 characters", "story", task.story);
   }
   const writes = [...new Set(stages.flatMap((stage) => stage.tasks.flatMap((task) => task.writes)))];
   if (stages.length > 0 && writes.length <= 2 && writes.every((path) => /\.[a-z]+$/i.test(path) && !/[*?{}]/.test(path))) {
-    add(1, "two files or fewer: this is a commit, not a plan", "structure");
+    advise(1, "two files or fewer: this is a commit, not a plan", "structure");
   }
   if (commit !== undefined) lintCommit(root, commit, types, interfaces?.line ?? 1, ts, add);
   const metrics = [
@@ -1055,8 +1046,8 @@ if (import.meta.main && ["plan-gate.ts", "plan-gate.js"].includes(basename(impor
     if (commitIndex >= 0 && commit === undefined) throw new Error("--commit requires a Git revision");
     const report = await lint(readFileSync(plan, "utf8"), root, commit);
     for (const metric of report.metrics) console.log(metric);
-    for (const violation of report.violations) console.log(`VIOLATION [${violation.kind}] line ${violation.line}: ${violation.text}`);
-    process.exit(report.violations.length === 0 ? 0 : 1);
+    for (const violation of report.violations) console.log(`${violation.blocking ? "ERROR" : "ADVICE"} [${violation.kind}] line ${violation.line}: ${violation.text}`);
+    process.exit(report.violations.some((violation) => violation.blocking) ? 1 : 0);
   }
   const report = gatePlan(plan, { root, closure, start, noExec });
   console.log(`boxes: ${report.closedBoxes} closed / ${report.openBoxes} open; machinable criteria re-run: ${report.checkedCriteria}`);

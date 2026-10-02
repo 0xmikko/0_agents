@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { authoringContract, lint, protocolLanguageViolations } from "./plan-gate";
+import { lint, protocolLanguageViolations } from "./plan-gate";
 import type { GateViolation } from "./plan-gate";
 import { mutatePlanFile, planState, protocolSpecHash, replaceDraftSpec, replaceDraftTitle } from "./plan-update";
 import type { PlanState } from "./plan-update";
@@ -33,35 +33,8 @@ function currentSpec(body: string): string {
   return body.slice(from + SPEC_START.length, to).trim();
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** Line endings and the vocabulary pairs the agent should not have to think about. */
-function correct(spec: string, vocabulary: readonly { readonly word: string; readonly term: string }[]): {
-  readonly text: string;
-  readonly corrections: SubmitSpecResult["corrections"];
-} {
-  const corrections: { line: number; before: string; after: string }[] = [];
-  let inCode = false;
-  const words = vocabulary.map((pair) => pair.word).sort((left, right) => right.length - left.length).map(escapeRegExp);
-  const pattern = words.length === 0 ? null : new RegExp(`\\b(${words.join("|")})(s|es)?\\b`, "gi");
-  const lines = spec.replace(/\r\n?/g, "\n").split("\n").map((line, index) => {
-    if (line.trimStart().startsWith("```")) inCode = !inCode;
-    if (inCode || pattern === null || line.startsWith("#") || line.startsWith("|")) return line;
-    const after = line.replace(pattern, (match: string, word: string, plural: string | undefined) => {
-      const term = vocabulary.find((pair) => pair.word.toLowerCase() === word.toLowerCase())?.term;
-      if (term === undefined) return match;
-      return plural === undefined ? term : `${term}${plural}`;
-    });
-    if (after !== line) corrections.push({ line: index + 1, before: line, after });
-    return after;
-  });
-  return { text: lines.join("\n").trim(), corrections };
-}
-
-/** Replace the whole SPEC of a draft through the writer, correcting what needs
- * no judgement and reporting every lint error at once. No model reads the
+/** Replace the whole SPEC of a draft through the writer, preserving authored words
+ * and reporting errors separately from editorial advice. No model reads the
  * plan. Unchanged text changes nothing; a stale revision or a locked plan
  * refuses.
  * @tested-by: tst_unit_planctl_spec_submission_001, tst_unit_planctl_spec_submission_002
@@ -73,16 +46,15 @@ export async function submitSpec(root: string, input: SubmitSpecInput): Promise<
   if (state !== "SPEC_DRAFT") throw new Error(`the SPEC is ${state === "SPEC_LOCKED" ? "locked" : "approved"}; correct it with amend under the owner's word`);
   const current = protocolSpecHash(body);
   if (input.baseRevision !== current) throw new Error(`stale revision ${input.baseRevision}; the plan is at ${current}`);
-  const contract = await authoringContract(root);
-  const corrected = correct(input.spec, contract.vocabulary);
+  const spec = input.spec.replace(/\r\n?/g, "\n").trim();
   const before = currentSpec(body);
   const sameTitle = input.title === undefined || body.startsWith(`# ${input.title}\n`);
-  if (corrected.text === before && sameTitle) {
+  if (spec === before && sameTitle) {
     const report = await lint(body, root);
-    return { revision: current, state, corrections: corrected.corrections, findings: report.violations, checkStatus: "no_change" };
+    return { revision: current, state, corrections: [], findings: report.violations, checkStatus: "no_change" };
   }
   const candidate = (draft: string): { body: string } => {
-    const withSpec = replaceDraftSpec(draft, corrected.text).body;
+    const withSpec = replaceDraftSpec(draft, spec).body;
     return input.title === undefined ? { body: withSpec } : replaceDraftTitle(withSpec, input.title);
   };
   // Another language is refused before anything is written: nothing to save, nothing to publish.
@@ -94,7 +66,7 @@ export async function submitSpec(root: string, input: SubmitSpecInput): Promise<
   return {
     revision: protocolSpecHash(saved),
     state: planState(saved),
-    corrections: corrected.corrections,
+    corrections: [],
     findings: report.violations,
     checkStatus: "checked",
   };

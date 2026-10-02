@@ -1,13 +1,13 @@
 ---
 name: blueprint
-description: Author one plan through the planctl tools and stop three times for the owner's word, on the outline, on the SPEC, then on the implementation contract. Use when work needs a plan.
+description: Author one plan through the planctl tools and get the owner's approval of the SPEC and then the implementation contract. Use when work needs a plan.
 ---
 
 # Blueprint
 
 Produce one plan through the planctl tools. The plan file is never edited by
-hand; every write returns the plan URL and a three-line reply, and you show
-that reply to the owner verbatim.
+hand. Every write returns the plan URL. Show it with the findings or decisions
+the owner needs to assess.
 
 ## SPEC
 
@@ -21,37 +21,24 @@ that reply to the owner verbatim.
    call `init` there. Never create a branch or a worktree otherwise. Do not
    commit: the plan stays staged under one journal until the owner approves
    it, and every write publishes it for review.
-2. Explore existing code before proposing new mechanisms. Agree on the Goal,
-   the flows, the measures, the constraints, the reuse and the testable
-   invariants. The SPEC says what will be; the past appears only as one
-   sentence "now X" where X is being fixed.
-3. Send the outline with `submit_outline`: the plan, the `baseRevision`
-   that `init` or `progress` returned, the Goal as agreed, in English, and
-   one line per flow in the order they happen. Show the owner the reply and
-   stop. This is the first hard stop: ask whether they approve the outline.
-4. After an explicit yes, call `approve_outline` with the owner's word.
-   From here the Goal and the flow names are fixed.
-5. Fill the outline with `submit_spec`: the plan, the `baseRevision` the
-   last reply returned, the owner's request in their words, the whole SPEC,
-   and a `title` when the one from `init` must change. The SPEC carries the
-   returned sections, in the vocabulary, in English, title included; the
-   owner's words may be quoted in «…». The target holds exactly the approved
-   flows, each shaped like the example `init` returned: its `###` heading,
-   its mermaid diagram, a few lines of explanation, its implementation map
-   (Owner, Target files, Input / wake, Output / durable state, RED test),
-   and its types in Interfaces. Every path in the Target tree and the maps
-   exists in the repository or is a CREATE row of the Target tree. No line
-   repeats another. Pseudocode is TypeScript with every parameter typed
-   and every name camelCase, never another language. The tool fixes line endings and vocabulary
-   itself and returns every lint error at once with its line and
-   replacement: a flow outside the outline, a changed Goal, a missing
-   file, a repeated line, a flow without its diagram or map. No model reads
-   the plan. Fix the errors and resubmit with the returned revision;
-   unchanged text changes nothing.
-6. Show the owner the reply and stop. This is the second hard stop: ask
-   whether they approve the SPEC.
-7. After an explicit yes, call `approve_spec` with the owner's word: the
-   approval itself, one short line, never their whole message.
+2. Explore existing code before proposing new mechanisms. Trace the requested
+   behavior through real callers and tests. Discuss discovered contradictions
+   and tradeoffs with the owner; keep the evidence and accepted decisions in
+   the SPEC. Questions and research can continue without restarting the plan.
+3. Send `submit_spec` the plan, its last `baseRevision`, the owner's request,
+   the whole SPEC, and a `title` when it changes. The SPEC is in English,
+   title included; the owner's words may be quoted in «…». Keep The Goal and
+   The target headings so progress can show them. Use the returned sections
+   and example where they help explain the solution. Show changed interfaces
+   in typed TypeScript, with camelCase names, and preserve concrete scenarios,
+   file changes and unresolved decisions when revising the text.
+4. The tool saves the submitted words and reports errors and advice separately.
+   Fix blocking errors. Assess advice against the task; do not rewrite the
+   SPEC merely to clear advice or lose evidence to fit the example. Use the
+   returned revision for the next submission; unchanged text changes nothing.
+5. Once the SPEC is ready, show the link and ask the owner to approve it.
+   This is the first planning approval. After an explicit yes, call
+   `approve_spec` with the approval itself as `ownerWord`, one short line.
 
 Bad Goal: "Make development faster."
 
@@ -73,7 +60,7 @@ locally and once on the published CI SHA."
    the subject line, then what was done for which Goal outcome and why this
    way, then how it is proven. Its title names the result, never branch
    history.
-3. A Task story names one concrete change in at most 200 characters. Its
+3. A Task story names one concrete change with enough detail to execute it. Its
    writes are the files the change needs; a test may live anywhere. Never
    point to "the new files", "the rename map", "as discussed", chat history
    or a colleague's branch. Each Task carries one RED command in the form
@@ -85,10 +72,10 @@ locally and once on the published CI SHA."
 5. Trace each acceptance story through public calls before approval. A
    public type the work will change belongs in the SPEC Interfaces; completion
    refuses an exported type the SPEC does not name.
-6. Show the owner the last reply and stop. This is the third hard stop: ask
+6. Show the owner the last reply and stop. This is the second planning approval: ask
    whether they approve the complete plan.
 7. After an explicit yes, call `approve_plan` with the owner's word. Approval
-   runs the same lint the puts ran and finds nothing new. Then commit the
+   runs the same checks as authoring; editorial advice does not block it. Then commit the
    plan once, `docs(plan): <title>`: the plan's only commit before the work
    starts.
 

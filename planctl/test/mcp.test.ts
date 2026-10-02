@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { dispatchTool } from "../src/mcp/server";
+import { dispatchTool, toolNames } from "../src/mcp/server";
 import { deliveryMetas, planJournalPath, taskRunPath } from "../src/core/plan-update";
 import { decodeTaskRun } from "../src/core/task-run";
 import { protocolSpecHash } from "../src/core/plan-update";
@@ -268,13 +268,51 @@ describe("planctl mcp", () => {
   }, 120_000);
 
   /**
-   * @test-id: tst_unit_planctl_mcp_004
-   * @scenario: scn_planctl_mcp_outline_001
-   * @covers: planctl/src/mcp/server.ts::submit_outline,approve_outline; planctl/src/core/plan-gate.ts::lint
+   * @test-id: tst_unit_planctl_mcp_008
+   * @scenario: scn_planctl_mcp_authoring_002
+   * @covers: planctl/src/mcp/server.ts::submit_spec,approve_spec,amend
    * @deterministic: yes
-   * @invariant: the owner approves an outline first; the SPEC then fills exactly its flows: a renamed flow, a changed Goal, a path that does not exist and a repeated line are errors named by line, and the conforming SPEC passes.
+   * @invariant: editorial advice does not force a SPEC rewrite or a third approval; approved content changes only under the owner's word.
    */
-  it("tst_unit_planctl_mcp_004 locks an outline and lets the SPEC fill exactly it, citing files that exist", async () => {
+  it("tst_unit_planctl_mcp_008 preserves research through submission, approval and amendment", async () => {
+    const { root } = fixture("advice");
+    const deps = { cwd: home, publication: () => null, sourceCommit: "s".repeat(40), eventLog: join(home, "events-008.jsonl"), publisher: (_repository: string, plan: string) => `http://fixture/${plan}` };
+    const original = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8");
+    const map = original.slice(original.indexOf("| Implementation map"), original.indexOf("### Interfaces"));
+    const spec = original.replace(map, "").replace("### Reject an empty name\n\n", "").replace("## Why now", "## Observed behavior");
+    try {
+      const started = await dispatchTool(deps, "init", { root, title: "Evidence" });
+      const plan = join(root, (started.structuredContent as { plan: string }).plan);
+      const submitted = await dispatchTool(deps, "submit_spec", { plan, baseRevision: protocolSpecHash(readFileSync(plan, "utf8")), ownerRequest: "Preserve the findings", spec });
+      expect(submitted.isError ?? false, text(submitted)).toBe(false);
+      const findings = (submitted.structuredContent as { findings: { blocking: boolean }[] }).findings;
+      expect(findings.length).toBeGreaterThan(0);
+      expect(findings.every((finding) => !finding.blocking)).toBe(true);
+      expect(text(submitted)).toContain("Advice");
+      expect(readFileSync(plan, "utf8")).toContain(spec.trim());
+      const approved = await dispatchTool(deps, "approve_spec", { plan, ownerWord: "spec" });
+      expect(approved.isError ?? false, text(approved)).toBe(false);
+      const saved = readFileSync(plan, "utf8");
+      const refused = await dispatchTool(deps, "submit_spec", { plan, baseRevision: protocolSpecHash(saved), ownerRequest: "Replace", spec: "## The Goal\n\nSomething else." });
+      expect(refused.isError).toBe(true);
+      expect(readFileSync(plan, "utf8")).toBe(saved);
+      const amended = await dispatchTool(deps, "amend", { plan, ownerWord: "keep the evidence", patch: { section: "spec", find: "The current parser accepts empty names.", replace: `The blueprint document records the observed behavior: ${"word ".repeat(31)}ends.` } });
+      expect(amended.isError ?? false, text(amended)).toBe(false);
+      expect(readFileSync(plan, "utf8")).toContain("The blueprint document records the observed behavior:");
+      expect(toolNames().filter((name) => name.startsWith("approve_"))).toEqual(["approve_spec", "approve_plan"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_004
+   * @scenario: scn_planctl_mcp_authoring_003
+   * @covers: planctl/src/mcp/server.ts::submit_spec,approve_spec; planctl/src/core/plan-gate.ts::lint
+   * @deterministic: yes
+   * @invariant: draft goals and flows remain editable; missing files are errors, repeated prose is advice, and the SPEC can be approved.
+   */
+  it("tst_unit_planctl_mcp_004 accepts evolving drafts and diagnoses missing files separately from repeated prose", async () => {
     const { root } = fixture("delta");
     const deps = { cwd: home, publication: () => null, sourceCommit: "s".repeat(40), eventLog: join(home, "events-004.jsonl"), publisher: (_repository: string, plan: string) => `http://fixture/${plan}` };
     const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result.");
@@ -283,32 +321,22 @@ describe("planctl mcp", () => {
       const plan = (started.structuredContent as { plan: string }).plan;
       const absolute = join(root, plan);
       const seen = await dispatchTool(deps, "progress", { root });
-      const outlined = await dispatchTool(deps, "submit_outline", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, goal: "Ship one observable result.", flows: [{ name: "Reject an empty name", line: "The parser refuses an empty name before saving." }] });
-      expect(outlined.isError ?? false, text(outlined)).toBe(false);
-      expect(readFileSync(absolute, "utf8")).toContain("### Reject an empty name\n\nThe parser refuses an empty name before saving.");
-      const russian = await dispatchTool(deps, "submit_outline", { plan: absolute, baseRevision: (outlined.structuredContent as { revision: string }).revision, goal: "Отклонять пустые имена.", flows: [{ name: "Reject an empty name", line: "One line." }] });
-      expect(russian.isError).toBe(true);
-      const locked = await dispatchTool(deps, "approve_outline", { plan: absolute, ownerWord: "outline" });
-      expect(locked.isError ?? false, text(locked)).toBe(false);
-      const saved = readFileSync(absolute, "utf8");
-      expect(saved).toMatch(/^Outline lock: sha256:[0-9a-f]{64} owner:outline/m);
-      expect(saved).toContain('<!-- plan:outline-meta:{"goal":"Ship one observable result.","flows":["Reject an empty name"]} -->');
-      expect(saved).toContain("lock-outline sha256:");
       const errorsOf = (result: { structuredContent?: Record<string, unknown> }) => ((result.structuredContent as { findings: { blocking: boolean; text: string }[] }).findings).filter((finding) => finding.blocking).map((finding) => finding.text);
-      let revision = (locked.structuredContent as { revision: string }).revision;
+      let revision = (seen.structuredContent as { revision: string }).revision;
       const renamed = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: revision, ownerRequest: "Reject empty names", spec: spec.replace("### Reject an empty name", "### Reject every name") });
       expect(renamed.isError ?? false, text(renamed)).toBe(false);
-      expect(errorsOf(renamed)).toEqual(expect.arrayContaining(["outline flow «Reject an empty name» is missing", "flow «Reject every name» is not in the approved outline"]));
+      expect(errorsOf(renamed)).toEqual([]);
       revision = (renamed.structuredContent as { revision: string }).revision;
       const regoaled = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: revision, ownerRequest: "Reject empty names", spec: spec.replace("Ship one observable result.", "Ship two observable results.") });
-      expect(errorsOf(regoaled)).toContain("the Goal differs from the approved outline");
+      expect(errorsOf(regoaled)).toEqual([]);
       revision = (regoaled.structuredContent as { revision: string }).revision;
       const ghost = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: revision, ownerRequest: "Reject empty names", spec: spec.replace("| Target files | `src/change.ts`; `src/save.ts` |", "| Target files | `src/change.ts`; `src/ghost.ts` |") });
       expect(errorsOf(ghost)).toContain("file does not exist: src/ghost.ts; name it CREATE in the Target tree if the plan creates it");
       revision = (ghost.structuredContent as { revision: string }).revision;
       const twice = "The parser refuses an empty name before it is ever saved.";
       const repeated = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: revision, ownerRequest: "Reject empty names", spec: spec.replace("Reject empty names before saving.", `${twice}\n\n${twice}`) });
-      expect(errorsOf(repeated).some((entry) => /^line \d+ repeats line \d+$/.test(entry))).toBe(true);
+      expect(errorsOf(repeated)).toEqual([]);
+      expect(text(repeated)).toMatch(/Advice line \d+: line \d+ repeats line \d+/);
       revision = (repeated.structuredContent as { revision: string }).revision;
       const conforming = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: revision, ownerRequest: "Reject empty names", spec });
       expect(errorsOf(conforming)).toEqual([]);
@@ -357,12 +385,13 @@ describe("planctl mcp", () => {
       const cyrillic = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (renamed.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec, title: "План гамма" });
       expect(cyrillic.isError).toBe(true);
       expect(text(cyrillic)).toContain("the plan is written in English, title included");
-      // A flow refused for its missing map gets the example flow in the same reply: a continued plan never sees init.
+      // The map is authoring advice; it does not reject the submitted draft.
       const withoutMap = spec.replace(spec.slice(spec.indexOf("| Implementation map"), spec.indexOf("### Interfaces")), "");
       const refused = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (renamed.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec: withoutMap });
       expect(refused.isError ?? false, text(refused)).toBe(false);
       expect(text(refused)).toContain("flow «Reject an empty name» has no implementation map");
-      expect(text(refused)).toContain("Example flow:\n### Browser OAuth returns a provider URL");
+      expect(text(refused)).toContain("Advice line");
+      expect(text(refused)).toContain("Checks: 0 errors");
       const submitted = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (refused.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec });
       expect(submitted.isError ?? false, text(submitted)).toBe(false);
       expect(text(submitted)).not.toContain("Example flow:");

@@ -79,7 +79,8 @@ describe("findings an agent can act on", () => {
       const rules = report.violations.map((violation) => violation.rule).sort();
       expect(rules).toEqual(["codes", "sentence", "vocabulary"]);
       const vocabulary = report.violations.find((violation) => violation.rule === "vocabulary");
-      expect(vocabulary).toMatchObject({ blocking: true, quote: "blueprint document", replacement: "plan" });
+      expect(vocabulary).toMatchObject({ blocking: false, quote: "blueprint document", replacement: "plan" });
+      expect(report.violations.every((violation) => !violation.blocking)).toBe(true);
       expect(vocabulary?.line).toBe(body.split("\n").findIndex((line) => line.includes("Continue D1-S4")) + 1);
       const sentence = report.violations.find((violation) => violation.rule === "sentence");
       expect(sentence?.quote).toContain("word word");
@@ -182,7 +183,7 @@ describe("plan form", () => {
   // @covers: planctl/src/core/plan-gate.ts --lint
   // @deterministic: yes
   // @fixtures: plan-lint.md, changed once per form defect
-  it("tst_gate_lint_001 refuses each form defect with its source line and accepts valid syntax", () => {
+  it("tst_gate_lint_001 separates blocking syntax errors from editorial advice at their source lines", () => {
     const { root } = makeRepo();
     try {
       const plan = join(root, "plan.md");
@@ -205,7 +206,7 @@ describe("plan form", () => {
         if (body === undefined || reason === undefined) throw new Error("invalid defect fixture");
         writeFileSync(plan, body);
         const run = spawnSync("bun", [gate, plan, "--lint", "--root", root], { encoding: "utf8", env: CLEAN_GIT_ENV, timeout: 15_000 });
-        expect(run.status, `${reason}: ${run.stdout}\n${run.stderr}`).toBe(1);
+        expect(run.status, `${reason}: ${run.stdout}\n${run.stderr}`).toBe(["TypeScript", "mermaid", "criterion"].includes(reason) ? 1 : 0);
         expect(run.stdout).toContain(reason);
         expect(run.stdout).toMatch(/line [1-9]\d*:/);
         const locations: Readonly<Record<string, string>> = { field: "readonly name:", mermaid: "Input[Change", TypeScript: "readonly name:", Stage: "This phase", code: "Continue D1-S4", thirty: "word word", Predict: "- Predict:", criterion: "- [ ] Works" };
@@ -238,7 +239,7 @@ describe("plan form", () => {
       const before = readFileSync(join(root, plan), "utf8");
       const refused = run("approve-spec", plan, "--owner-word", "yes");
       expect(refused.status, `${refused.stdout}\n${refused.stderr}`).toBe(1);
-      expect(refused.stderr).toContain("Why now");
+      expect(refused.stderr).toContain("The target");
       expect(readFileSync(join(root, plan), "utf8")).toBe(before);
       writeFileSync(join(root, "spec.md"), spec);
       expect(run("set-spec", plan, "--from", "spec.md").status).toBe(0);
@@ -314,12 +315,12 @@ ${spec}<!-- plan:spec:end -->
       ]) {
         if (changed === undefined || reason === undefined) throw new Error("missing fixture");
         const rejected = check(changed);
-        expect(rejected.status, rejected.stdout).toBe(1);
+        expect(rejected.status, rejected.stdout).toBe(0);
         expect(rejected.stdout).toContain(reason);
       }
       const small = putStage(base.body, { ...input, writes: writes.slice(0, 2), tasks: input.tasks.map((task) => ({ ...task, writes: writes.slice(0, 2) })) });
       const smallResult = check(small.body);
-      expect(smallResult.status).toBe(1);
+      expect(smallResult.status).toBe(0);
       expect(smallResult.stdout).toContain("two files or fewer");
       mkdirSync(join(root, "src"), { recursive: true });
       writeFileSync(join(root, writes[0]), "export interface Change { name: string; }\nexport type Surprise = string;\n");
@@ -345,7 +346,7 @@ ${spec}<!-- plan:spec:end -->
       mkdirSync(join(root, "docs"));
       writeFileSync(join(root, "docs/graph.md"), "| Term | Meaning | Not |\n|---|---|---|\n| name | input name | label |\n");
       const glossary = check(body.replace("empty names", "empty label"));
-      expect(glossary.status).toBe(1);
+      expect(glossary.status).toBe(0);
       expect(glossary.stdout).toContain("say name instead of label");
       // Only the vocabulary table names synonyms; another table on the page
       // (parts, states, places) is not a list of words to replace.
@@ -354,7 +355,7 @@ ${spec}<!-- plan:spec:end -->
         "| Part | State | Where |", "|---|---|---|", "| The indexer: pull, admit, write | not built | plan |", "",
       ].join("\n"));
       const shaped = check(body.replace("empty names", "empty label in the plan"));
-      expect(shaped.status).toBe(1);
+      expect(shaped.status).toBe(0);
       expect(shaped.stdout).toContain("say name instead of label");
       expect(shaped.stdout).not.toContain("instead of plan");
     } finally {

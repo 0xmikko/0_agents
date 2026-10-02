@@ -25,12 +25,12 @@ permit it. Never divide total work by agent count and call that a forecast.
 
 ```text
 idea
-  -> plan worktree + first draft commit
+  -> continue the plan worktree, or create it when needed
   -> SPEC discussion (goal, flows, metrics, constraints, invariants, reuse)
-  -> mdurl
+  -> publication through the planctl tools
   -> owner SPEC approval / lock
   -> Deliveries, Stages, Tasks, estimates and RED commands
-  -> owner implementation approval / lock
+  -> owner implementation approval / lock + plan commit
   -> one active PR Delivery
        -> independent Stage agents may run in parallel
        -> one work commit per Stage
@@ -66,7 +66,7 @@ The owner view is a review interface, not an execution log.
   total forecast and verification share. It has no free-form execution story.
   The title never says “finish the colleague's branch”, “half-landed” or
   “remaining work”.
-- A Task story names one concrete change in at most 200 characters; its
+- A Task story names one concrete change with enough detail to execute it; its
   rendered line ends with the predicted active minutes when minutes were given.
 - A Task's writes are files, directories or globs, as many as the change
   needs; a commit that touches files beyond them is recorded, not refused.
