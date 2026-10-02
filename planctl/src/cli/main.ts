@@ -525,7 +525,7 @@ async function progress(args: readonly string[]): Promise<void> {
   const progressCore = await import("../core/plan-progress");
   const view = await progressCore.planProgress(rootPath, {
     plan: explicit,
-    publication: (branch) => readPublication(rootPath, branch),
+    publication: readPublication,
     sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
     decodeRun: taskRunFrom,
   });

@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
-import { deliveryMetas, goalLines, nextOpenTask, planState, runningTaskRecords, stageClosed, stageInputs } from "./plan-update";
+import { deliveryMetas, deliveryRoot, goalLines, nextOpenTask, planState, runningTaskRecords, stageClosed, stageInputs } from "./plan-update";
+import type { DeliveryMeta } from "./plan-update";
 import type { TaskRun } from "./task-run";
 
 export interface ProgressAmount {
@@ -112,9 +113,10 @@ export function projectPlanProgress(body: string): PlanProgressSnapshot {
   };
 }
 
-/** The "where am I" screen: whole plan and Delivery apart, the observed
- * publication, the installed runtime, the running Task and the next one.
- * Missing parts are marked unavailable; nothing throws. */
+/** The "where am I" screen: whole plan and Delivery apart, the publication
+ * of every Delivery observed in its own checkout, the installed runtime, the
+ * running Task and the next one. Missing parts are marked unavailable;
+ * nothing throws. */
 export interface ProgressView {
   readonly plan: string;
   readonly state: "SPEC_DRAFT" | "SPEC_LOCKED" | "APPROVED";
@@ -126,6 +128,7 @@ export interface ProgressView {
   } | null;
   readonly delivery: {
     readonly id: string;
+    readonly repository: string | null;
     readonly completedTasks: number;
     readonly totalTasks: number;
     readonly closedStages: readonly string[];
@@ -139,6 +142,12 @@ export interface ProgressView {
       readonly state: "not_started" | "in_work" | "published" | "merged";
     }[];
   };
+  /** Every Delivery observed in its own checkout; the active one is also `publication`. */
+  readonly publications: readonly {
+    readonly deliveryId: string;
+    readonly repository: string | null;
+    readonly publication: ProgressView["publication"];
+  }[];
   readonly publication: {
     readonly prUrl: string;
     readonly ci: "pending" | "green" | "red";
@@ -165,8 +174,8 @@ type Publication = ProgressView["publication"];
 interface ProgressOptions {
   /** The plan file, or null to find docs/plans/*-<slug>.md from the branch. */
   readonly plan: string | null;
-  /** What gh reports for a Delivery branch: a PR with its CI, null for none, or throws. */
-  readonly publication: (branch: string) => Publication;
+  /** What gh reports for a Delivery branch in the given checkout: a PR with its CI, null for none, or throws. */
+  readonly publication: (checkout: string, branch: string) => Publication;
   /** HEAD of the checkout planctl runs from; null when unknown. */
   readonly sourceCommit: string | null;
   readonly decodeRun: (value: unknown) => TaskRun | Promise<TaskRun>;
@@ -181,9 +190,10 @@ function planByBranch(root: string): string | null {
   return name === undefined ? null : `docs/plans/${name}`;
 }
 
-function observePublication(read: (branch: string) => Publication, branch: string): Publication {
+/** Each Delivery is observed in its own checkout; an unknown checkout is an unavailable publication, not a stop. */
+function observePublication(root: string, delivery: DeliveryMeta, read: ProgressOptions["publication"]): Publication {
   try {
-    return read(branch);
+    return read(deliveryRoot(root, delivery), delivery.branch);
   } catch (error: unknown) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
@@ -198,7 +208,7 @@ function installedRuntime(root: string, sourceCommit: string | null): ProgressVi
   return { installed, source: sourceCommit, stale: installed !== sourceCommit };
 }
 
-/** @tested-by: tst_unit_planctl_progress_002, tst_unit_planctl_progress_003 */
+/** @tested-by: tst_unit_planctl_progress_002, tst_unit_planctl_progress_003, tst_unit_planctl_progress_004 */
 export async function planProgress(root: string, options: ProgressOptions): Promise<ProgressView | null> {
   const plan = options.plan ?? planByBranch(root);
   if (plan === null) return null;
@@ -206,7 +216,13 @@ export async function planProgress(root: string, options: ProgressOptions): Prom
   const deliveries = deliveryMetas(body);
   const active = deliveries.find((delivery) => delivery.active) ?? null;
   const stages = stageInputs(body);
-  const publication = active === null ? null : observePublication(options.publication, active.branch);
+  const publications = deliveries.map((delivery) => ({
+    deliveryId: delivery.id,
+    repository: delivery.repository,
+    publication: observePublication(root, delivery, options.publication),
+  }));
+  const activePublication = publications.find((entry) => entry.deliveryId === active?.id);
+  const publication = activePublication === undefined ? null : activePublication.publication;
   const whole = taskCount(body, null);
   const runs = await runningTaskRecords(root, plan, options.decodeRun);
   const running = [...runs].sort((left, right) => right.startedAt.localeCompare(left.startedAt))[0];
@@ -220,6 +236,7 @@ export async function planProgress(root: string, options: ProgressOptions): Prom
       const count = taskCount(body, active.id);
       return {
         id: active.id,
+        repository: active.repository,
         completedTasks: count.completed,
         totalTasks: count.total,
         closedStages: own.filter((stage) => stageClosed(body, stage.id)).map((stage) => stage.id),
@@ -238,6 +255,7 @@ export async function planProgress(root: string, options: ProgressOptions): Prom
         return { id: delivery.id, state };
       }),
     },
+    publications,
     publication,
     runtime: installedRuntime(root, options.sourceCommit),
     next: nextOpenTask(body),

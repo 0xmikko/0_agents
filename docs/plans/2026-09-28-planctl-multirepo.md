@@ -345,22 +345,24 @@ Proven by the MCP test driving a catalog Delivery through start, complete and cl
 
 ##### Tasks
 
-- [ ] MR_006 — Check ancestry, diff paths and exported types in the Delivery's checkout in `completeTask` of `planctl/src/core/plan-update.ts`. (35 min)
+- [x] MR_006 — Check ancestry, diff paths and exported types in the Delivery's checkout in `completeTask` of `planctl/src/core/plan-update.ts`. (35 min) — 29d284e998f0548bd6da5024f4fa2dad47c4f23c
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/core/plan-gate.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/mcp.test.ts"],"predictedActiveMinutes":35,"predictedCredits":0,"how":"Write tst_unit_planctl_mcp_006 in planctl/test/mcp.test.ts: a catalog Delivery completes with a commit made in the catalog fixture and is refused with a commit made in the app fixture. Resolve the checkout in completeTask and pass it to stageResultCommitPaths and undeclaredExportedTypes in planctl/src/core/plan-gate.ts.","red":"bun run agent:test:backend -- test/mcp.test.ts -t tst_unit_planctl_mcp_006"} -->
-- [ ] MR_007 — Run `closePlanStage` criteria with the Delivery's checkout as cwd, from `planctl/src/mcp/server.ts` and `planctl/src/cli/main.ts`. (25 min)
+- [x] MR_007 — Run `closePlanStage` criteria with the Delivery's checkout as cwd, from `planctl/src/mcp/server.ts` and `planctl/src/cli/main.ts`. (25 min) — 29d284e998f0548bd6da5024f4fa2dad47c4f23c
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/mcp.test.ts"],"predictedActiveMinutes":25,"predictedCredits":0,"how":"Write tst_unit_planctl_mcp_007 in planctl/test/mcp.test.ts: close_stage runs a criterion that exists only in the catalog fixture and closes the Stage. Pass deliveryRoot of the Stage's Delivery as options.root to closePlanStage in the server and the CLI.","red":"bun run agent:test:backend -- test/mcp.test.ts -t tst_unit_planctl_mcp_007"} -->
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/mcp.test.ts` exits 0 — a catalog Delivery completes and closes in its checkout
-- [ ] `cd planctl && bun run typecheck` exits 0 — the completion path compiles
-- [ ] Commit
+- [x] `cd planctl && bun run agent:test:backend -- test/mcp.test.ts` exits 0 — a catalog Delivery completes and closes in its checkout — 29d284e998f0548bd6da5024f4fa2dad47c4f23c
+- [x] `cd planctl && bun run typecheck` exits 0 — the completion path compiles — 29d284e998f0548bd6da5024f4fa2dad47c4f23c
+- [x] Commit — 29d284e998f0548bd6da5024f4fa2dad47c4f23c
 
 ##### Results
 
 <!-- plan:results:D1-S3:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| MR_006 | 29d284e998f0548bd6da5024f4fa2dad47c4f23c | 2026-10-02T04:54:23.394Z–2026-10-02T04:54:23.484Z | 0.0015 / 0.0015 min | unavailable: not measured by planctl | a catalog commit completes, an app commit is refused, close runs the criteria in the checkout at its head |
+| MR_007 | 29d284e998f0548bd6da5024f4fa2dad47c4f23c | 2026-10-02T04:54:23.394Z–2026-10-02T04:54:23.484Z | 0.0015 / 0.0015 min | unavailable: not measured by planctl | a catalog commit completes, an app commit is refused, close runs the criteria in the checkout at its head |
 <!-- plan:results:D1-S3:end -->
 <!-- plan:stage:D1-S3:end -->
 
@@ -422,4 +424,8 @@ Proven by the plan-progress test answering two fake publications per checkout.
 - record-result D1-S2 commit:05e10a4b55863884e7345ca318cb2757277c7870
 
 - close D1-S2 closed commit:05e10a4b55863884e7345ca318cb2757277c7870
+
+- record-result D1-S3 commit:29d284e998f0548bd6da5024f4fa2dad47c4f23c
+
+- close D1-S3 closed commit:29d284e998f0548bd6da5024f4fa2dad47c4f23c
 <!-- plan:execution:end -->

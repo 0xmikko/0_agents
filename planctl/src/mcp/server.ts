@@ -291,7 +291,7 @@ const TOOLS = {
       if (target === null) throw new Error("progress needs plan or root");
       const view = await planProgress(target.root, {
         plan: target.plan,
-        publication: (branch) => deps.publication(target.root, branch),
+        publication: deps.publication,
         sourceCommit: deps.sourceCommit,
         decodeRun: decodeTaskRun,
       });
@@ -469,14 +469,14 @@ function eventOf(
 ): EventRecord {
   const location = calledLocation(deps.cwd, args);
   const structured = result.structuredContent ?? {};
-  const publication = typeof structured.publication === "object" && structured.publication !== null && "prUrl" in structured.publication
-    ? structured.publication as { prUrl: string; headSha: string; runId: string; attempt: number }
-    : null;
   const delivery = typeof structured.deliveryId === "string"
     ? structured.deliveryId
     : typeof structured.delivery === "object" && structured.delivery !== null && "id" in structured.delivery && typeof structured.delivery.id === "string"
       ? structured.delivery.id
       : null;
+  const publication = typeof structured.publication === "object" && structured.publication !== null && "prUrl" in structured.publication
+    ? structured.publication as { prUrl: string; headSha: string; runId: string; attempt: number }
+    : null;
   const planPath = location.plan !== "" ? resolve(location.repository, location.plan) : "";
   const revision = planPath !== "" && existsSync(planPath) ? protocolImplementationHash(readFileSync(planPath, "utf8")) : "";
   return {
