@@ -5,6 +5,7 @@ Spec lock: sha256:83fbbd5233813f4b648809abee976f6eb50dd4b8b3a0cb8b3ddbb52dde117d
 Implementation lock: sha256:5ca0afe4f8482d42056d4b7dfd33e1ec0bd6405b2c90e9cf15587c904c6ca358 agent-unattended  
 Active Delivery: D1  
 Unattended decisions: allowed  
+Ledger: implemented  
 
 <!-- plan:spec:start -->
 ## The Goal
@@ -383,20 +384,21 @@ Proven by the plan-progress test answering two fake publications per checkout.
 
 ##### Tasks
 
-- [ ] MR_008 — Ask the publication of every Delivery in its own checkout in `planProgress` of `planctl/src/core/plan-progress.ts` and render one Publish line per Delivery. (30 min)
+- [x] MR_008 — Ask the publication of every Delivery in its own checkout in `planProgress` of `planctl/src/core/plan-progress.ts` and render one Publish line per Delivery. (30 min) — 0058db13bdef38c2860d2ea73593acdd96a4ad4c
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-progress.ts","planctl/src/cli/render.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/plan-progress.test.ts"],"predictedActiveMinutes":30,"predictedCredits":0,"how":"Write tst_unit_planctl_progress_004 in planctl/test/plan-progress.test.ts: two Deliveries, one in a catalog fixture, two fake gh answers keyed by checkout, two Publish lines naming their repositories. Add publications and the repository name to ProgressView, resolve each Delivery's checkout with deliveryRoot, render in planctl/src/cli/render.ts.","red":"bun run agent:test:backend -- test/plan-progress.test.ts -t tst_unit_planctl_progress_004"} -->
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/plan-progress.test.ts` exits 0 — two Publish lines, one per repository
-- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete gate for the finished PR
-- [ ] Commit
+- [x] `cd planctl && bun run agent:test:backend -- test/plan-progress.test.ts` exits 0 — two Publish lines, one per repository — 0058db13bdef38c2860d2ea73593acdd96a4ad4c
+- [x] `cd planctl && bun run agent:verify:pr` exits 0 — the complete gate for the finished PR — 0058db13bdef38c2860d2ea73593acdd96a4ad4c
+- [x] Commit — 0058db13bdef38c2860d2ea73593acdd96a4ad4c
 
 ##### Results
 
 <!-- plan:results:D1-S4:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| MR_008 | 0058db13bdef38c2860d2ea73593acdd96a4ad4c | 2026-10-02T05:09:01.449Z–2026-10-02T05:16:33.310Z | 7.531016666666667 / 7.531016666666667 min | unavailable: not measured by planctl | planProgress observes every Delivery in its own checkout through deliveryRoot and the screen renders one Publish line per Delivery with its repository name. |
 <!-- plan:results:D1-S4:end -->
 <!-- plan:stage:D1-S4:end -->
 <!-- plan:delivery:D1:end -->
@@ -428,4 +430,8 @@ Proven by the plan-progress test answering two fake publications per checkout.
 - record-result D1-S3 commit:29d284e998f0548bd6da5024f4fa2dad47c4f23c
 
 - close D1-S3 closed commit:29d284e998f0548bd6da5024f4fa2dad47c4f23c
+
+- record-result D1-S4 commit:0058db13bdef38c2860d2ea73593acdd96a4ad4c
+
+- close D1-S4 closed commit:0058db13bdef38c2860d2ea73593acdd96a4ad4c
 <!-- plan:execution:end -->
