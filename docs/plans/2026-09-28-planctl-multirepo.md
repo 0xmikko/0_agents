@@ -307,22 +307,24 @@ Proven by the plan-update test on a second fixture repository and the instructio
 
 ##### Tasks
 
-- [ ] MR_004 — Resolve the checkout with `deliveryRoot` in `startTask` of `planctl/src/core/plan-update.ts`: refuse a wrong branch, record `worktree` and `baseHead` from it. (35 min)
+- [x] MR_004 — Resolve the checkout with `deliveryRoot` in `startTask` of `planctl/src/core/plan-update.ts`: refuse a wrong branch, record `worktree` and `baseHead` from it. (35 min) — 05e10a4b55863884e7345ca318cb2757277c7870
 <!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":35,"predictedCredits":0,"how":"Write tst_scripts_planupdate_031 in planctl/test/plan-update.test.ts with a second repository as the catalog: start_task on its Delivery refuses without the config line, refuses on the wrong branch naming both, and on the right branch records worktree and baseHead of the checkout. Change startTask in planctl/src/core/plan-update.ts; the server and the CLI keep passing the plan root.","red":"bun run agent:test:backend -- test/plan-update.test.ts -t tst_scripts_planupdate_031"} -->
-- [ ] MR_005 — Tell `shared/skills/blueprint-start/SKILL.md` to create the Delivery branch in the checkout and set the config line before `start_task`. (15 min)
+- [x] MR_005 — Tell `shared/skills/blueprint-start/SKILL.md` to create the Delivery branch in the checkout and set the config line before `start_task`. (15 min) — 05e10a4b55863884e7345ca318cb2757277c7870
 <!-- plan:task-meta:{"writes":["shared/skills/blueprint-start/SKILL.md"],"predictedActiveMinutes":15,"predictedCredits":0,"how":"Add the two sentences to the Start section of shared/skills/blueprint-start/SKILL.md; the instruction audit stays green.","red":"bun run agent:test:backend -- test/instruction-audit.test.ts"} -->
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:test:backend -- test/plan-update.test.ts` exits 0 — start refuses and records in the checkout
-- [ ] `cd planctl && bun run typecheck` exits 0 — the start path compiles
-- [ ] Commit
+- [x] `cd planctl && bun run agent:test:backend -- test/plan-update.test.ts` exits 0 — start refuses and records in the checkout — 05e10a4b55863884e7345ca318cb2757277c7870
+- [x] `cd planctl && bun run typecheck` exits 0 — the start path compiles — 05e10a4b55863884e7345ca318cb2757277c7870
+- [x] Commit — 05e10a4b55863884e7345ca318cb2757277c7870
 
 ##### Results
 
 <!-- plan:results:D1-S2:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| MR_004 | 05e10a4b55863884e7345ca318cb2757277c7870 | 2026-10-02T04:46:36.950Z–2026-10-02T04:46:37.030Z | 0.0013333333333333333 / 0.0013333333333333333 min | unavailable: not measured by planctl | start refuses a missing line and a wrong branch and records the checkout; the skill names the config line |
+| MR_005 | 05e10a4b55863884e7345ca318cb2757277c7870 | 2026-10-02T04:46:36.950Z–2026-10-02T04:46:37.030Z | 0.0013333333333333333 / 0.0013333333333333333 min | unavailable: not measured by planctl | start refuses a missing line and a wrong branch and records the checkout; the skill names the config line |
 <!-- plan:results:D1-S2:end -->
 <!-- plan:stage:D1-S2:end -->
 
@@ -416,4 +418,8 @@ Proven by the plan-progress test answering two fake publications per checkout.
 - record-result D1-S1 commit:81b50f7d1347d5ba4128a9953006ffeb91662025
 
 - close D1-S1 closed commit:81b50f7d1347d5ba4128a9953006ffeb91662025
+
+- record-result D1-S2 commit:05e10a4b55863884e7345ca318cb2757277c7870
+
+- close D1-S2 closed commit:05e10a4b55863884e7345ca318cb2757277c7870
 <!-- plan:execution:end -->

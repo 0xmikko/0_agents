@@ -1546,6 +1546,16 @@ export function stageApproved(body: string, stageId: string): boolean {
   return line.test(execution);
 }
 
+/** Where a Stage closes: its Delivery's checkout and that checkout's HEAD. */
+export function closeRootOf(planRoot: string, body: string, stageId: string): { readonly root: string; readonly head: string } {
+  const stage = stageInputs(body).find((candidate) => candidate.id === stageId);
+  if (stage === undefined) throw new Error(`unknown Stage ${stageId}`);
+  const delivery = deliveryMetas(body).find((entry) => entry.id === stage.deliveryId);
+  if (delivery === undefined) throw new Error(`Stage ${stageId} belongs to unknown Delivery ${stage.deliveryId}`);
+  const root = deliveryRoot(planRoot, delivery);
+  return { root, head: git(root, ["rev-parse", "HEAD"]) };
+}
+
 export function closePlanStage(
   body: string,
   stageId: string,
@@ -1663,12 +1673,16 @@ export async function completeTask(
   const stage = stageInputs(body).find((entry) => input.taskIds.every((id) => entry.tasks.some((task) => task.id === id)));
   if (stage === undefined) throw new Error(`Tasks ${input.taskIds.join(", ")} do not belong to one Stage of ${plan}`);
   const tasks = stage.tasks.filter((task) => input.taskIds.includes(task.id));
+  const owning = deliveryMetas(body).find((entry) => entry.id === stage.deliveryId);
+  if (owning === undefined) throw new Error(`Stage ${stage.id} belongs to unknown Delivery ${stage.deliveryId}`);
+  // The commit, its paths and its types live in the Delivery's checkout; the result row lives in the plan.
+  const checkout = deliveryRoot(root, owning);
   const runs = await Promise.all(input.taskIds.map(async (taskId) => {
     const path = taskRunPath(root, plan, taskId);
     if (!existsSync(path)) throw new Error(`Task ${taskId} has no start record; run planctl start-task first`);
     const run = await decodeRun(JSON.parse(readFileSync(path, "utf8")) as unknown);
     if (run.plan !== plan || run.taskId !== taskId) throw new Error(`Task ${taskId} start record belongs to another Task`);
-    if (spawnSync("git", ["-C", root, "merge-base", "--is-ancestor", run.baseHead, input.commit]).status !== 0) {
+    if (spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", run.baseHead, input.commit]).status !== 0) {
       throw new Error(`Task ${taskId} result commit does not descend from its start base`);
     }
     return { path, run };
@@ -1683,16 +1697,16 @@ export async function completeTask(
     return sum + run.accumulatedOwnerWaitSeconds + open;
   }, 0);
   const activeMinutes = Math.max(0, elapsedMinutes - waitSeconds / 60);
-  const paths = stageResultCommitPaths(input.commit, root).filter((path) => path !== plan);
+  const paths = stageResultCommitPaths(input.commit, checkout).filter((path) => path !== plan);
   const tempRoot = {
     path: stage.tempRoot,
-    state: existsSync(resolve(root, stage.tempRoot)) ? "present" : "absent",
+    state: existsSync(resolve(checkout, stage.tempRoot)) ? "present" : "absent",
   } as const;
   const tests = tasks.map((task) => ({ id: task.id, command: task.red }));
   // An exported type the SPEC does not name is the one thing a commit may
   // not change silently: the Interfaces section is the owner's contract.
   const { undeclaredExportedTypes } = await import("./plan-gate");
-  const undeclared = await undeclaredExportedTypes(root, input.commit, body);
+  const undeclared = await undeclaredExportedTypes(checkout, input.commit, body);
   if (undeclared.length > 0) {
     const names = undeclared.map((type) => `${type.name} in ${type.path}`).join(", ");
     throw new Error(`exported type ${names} is missing from SPEC Interfaces; declare it there under the owner's word`);
@@ -1716,9 +1730,9 @@ export async function completeTask(
     tempRoots: [tempRoot],
   };
   mutatePlanFile(root, plan, "record-result", (current) => recordStageResult(current, receipt, {
-    commitIsAncestor: (commit) => spawnSync("git", ["-C", root, "merge-base", "--is-ancestor", commit, "HEAD"]).status === 0,
-    commitPaths: (commit) => stageResultCommitPaths(commit, root),
-    pathExists: (path) => existsSync(resolve(root, path)),
+    commitIsAncestor: (commit) => spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", commit, "HEAD"]).status === 0,
+    commitPaths: (commit) => stageResultCommitPaths(commit, checkout),
+    pathExists: (path) => existsSync(resolve(checkout, path)),
   }));
   for (const { path } of runs) unlinkSync(path);
   return {
@@ -2371,8 +2385,7 @@ if (import.meta.main && ["plan-update.ts", "plan-update.js"].includes(basename(i
         break;
       case "close": {
         const root = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
-        const head = git(root, ["rev-parse", "HEAD"]);
-        mutatePlanFile(root, plan, command, (body) => closePlanStage(body, requiredFlag(args, "--stage"), { root, head }));
+        mutatePlanFile(root, plan, command, (body) => closePlanStage(body, requiredFlag(args, "--stage"), closeRootOf(root, body, requiredFlag(args, "--stage"))));
         break;
       }
       case "deviate":

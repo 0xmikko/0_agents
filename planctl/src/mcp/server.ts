@@ -14,6 +14,7 @@ import {
   applyOwnerAmendment,
   approvePlan,
   closePlanStage,
+  closeRootOf,
   completeTask,
   deliveryEnd,
   deliveryFrom,
@@ -337,11 +338,13 @@ const TOOLS = {
     schema: z.object({ plan: z.string(), stage: z.string() }),
     run: async (deps, { plan, stage }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
-      const head = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+      // The Stage closes in its Delivery's checkout, at that checkout's head.
+      const at = closeRootOf(root, readFileSync(resolve(root, relative), "utf8"), stage);
+      const head = at.head;
       let status: "CLOSED" | "PARTIAL" = "PARTIAL";
       let closed = 0;
       mutatePlanFile(root, relative, "close", (body) => {
-        const result = closePlanStage(body, stage, { root, head });
+        const result = closePlanStage(body, stage, { root: at.root, head });
         status = result.status;
         closed = result.closed;
         return { body: result.body };

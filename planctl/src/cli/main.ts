@@ -767,7 +767,8 @@ async function completeTask(args: readonly string[]): Promise<number> {
     if (run.plan !== target.relative || run.taskId === "" || !receipt.taskIds.includes(run.taskId)) {
       throw new Error("Task start receipt does not match the Stage result");
     }
-    if (spawnSync("git", ["-C", rootPath, "merge-base", "--is-ancestor", run.baseHead, receipt.commit]).status !== 0) {
+    // The record names the checkout the Task ran in; the commit is judged there.
+    if (spawnSync("git", ["-C", run.version === 3 ? run.worktree : rootPath, "merge-base", "--is-ancestor", run.baseHead, receipt.commit]).status !== 0) {
       throw new Error(`Task ${run.taskId} result commit does not descend from its start base`);
     }
   }
