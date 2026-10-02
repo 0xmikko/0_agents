@@ -41,8 +41,8 @@ that reply to the owner verbatim.
    (Owner, Target files, Input / wake, Output / durable state, RED test),
    and its types in Interfaces. Every path in the Target tree and the maps
    exists in the repository or is a CREATE row of the Target tree. No line
-   repeats another. Pseudocode is TypeScript with every parameter typed,
-   never another language. The tool fixes line endings and vocabulary
+   repeats another. Pseudocode is TypeScript with every parameter typed
+   and every name camelCase, never another language. The tool fixes line endings and vocabulary
    itself and returns every lint error at once with its line and
    replacement: a flow outside the outline, a changed Goal, a missing
    file, a repeated line, a flow without its diagram or map. No model reads

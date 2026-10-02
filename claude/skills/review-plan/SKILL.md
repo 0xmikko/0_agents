@@ -80,6 +80,12 @@ line `APPROVED` or `NEEDS_WORK`, then one finding per line as
 `<section or line>: <what is missing or wrong>`. No rewrites, no proposed
 text: Codex names the gap, the agent fixes it through the tools.
 
+A Delivery in another repository changes nothing above: the worktree stays
+the root, and the prompt names that checkout's absolute path, read from
+`git config code-production.repository.<name>` in the worktree. The
+read-only sandbox reads outside its root. Never run from a directory above
+both checkouts: it is no repository, and `--skip-git-repo-check` is not used.
+
 ### What Codex evaluates
 
 Requirements completeness against the owner's request; architecture
