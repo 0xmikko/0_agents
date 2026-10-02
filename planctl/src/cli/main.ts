@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { z } from "zod";
 
 import type { AuthoringContract, GateViolation } from "../core/plan-gate";
 import type { TaskBrief } from "../core/plan-update";
@@ -674,7 +675,9 @@ async function resumeTask(args: readonly string[]): Promise<void> {
     : `Task ${taskId} RESUMED\nCleared owner wait: ${resumed.marker.context}`);
 }
 
-/** What gh reports for a Delivery branch: the PR, its CI on the current head, the last run. */
+/** What gh reports for a Delivery branch: the PR, its Actions CI on the current head, the last run.
+ * @tested-by: tst_scripts_planctl_014
+ */
 function readPublication(rootPath: string, branch: string): import("../core/plan-progress").ProgressView["publication"] {
   const gh = (...ghArgs: readonly string[]): string => {
     const result = spawnSync("gh", ghArgs, { cwd: rootPath, encoding: "utf8" });
@@ -682,24 +685,43 @@ function readPublication(rootPath: string, branch: string): import("../core/plan
     if (result.status !== 0) throw new Error(result.stderr.trim() || `gh ${ghArgs[0]} exited ${result.status}`);
     return result.stdout;
   };
-  const pulls: unknown = JSON.parse(gh("pr", "list", "--head", branch, "--state", "all", "--limit", "1", "--json", "url,headRefOid,mergedAt,statusCheckRollup"));
-  if (!Array.isArray(pulls) || pulls.length === 0) return null;
-  const pull = pulls[0] as Readonly<Record<string, unknown>>;
-  if (typeof pull.url !== "string" || typeof pull.headRefOid !== "string") throw new Error("gh pr list returned no url or head");
-  const checks = Array.isArray(pull.statusCheckRollup) ? pull.statusCheckRollup as readonly Readonly<Record<string, unknown>>[] : [];
-  const conclusions = checks.map((check) => `${check.conclusion ?? check.state ?? ""}`.toUpperCase());
-  const ci = conclusions.some((value) => ["FAILURE", "ERROR", "CANCELLED", "TIMED_OUT"].includes(value))
+  const pulls = z.array(z.object({ url: z.string(), headRefOid: z.string(), mergedAt: z.string().nullable() })).parse(
+    JSON.parse(gh("pr", "list", "--head", branch, "--state", "all", "--limit", "1", "--json", "url,headRefOid,mergedAt")),
+  );
+  const pull = pulls[0];
+  if (pull === undefined) return null;
+  const pages = z.array(z.object({ workflow_runs: z.array(z.object({
+    id: z.number().int().positive(),
+    workflow_id: z.number().int().positive(),
+    event: z.string(),
+    head_sha: z.string(),
+    status: z.string(),
+    conclusion: z.string().nullable(),
+    run_attempt: z.number().int().positive(),
+  })) })).parse(JSON.parse(gh("api", "--method", "GET", "repos/{owner}/{repo}/actions/runs",
+    "-f", `head_sha=${pull.headRefOid}`, "-f", `branch=${branch}`, "-f", "per_page=100", "--paginate", "--slurp")));
+  const seen = new Set<string>();
+  const runs = pages.flatMap((page) => page.workflow_runs)
+    .filter((run) => run.head_sha === pull.headRefOid)
+    .sort((left, right) => right.id - left.id)
+    .filter((run) => {
+      const key = `${run.workflow_id}:${run.event}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  const passed = new Set(["success", "skipped", "neutral"]);
+  const ci = runs.some((run) => run.status === "completed" && run.conclusion !== null && !passed.has(run.conclusion))
     ? "red"
-    : conclusions.length > 0 && conclusions.every((value) => ["SUCCESS", "SKIPPED", "NEUTRAL"].includes(value)) ? "green" : "pending";
-  const runs: unknown = JSON.parse(gh("run", "list", "--branch", branch, "--commit", pull.headRefOid, "--limit", "1", "--json", "databaseId,attempt"));
-  const run = Array.isArray(runs) && runs.length > 0 ? runs[0] as Readonly<Record<string, unknown>> : null;
+    : runs.length > 0 && runs.every((run) => run.status === "completed" && run.conclusion !== null && passed.has(run.conclusion)) ? "green" : "pending";
+  const run = runs[0];
   return {
     prUrl: pull.url,
     ci,
     headSha: pull.headRefOid,
-    runId: run === null ? "" : String(run.databaseId),
-    attempt: run !== null && typeof run.attempt === "number" ? run.attempt : 0,
-    merged: typeof pull.mergedAt === "string",
+    runId: run === undefined ? "" : String(run.id),
+    attempt: run === undefined ? 0 : run.run_attempt,
+    merged: pull.mergedAt !== null,
   };
 }
 

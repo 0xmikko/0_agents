@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
 import type { DeliveryInput, StageInput, StageResultReceipt } from "../src/core/plan-update";
+import { createDraftPlan, lockPlanSpec, putDelivery } from "../src/core/plan-update";
 import { ownerWaitPath, readOwnerWait } from "../src/core/task-run";
 
 /**
@@ -114,6 +115,79 @@ function run(root: string, ...args: readonly string[]) {
 }
 
 describe("planctl", () => {
+  /**
+   * @test-id: tst_scripts_planctl_014
+   * @scenario: scn_planctl_actions_publication_001
+   * @covers: planctl/src/cli/main.ts::readPublication
+   * @deterministic: yes
+   * @fixtures: isolated Git repository, scripted gh with Checks denied and paginated Actions responses
+   * The latest run of every workflow/event on the PR head determines CI; obsolete runs cannot change it.
+   */
+  it("tst_scripts_planctl_014 reads CI from Actions without requiring Checks access", () => {
+    const fixture = fixtureRepository();
+    try {
+      writeFileSync(fixture.plan, putDelivery(lockPlanSpec(createDraftPlan("Publication fixture"), "owner").body, DELIVERY).body);
+      const head = git(fixture.root, "rev-parse", "HEAD");
+      const bin = join(fixture.root, "bin");
+      mkdirSync(bin);
+      writeFileSync(join(bin, "gh"), `#!/usr/bin/env bun
+import { readFileSync } from "node:fs";
+const args = process.argv.slice(2);
+if (args.includes("--json") && args[args.indexOf("--json") + 1].includes("statusCheckRollup")) {
+  console.error("Resource not accessible by personal access token (statusCheckRollup)");
+  process.exit(1);
+}
+if (args[0] === "pr" && args[1] === "list") {
+  console.log(JSON.stringify([{ url: "https://github.com/fixture/repo/pull/1", headRefOid: "${head}", mergedAt: null }]));
+} else if (args[0] === "api" && args.includes("repos/{owner}/{repo}/actions/runs")
+  && args.includes("GET") && args.includes("head_sha=${head}") && args.includes("branch=${DELIVERY.branch}")
+  && args.includes("--paginate") && args.includes("--slurp")) {
+  const response = readFileSync("actions.json", "utf8");
+  if (response === "denied") { console.error("Actions access denied"); process.exit(1); }
+  console.log(response);
+} else {
+  console.error("Unexpected gh arguments: " + JSON.stringify(args));
+  process.exit(1);
+}
+`, { mode: 0o755 });
+      const progress = () => spawnSync("bun", [join(import.meta.dir, "../src/cli/main.ts"), "progress", fixture.plan], {
+        cwd: fixture.root, encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      });
+      const success = { id: 20, workflow_id: 1, event: "pull_request", head_sha: head, status: "completed", conclusion: "success", run_attempt: 2 };
+      const oldFailure = { ...success, id: 10, conclusion: "failure", run_attempt: 1 };
+      const otherWorkflow = { ...success, id: 15, workflow_id: 2 };
+      const cases = [
+        { name: "successful rerun", pages: [[oldFailure, success], [otherWorkflow]], ci: "green" },
+        { name: "another workflow failed", pages: [[success], [{ ...otherWorkflow, conclusion: "failure" }]], ci: "red" },
+        { name: "another workflow is running", pages: [[success], [{ ...otherWorkflow, status: "in_progress", conclusion: null }]], ci: "pending" },
+        { name: "same workflow, another event failed", pages: [[success, { ...oldFailure, event: "push" }]], ci: "red" },
+        { name: "newer run is queued", pages: [[{ ...success, status: "queued", conclusion: null }, { ...oldFailure, conclusion: "success" }]], ci: "pending" },
+        ...["cancelled", "timed_out", "action_required", "startup_failure", "stale"].map((conclusion) => ({
+          name: conclusion, pages: [[{ ...success, conclusion }]], ci: "red",
+        })),
+        { name: "skipped workflow", pages: [[success, { ...otherWorkflow, conclusion: "skipped" }]], ci: "green" },
+        { name: "old head only", pages: [[{ ...success, head_sha: "f".repeat(40) }]], ci: "pending" },
+        { name: "no runs yet", pages: [[]], ci: "pending" },
+      ];
+      for (const testCase of cases) {
+        writeFileSync(join(fixture.root, "actions.json"), JSON.stringify(testCase.pages.map((workflow_runs) => ({ workflow_runs }))));
+        const result = progress();
+        expect(result.status, `${testCase.name}: ${result.stderr}`).toBe(0);
+        expect(result.stdout, testCase.name).toContain(`CI on ${head.slice(0, 7)} ${testCase.ci}`);
+        if (testCase.name === "successful rerun") expect(result.stdout).toContain("run 20 attempt 2");
+      }
+      for (const response of ["denied", "[{}]"]) {
+        writeFileSync(join(fixture.root, "actions.json"), response);
+        const result = progress();
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout).toContain("unavailable:");
+        expect(result.stdout).not.toContain(`CI on ${head.slice(0, 7)} green`);
+      }
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   /*
    * @test-id: tst_scripts_planctl_001
    * @scenario: scn_plan_control_001
