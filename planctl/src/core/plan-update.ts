@@ -1740,7 +1740,7 @@ export interface StartTaskInput {
   /** The observer identity when observer configuration exists; null in a plain clone. */
   readonly identity: TaskRunIdentity | null;
   /** What gh reports for a Delivery branch, to unlock a child Delivery or refuse a merged one. */
-  readonly publication: (branch: string) => ProgressView["publication"];
+  readonly publication: (root: string, branch: string) => ProgressView["publication"];
   readonly decodeRun: (value: unknown) => TaskRun | Promise<TaskRun>;
 }
 
@@ -1754,25 +1754,28 @@ export interface NeedsOwnerInput {
   readonly answerForm: string;
 }
 
-function observed(publication: (branch: string) => ProgressView["publication"], branch: string): ProgressView["publication"] {
+function observed(publication: StartTaskInput["publication"], root: string, branch: string): ProgressView["publication"] {
   try {
-    return publication(branch);
+    return publication(root, branch);
   } catch (error: unknown) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-/** Why a Delivery cannot start yet: a parent without a green PR on its current head. Null when every parent is green or merged. */
+/** Why a Delivery cannot start yet: a parent without a green PR on its current head. Null when every parent is green or merged.
+ * @tested-by: tst_unit_planctl_mcp_009
+ */
 function parentRefusal(root: string, deliveries: readonly DeliveryMeta[], delivery: DeliveryMeta, publication: StartTaskInput["publication"]): string | null {
   for (const parentId of delivery.depends) {
     const parent = deliveries.find((entry) => entry.id === parentId);
     if (parent === undefined) return `Delivery ${delivery.id} depends on unknown Delivery ${parentId}`;
-    const state = observed(publication, parent.branch);
+    const checkout = deliveryRoot(root, parent);
+    const state = observed(publication, checkout, parent.branch);
     if (state === null) return `Delivery ${parent.id} has no PR yet`;
     if ("error" in state) return `Delivery ${parent.id}: ${state.error}`;
     if (state.merged) continue;
     if (state.ci !== "green") return `Delivery ${parent.id} CI is ${state.ci}`;
-    const current = spawnSync("git", ["-C", root, "rev-parse", "--verify", `${parent.branch}^{commit}`], { encoding: "utf8" });
+    const current = spawnSync("git", ["-C", checkout, "rev-parse", "--verify", `${parent.branch}^{commit}`], { encoding: "utf8" });
     if (current.status !== 0) return `Delivery ${parent.id} branch ${parent.branch} is not known here`;
     if (state.headSha !== current.stdout.trim()) {
       return `Delivery ${parent.id} PR head ${state.headSha.slice(0, 7)} is not the current head ${current.stdout.trim().slice(0, 7)}`;
@@ -1841,7 +1844,7 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
     body = readFileSync(resolve(root, plan), "utf8");
   }
   if (task.completed) {
-    const state = observed(input.publication, delivery.branch);
+    const state = observed(input.publication, checkout, delivery.branch);
     if (state !== null && "merged" in state && state.merged) throw new Error(`Task ${taskId} is complete and its Delivery ${delivery.id} is merged`);
   }
   const brief = taskExecutionBrief(body, taskId, { repair: task.completed });
