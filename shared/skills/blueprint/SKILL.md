@@ -62,7 +62,10 @@ locally and once on the published CI SHA."
 ## Implementation contract
 
 1. One Delivery is one PR: `put_delivery` with its branch, dependencies,
-   gate commands and description. Each Stage is one delegable result and one
+   gate commands, description, and `repository` when the Delivery lives in
+   another repository: the name, never a path; the checkout is one config
+   line on the machine, `git config code-production.repository.<name>
+   <path>`. Each Stage is one delegable result and one
    work commit: `put_stage` with its owner, profile, dependencies, parallel
    set, folders as writes, temp root, Tasks and criteria. Do not parallelize
    Deliveries by default.

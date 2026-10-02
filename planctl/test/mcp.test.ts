@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { dispatchTool } from "../src/mcp/server";
-import { planJournalPath } from "../src/core/plan-update";
+import { deliveryMetas, planJournalPath, taskRunPath } from "../src/core/plan-update";
+import { decodeTaskRun } from "../src/core/task-run";
 import { protocolSpecHash } from "../src/core/plan-update";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
@@ -149,6 +150,121 @@ describe("planctl mcp", () => {
       expect(existsSync(planJournalPath(root, plan))).toBe(true);
     }
     expect(existsSync(join(home, ".git"))).toBe(false);
+  }, 120_000);
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_005
+   * @scenario: scn_planctl_mcp_repository_001
+   * @covers: planctl/src/mcp/server.ts::put_delivery
+   * @deterministic: yes
+   * @invariant: put_delivery carries the repository name into the plan, and a Delivery without one stays the plan's own.
+   */
+  it("tst_unit_planctl_mcp_005 put_delivery carries the repository of a Delivery", async () => {
+    const { root } = fixture("epsilon");
+    const deps = { cwd: home, publication: () => null, sourceCommit: "s".repeat(40), eventLog: join(home, "events-005.jsonl"), publisher: (_repository: string, plan: string) => `http://fixture/${plan}` };
+    const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result.");
+    try {
+      const started = await dispatchTool(deps, "init", { root, title: "Epsilon plan" });
+      const absolute = join(root, (started.structuredContent as { plan: string }).plan);
+      const seen = await dispatchTool(deps, "progress", { root });
+      await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec });
+      const locked = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec" });
+      expect(locked.isError ?? false, text(locked)).toBe(false);
+      const catalog = await dispatchTool(deps, "put_delivery", { plan: absolute, delivery: { ...delivery, id: "D2", title: "Catalog side", branch: "feat/catalog", active: false, stageGraph: "D2-S1", repository: "catalog" } });
+      expect(catalog.isError ?? false, text(catalog)).toBe(false);
+      const body = readFileSync(absolute, "utf8");
+      expect(body).toContain('"repository":"catalog"');
+      expect(deliveryMetas(body).find((entry) => entry.id === "D2")?.repository).toBe("catalog");
+      const own = await dispatchTool(deps, "put_delivery", { plan: absolute, delivery });
+      expect(own.isError ?? false, text(own)).toBe(false);
+      expect(deliveryMetas(readFileSync(absolute, "utf8")).find((entry) => entry.id === "D1")?.repository).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  /** An app plan whose one active Delivery lives in a catalog checkout on the Delivery's branch; the config line binds the name. */
+  async function catalogPlan(name: string, criteria: readonly string[]): Promise<{ app: Fixture; catalog: Fixture; deps: Parameters<typeof dispatchTool>[0]; absolute: string; plan: string }> {
+    const app = fixture(`${name}-app`);
+    const catalog = fixture(`${name}-catalog`);
+    catalog.git("checkout", "-qb", delivery.branch);
+    // Two fixtures born in the same second share their commit ids: the catalog moves one commit ahead so an app commit is a stranger to it.
+    catalog.git("commit", "-q", "--allow-empty", "-m", "the catalog diverges");
+    app.git("config", "code-production.repository.catalog", catalog.root);
+    const deps = { cwd: home, publication: () => null, sourceCommit: "s".repeat(40), eventLog: join(home, `events-${name}.jsonl`), publisher: (_repository: string, plan: string) => `http://fixture/${plan}` };
+    const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result.");
+    const started = await dispatchTool(deps, "init", { root: app.root, title: `${name} plan` });
+    const plan = (started.structuredContent as { plan: string }).plan;
+    const absolute = join(app.root, plan);
+    const seen = await dispatchTool(deps, "progress", { root: app.root });
+    await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec });
+    await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec" });
+    const put = await dispatchTool(deps, "put_delivery", { plan: absolute, delivery: { ...delivery, repository: "catalog" } });
+    expect(put.isError ?? false, text(put)).toBe(false);
+    const staged = await dispatchTool(deps, "put_stage", { plan: absolute, stage: { ...stage, criteria } });
+    expect(staged.isError ?? false, text(staged)).toBe(false);
+    const approved = await dispatchTool(deps, "approve_plan", { plan: absolute, ownerWord: "plan" });
+    expect(approved.isError ?? false, text(approved)).toBe(false);
+    return { app, catalog, deps, absolute, plan };
+  }
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_006
+   * @scenario: scn_planctl_mcp_repository_001
+   * @covers: planctl/src/mcp/server.ts::start_task,complete_task; planctl/src/core/plan-update.ts::completeTask
+   * @deterministic: yes
+   * @invariant: a Task of a catalog Delivery starts with its record in the app and its worktree in the catalog; a commit of the app is refused as not descending from the start base; a commit of the catalog completes and its paths land in the plan.
+   */
+  it("tst_unit_planctl_mcp_006 completes a catalog Delivery with a catalog commit and refuses an app commit", async () => {
+    const { app, catalog, deps, absolute, plan } = await catalogPlan("zeta", ["`true` exits 0 — the behavior is proven", "Commit"]);
+    try {
+      const brief = await dispatchTool(deps, "start_task", { plan: absolute });
+      expect(brief.isError ?? false, text(brief)).toBe(false);
+      const record = decodeTaskRun(JSON.parse(readFileSync(taskRunPath(app.root, plan, "MCP_FIX_001"), "utf8")));
+      expect(record.version === 3 ? record.worktree : null).toBe(catalog.git("rev-parse", "--show-toplevel"));
+      const wrong = await dispatchTool(deps, "complete_task", { plan: absolute, taskIds: ["MCP_FIX_001"], commit: app.git("rev-parse", "HEAD"), result: "nothing" });
+      expect(wrong.isError).toBe(true);
+      expect(text(wrong)).toContain("does not descend from its start base");
+      mkdirSync(join(catalog.root, "scripts"), { recursive: true });
+      writeFileSync(join(catalog.root, "scripts/base.ts"), "export const base = 1;\n");
+      catalog.git("add", "scripts/base.ts");
+      catalog.git("commit", "-qm", "work in the catalog");
+      const done = await dispatchTool(deps, "complete_task", { plan: absolute, taskIds: ["MCP_FIX_001"], commit: catalog.git("rev-parse", "HEAD"), result: "base shipped in the catalog" });
+      expect(done.isError ?? false, text(done)).toBe(false);
+      expect((done.structuredContent as { paths: string[] }).paths).toEqual(["scripts/base.ts"]);
+      expect(readFileSync(absolute, "utf8")).toContain(catalog.git("rev-parse", "HEAD").slice(0, 7));
+    } finally {
+      rmSync(app.root, { recursive: true, force: true });
+      rmSync(catalog.root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_007
+   * @scenario: scn_planctl_mcp_repository_001
+   * @covers: planctl/src/mcp/server.ts::close_stage; planctl/src/core/plan-update.ts::closePlanStage
+   * @deterministic: yes
+   * @invariant: close_stage runs a catalog Delivery's criteria with the catalog checkout as the working directory and reports the catalog head.
+   */
+  it("tst_unit_planctl_mcp_007 closes a catalog Delivery's Stage in the catalog checkout", async () => {
+    const { app, catalog, deps, absolute } = await catalogPlan("eta", ["`test -f scripts/base.ts` exits 0 — the file exists in the checkout", "Commit"]);
+    try {
+      await dispatchTool(deps, "start_task", { plan: absolute });
+      mkdirSync(join(catalog.root, "scripts"), { recursive: true });
+      writeFileSync(join(catalog.root, "scripts/base.ts"), "export const base = 1;\n");
+      catalog.git("add", "scripts/base.ts");
+      catalog.git("commit", "-qm", "work in the catalog");
+      const done = await dispatchTool(deps, "complete_task", { plan: absolute, taskIds: ["MCP_FIX_001"], commit: catalog.git("rev-parse", "HEAD"), result: "base shipped in the catalog" });
+      expect(done.isError ?? false, text(done)).toBe(false);
+      const closed = await dispatchTool(deps, "close_stage", { plan: absolute, stage: "D1-S1" });
+      expect(closed.isError ?? false, text(closed)).toBe(false);
+      expect((closed.structuredContent as { status: string }).status).toBe("CLOSED");
+      expect((closed.structuredContent as { head: string }).head).toBe(catalog.git("rev-parse", "HEAD"));
+      expect(existsSync(join(app.root, "scripts/base.ts"))).toBe(false);
+    } finally {
+      rmSync(app.root, { recursive: true, force: true });
+      rmSync(catalog.root, { recursive: true, force: true });
+    }
   }, 120_000);
 
   /**

@@ -107,6 +107,10 @@ dependency path are derived from the Stages and rendered as one "Forecast:"
 line under the Stage graph, recomputed on every put-stage, frozen by
 approve-plan and compared against the Stage Results afterwards.
 
+"repository" names the repository a Delivery lives in when it is not the
+plan's own; the checkout is one config line on the machine,
+git config code-production.repository.<name> <path>. Absent: this repository.
+
 "description" is the pull request text as of the merge, in plain language:
 what changed for people, what changed in the code, how it was proven, what is
 not in this PR. Paragraphs separated by one blank line (\\n\\n in JSON). It
@@ -521,7 +525,7 @@ async function progress(args: readonly string[]): Promise<void> {
   const progressCore = await import("../core/plan-progress");
   const view = await progressCore.planProgress(rootPath, {
     plan: explicit,
-    publication: (branch) => readPublication(rootPath, branch),
+    publication: readPublication,
     sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
     decodeRun: taskRunFrom,
   });
@@ -763,7 +767,8 @@ async function completeTask(args: readonly string[]): Promise<number> {
     if (run.plan !== target.relative || run.taskId === "" || !receipt.taskIds.includes(run.taskId)) {
       throw new Error("Task start receipt does not match the Stage result");
     }
-    if (spawnSync("git", ["-C", rootPath, "merge-base", "--is-ancestor", run.baseHead, receipt.commit]).status !== 0) {
+    // The record names the checkout the Task ran in; the commit is judged there.
+    if (spawnSync("git", ["-C", run.version === 3 ? run.worktree : rootPath, "merge-base", "--is-ancestor", run.baseHead, receipt.commit]).status !== 0) {
       throw new Error(`Task ${run.taskId} result commit does not descend from its start base`);
     }
   }

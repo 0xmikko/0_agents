@@ -87,6 +87,10 @@ Sequential PR Deliveries, each containing Stages. `planctl` renders this owner-v
    text as of the merge — what changed for people, what changed in the code,
    how it was proven, what is not in this PR. Paragraphs. A Delivery without
    it is refused.>
+   <A Delivery that lives in another repository names it, `repository`:
+   the name, never a path. The checkout is one config line on the machine,
+   `git config code-production.repository.<name> <path>`; its branch,
+   commits and PR are checked there.>
 
    #### Stage D1-S1 — Reject overlapping scheduler work
 

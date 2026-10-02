@@ -9,6 +9,8 @@ import {
   applyOwnerAmendment,
   closePlanStage,
   completeTask,
+  deliveryMetas,
+  deliveryRoot,
   needsOwner,
   resumeTask,
   startTask,
@@ -212,11 +214,42 @@ describe("plan-update", () => {
 
   // @test-id: tst_scripts_planupdate_004
   // @scenario: scn_codeprod_002
-  // @test-id: tst_scripts_planupdate_027
+  // @test-id: tst_scripts_planupdate_030
+  // @covers: planctl/src/core/plan-update.ts::putDelivery,deliveryMetas,deliveryRoot
+  // @deterministic: yes
+  // @invariant: a Delivery names its repository and reads it back; without one it reads null; deliveryRoot is the plan's root for the plan's own Delivery, refuses a missing config line naming the command, and returns the configured checkout.
+  it("tst_scripts_planupdate_030 a Delivery names its repository and deliveryRoot resolves its checkout", () => {
+    const locked = lockPlanSpec(draft(), "spec").body;
+    const withRepository = putDelivery(locked, { ...delivery(), repository: "catalog" }).body;
+    expect(withRepository).toContain('"repository":"catalog"');
+    const named = deliveryMetas(withRepository)[0];
+    expect(named?.repository).toBe("catalog");
+    const own = deliveryMetas(putDelivery(locked, delivery()).body)[0];
+    expect(own?.repository).toBeNull();
+    const root = mkdtempSync(join(tmpdir(), "delivery-root-"));
+    const checkout = mkdtempSync(join(tmpdir(), "delivery-checkout-"));
+    const git = (cwd: string, ...args: readonly string[]): string => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
+    try {
+      git(root, "init", "-q");
+      git(checkout, "init", "-q");
+      if (own === undefined || named === undefined) throw new Error("fixture lost its Deliveries");
+      expect(deliveryRoot(root, own)).toBe(root);
+      expect(() => deliveryRoot(root, named)).toThrow("repository catalog has no checkout on this machine; run: git config code-production.repository.catalog <path>");
+      git(root, "config", "code-production.repository.catalog", checkout);
+      expect(deliveryRoot(root, named)).toBe(git(checkout, "rev-parse", "--show-toplevel"));
+      git(root, "config", "code-production.repository.catalog", join(checkout, "missing"));
+      expect(() => deliveryRoot(root, named)).toThrow(/is not a repository checkout/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+
+  // @test-id: tst_scripts_planupdate_032
   // @covers: planctl/src/core/plan-update.ts::planJournalPath,mutatePlanFile,verifyStagedPlan,clearSpentJournal
   // @deterministic: yes
   // @invariant: two plans in one worktree keep two journals: the second plan's transaction never replaces the first's, each verifies on its own, and a commit spends only the journal it carries.
-  it("tst_scripts_planupdate_027 keeps one journal per plan in one worktree", () => {
+  it("tst_scripts_planupdate_032 keeps one journal per plan in one worktree", () => {
     const root = mkdtempSync(join(tmpdir(), "two-plans-one-journal-"));
     const writer = join(import.meta.dir, "../src/core/plan-update.ts");
     const git = (...args: readonly string[]): string => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
@@ -1241,6 +1274,46 @@ describe("the Task loop through the core", () => {
   const plan = "docs/plans/fixture.md";
   const unpublished = () => null;
   const noIdentity = { identity: null, decodeRun: decodeTaskRun, publication: unpublished };
+
+  // @test-id: tst_scripts_planupdate_031
+  // @scenario: scn_plan_control_task_loop_001
+  // @covers: planctl/src/core/plan-update.ts::startTask,deliveryRoot
+  // @deterministic: yes
+  // @invariant: a Task of a Delivery that names a repository starts in that checkout: without the config line start refuses naming the command, on another branch it refuses naming both branches, and on the Delivery's branch the record's worktree and baseHead come from the checkout while the record stays in the plan's repository.
+  it("tst_scripts_planupdate_031 starts a Task of a catalog Delivery in the catalog checkout", async () => {
+    let body = lockPlanSpec(draft(), "spec").body;
+    body = putDelivery(body, { ...delivery(), repository: "catalog" }).body;
+    body = putStage(body, { ...stage("D1-S1", ["scripts/"]), tasks: stage("D1-S1", ["scripts/base.ts"]).tasks }).body;
+    const { root, git } = repository(approvePlan(body, "approve").body);
+    const catalog = mkdtempSync(join(tmpdir(), "plan-update-catalog-"));
+    const cgit = (...args: readonly string[]): string => execFileSync("git", args, { cwd: catalog, encoding: "utf8" }).trim();
+    try {
+      cgit("init", "-q", "-b", "main");
+      cgit("config", "user.email", "test@example.com");
+      cgit("config", "user.name", "Test");
+      cgit("commit", "-q", "--allow-empty", "-m", "the catalog");
+      const start = () => startTask(root, { plan, taskId: "D1-S1-T1", checkpoint: null, ...noIdentity });
+      await expect(start()).rejects.toThrow("repository catalog has no checkout on this machine; run: git config code-production.repository.catalog <path>");
+      git("config", "code-production.repository.catalog", catalog);
+      const toplevel = cgit("rev-parse", "--show-toplevel");
+      await expect(start()).rejects.toThrow(`checkout ${toplevel} is on main; Delivery D1 is ${delivery().branch}`);
+      cgit("checkout", "-qb", delivery().branch);
+      const brief = await start();
+      expect(brief.taskId).toBe("D1-S1-T1");
+      const record = decodeTaskRun(JSON.parse(readFileSync(taskRunPath(root, plan, "D1-S1-T1"), "utf8")));
+      expect(record.version).toBe(3);
+      if (record.version === 3) {
+        expect(record.worktree).toBe(toplevel);
+        expect(record.baseHead).toBe(cgit("rev-parse", "HEAD"));
+        expect(record.branch).toBe(delivery().branch);
+      }
+      // A repeated start finds its own record although its worktree is the catalog.
+      expect((await start()).startedAt).toBe(brief.startedAt);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(catalog, { recursive: true, force: true });
+    }
+  });
 
   // @test-id: tst_scripts_planupdate_027
   // @scenario: scn_plan_control_task_loop_001

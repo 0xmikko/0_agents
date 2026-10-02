@@ -51,6 +51,8 @@ export interface DeliveryInput {
    * rounds, CI runs, external services — kept apart from active work. The
    * active-work and critical-path forecasts are derived from the Stages. */
   readonly predictedExternalWaitMinutes: number;
+  /** The repository the branch, the commits and the PR live in, by name; absent: the plan's own repository. */
+  readonly repository?: string;
   /** The pull request text as of the merge: what changed for people, what
    * changed in the code, how it was proven, what is not in this PR.
    * Paragraphs separated by one blank line; rendered under the Stage graph. */
@@ -124,6 +126,32 @@ export interface DeliveryMeta {
   readonly depends: readonly string[];
   readonly branch: string;
   readonly predictedExternalWaitMinutes: number;
+  /** The repository the Delivery lives in, by name; null for the plan's own. */
+  readonly repository: string | null;
+}
+
+/** The checkout a Delivery's operations run in: the plan's root, or the configured checkout of its named repository. */
+export function deliveryRoot(planRoot: string, delivery: DeliveryMeta): string {
+  if (delivery.repository === null) return planRoot;
+  const key = `code-production.repository.${delivery.repository}`;
+  const configured = spawnSync("git", ["-C", planRoot, "config", "--get", key], { encoding: "utf8" });
+  const path = configured.status === 0 ? configured.stdout.trim() : "";
+  if (path === "") throw new Error(`repository ${delivery.repository} has no checkout on this machine; run: git config ${key} <path>`);
+  const top = spawnSync("git", ["-C", path, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
+  const toplevel = top.status === 0 ? top.stdout.trim() : "";
+  if (toplevel === "" || toplevel !== resolve(path)) throw new Error(`${key} = ${path} is not a repository checkout`);
+  return toplevel;
+}
+
+/** The checkout of a run's Delivery when the machine knows it, else null: a record from an unconfigured checkout is someone else's. */
+function knownDeliveryRoot(planRoot: string, deliveries: readonly DeliveryMeta[], deliveryId: string): string | null {
+  const delivery = deliveries.find((entry) => entry.id === deliveryId);
+  if (delivery === undefined) return null;
+  try {
+    return deliveryRoot(planRoot, delivery);
+  } catch {
+    return null;
+  }
 }
 
 export interface StageResultReceipt {
@@ -723,7 +751,7 @@ function renderDelivery(input: DeliveryInput, stages: readonly ForecastStage[]):
   assertSafeProse(input.description, "Delivery description", DELIVERY_DESCRIPTION_HINT);
   const waitMinutes = assertExternalWait(input.predictedExternalWaitMinutes);
   assertUnique(input.depends, "Delivery dependencies");
-  const meta = JSON.stringify({ active: input.active, depends: input.depends, predictedExternalWaitMinutes: waitMinutes });
+  const meta = JSON.stringify({ active: input.active, depends: input.depends, predictedExternalWaitMinutes: waitMinutes, ...(input.repository === undefined ? {} : { repository: input.repository }) });
   return [
     deliveryStart(input.id),
     `<!-- plan:delivery-meta:${meta} -->`,
@@ -1033,7 +1061,7 @@ export function deliveryMetas(body: string): readonly DeliveryMeta[] {
     if (branch === null) throw new Error(`Delivery ${id} lacks a Branch line`);
     // The header says which Delivery is active: execution moves it without
     // touching the frozen contract, whose metadata keeps the authored flag.
-    values.push({ id, active: activeDeliveryId(body) === id, depends, branch: capture(branch, 1, `Delivery ${id} branch`), predictedExternalWaitMinutes: wait });
+    values.push({ id, active: activeDeliveryId(body) === id, depends, branch: capture(branch, 1, `Delivery ${id} branch`), predictedExternalWaitMinutes: wait, repository: typeof meta.repository === "string" ? meta.repository : null });
   }
   return values;
 }
@@ -1518,6 +1546,16 @@ export function stageApproved(body: string, stageId: string): boolean {
   return line.test(execution);
 }
 
+/** Where a Stage closes: its Delivery's checkout and that checkout's HEAD. */
+export function closeRootOf(planRoot: string, body: string, stageId: string): { readonly root: string; readonly head: string } {
+  const stage = stageInputs(body).find((candidate) => candidate.id === stageId);
+  if (stage === undefined) throw new Error(`unknown Stage ${stageId}`);
+  const delivery = deliveryMetas(body).find((entry) => entry.id === stage.deliveryId);
+  if (delivery === undefined) throw new Error(`Stage ${stageId} belongs to unknown Delivery ${stage.deliveryId}`);
+  const root = deliveryRoot(planRoot, delivery);
+  return { root, head: git(root, ["rev-parse", "HEAD"]) };
+}
+
 export function closePlanStage(
   body: string,
   stageId: string,
@@ -1635,12 +1673,16 @@ export async function completeTask(
   const stage = stageInputs(body).find((entry) => input.taskIds.every((id) => entry.tasks.some((task) => task.id === id)));
   if (stage === undefined) throw new Error(`Tasks ${input.taskIds.join(", ")} do not belong to one Stage of ${plan}`);
   const tasks = stage.tasks.filter((task) => input.taskIds.includes(task.id));
+  const owning = deliveryMetas(body).find((entry) => entry.id === stage.deliveryId);
+  if (owning === undefined) throw new Error(`Stage ${stage.id} belongs to unknown Delivery ${stage.deliveryId}`);
+  // The commit, its paths and its types live in the Delivery's checkout; the result row lives in the plan.
+  const checkout = deliveryRoot(root, owning);
   const runs = await Promise.all(input.taskIds.map(async (taskId) => {
     const path = taskRunPath(root, plan, taskId);
     if (!existsSync(path)) throw new Error(`Task ${taskId} has no start record; run planctl start-task first`);
     const run = await decodeRun(JSON.parse(readFileSync(path, "utf8")) as unknown);
     if (run.plan !== plan || run.taskId !== taskId) throw new Error(`Task ${taskId} start record belongs to another Task`);
-    if (spawnSync("git", ["-C", root, "merge-base", "--is-ancestor", run.baseHead, input.commit]).status !== 0) {
+    if (spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", run.baseHead, input.commit]).status !== 0) {
       throw new Error(`Task ${taskId} result commit does not descend from its start base`);
     }
     return { path, run };
@@ -1655,16 +1697,16 @@ export async function completeTask(
     return sum + run.accumulatedOwnerWaitSeconds + open;
   }, 0);
   const activeMinutes = Math.max(0, elapsedMinutes - waitSeconds / 60);
-  const paths = stageResultCommitPaths(input.commit, root).filter((path) => path !== plan);
+  const paths = stageResultCommitPaths(input.commit, checkout).filter((path) => path !== plan);
   const tempRoot = {
     path: stage.tempRoot,
-    state: existsSync(resolve(root, stage.tempRoot)) ? "present" : "absent",
+    state: existsSync(resolve(checkout, stage.tempRoot)) ? "present" : "absent",
   } as const;
   const tests = tasks.map((task) => ({ id: task.id, command: task.red }));
   // An exported type the SPEC does not name is the one thing a commit may
   // not change silently: the Interfaces section is the owner's contract.
   const { undeclaredExportedTypes } = await import("./plan-gate");
-  const undeclared = await undeclaredExportedTypes(root, input.commit, body);
+  const undeclared = await undeclaredExportedTypes(checkout, input.commit, body);
   if (undeclared.length > 0) {
     const names = undeclared.map((type) => `${type.name} in ${type.path}`).join(", ");
     throw new Error(`exported type ${names} is missing from SPEC Interfaces; declare it there under the owner's word`);
@@ -1688,9 +1730,9 @@ export async function completeTask(
     tempRoots: [tempRoot],
   };
   mutatePlanFile(root, plan, "record-result", (current) => recordStageResult(current, receipt, {
-    commitIsAncestor: (commit) => spawnSync("git", ["-C", root, "merge-base", "--is-ancestor", commit, "HEAD"]).status === 0,
-    commitPaths: (commit) => stageResultCommitPaths(commit, root),
-    pathExists: (path) => existsSync(resolve(root, path)),
+    commitIsAncestor: (commit) => spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", commit, "HEAD"]).status === 0,
+    commitPaths: (commit) => stageResultCommitPaths(commit, checkout),
+    pathExists: (path) => existsSync(resolve(checkout, path)),
   }));
   for (const { path } of runs) unlinkSync(path);
   return {
@@ -1852,7 +1894,9 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
   let body = readFileSync(resolve(root, plan), "utf8");
   requireState(body, "APPROVED");
   const runs = await runningTaskRecords(root, plan, input.decodeRun);
-  const mine = runs.filter((run) => taskRunOf(run) === null || taskRunOf(run) === root)
+  // A run is mine when it started in this worktree or in the checkout its Delivery names on this machine.
+  const ownRoot = (run: TaskRun): boolean => taskRunOf(run) === null || taskRunOf(run) === root || taskRunOf(run) === knownDeliveryRoot(root, deliveryMetas(body), run.deliveryId);
+  const mine = runs.filter(ownRoot)
     .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
   let taskId = input.taskId;
   if (taskId === null) {
@@ -1872,7 +1916,7 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
       }
     }
   }
-  const elsewhere = runs.find((run) => run.taskId === taskId && taskRunOf(run) !== null && taskRunOf(run) !== root);
+  const elsewhere = runs.find((run) => run.taskId === taskId && !ownRoot(run));
   if (elsewhere !== undefined) throw new Error(`Task ${taskId} is running in worktree ${taskRunOf(elsewhere)}`);
   const stages = stageInputs(body);
   const stage = stages.find((candidate) => candidate.tasks.some((task) => task.id === taskId));
@@ -1882,6 +1926,12 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
   const deliveries = deliveryMetas(body);
   const delivery = deliveries.find((entry) => entry.id === stage.deliveryId);
   if (delivery === undefined) throw new Error(`Task ${taskId} belongs to unknown Delivery ${stage.deliveryId}`);
+  // A Delivery that names a repository runs in that checkout, on its own branch.
+  const checkout = deliveryRoot(root, delivery);
+  if (checkout !== root) {
+    const onBranch = git(checkout, ["branch", "--show-current"]);
+    if (onBranch !== delivery.branch) throw new Error(`checkout ${checkout} is on ${onBranch}; Delivery ${delivery.id} is ${delivery.branch}`);
+  }
   if (!delivery.active) {
     const refusal = parentRefusal(root, deliveries, delivery, input.publication);
     if (refusal !== null) throw new Error(`Task ${taskId} cannot start: ${refusal}`);
@@ -1898,7 +1948,7 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
   let run: TaskRun;
   if (existing !== undefined) {
     if (existing.plan !== plan || existing.stageId !== brief.stageId) throw new Error(`Task ${taskId} has a conflicting start record`);
-    if (spawnSync("git", ["-C", root, "merge-base", "--is-ancestor", existing.baseHead, "HEAD"]).status !== 0) {
+    if (spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", existing.baseHead, "HEAD"]).status !== 0) {
       throw new Error(`Task ${taskId} start base is not ancestral to HEAD`);
     }
     // A repeated start keeps the clock; it may add a checkpoint, and an
@@ -1920,9 +1970,9 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
       stageId: brief.stageId,
       taskId,
       startedAt: new Date().toISOString(),
-      baseHead: git(root, ["rev-parse", "HEAD"]),
-      worktree: root,
-      branch: git(root, ["branch", "--show-current"]),
+      baseHead: git(checkout, ["rev-parse", "HEAD"]),
+      worktree: checkout,
+      branch: git(checkout, ["branch", "--show-current"]),
       checkpoint: input.checkpoint,
       identity: input.identity,
       ownerWait: null,
@@ -2163,6 +2213,7 @@ export function deliveryFrom(value: unknown): DeliveryInput {
     stageGraph: requiredString(record, "stageGraph"),
     predictedExternalWaitMinutes: typeof record.predictedExternalWaitMinutes === "number" ? record.predictedExternalWaitMinutes : Number.NaN,
     description: typeof record.description === "string" ? record.description : "",
+    ...(record.repository === undefined ? {} : { repository: requiredString(record, "repository") }),
   };
 }
 
@@ -2334,8 +2385,7 @@ if (import.meta.main && ["plan-update.ts", "plan-update.js"].includes(basename(i
         break;
       case "close": {
         const root = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
-        const head = git(root, ["rev-parse", "HEAD"]);
-        mutatePlanFile(root, plan, command, (body) => closePlanStage(body, requiredFlag(args, "--stage"), { root, head }));
+        mutatePlanFile(root, plan, command, (body) => closePlanStage(body, requiredFlag(args, "--stage"), closeRootOf(root, body, requiredFlag(args, "--stage"))));
         break;
       }
       case "deviate":

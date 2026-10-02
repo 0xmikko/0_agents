@@ -14,6 +14,10 @@ is never edited by hand.
 1. Work in the plan's existing feature worktree. Call `progress` with the
    plan: it shows the Goal, the active Delivery beside the whole plan, the PR
    and CI it observes, and the next eligible Task. The plan must be APPROVED.
+   A Delivery that names a `repository` runs in that repository's checkout:
+   create its branch there in its own worktree and point the config line at
+   it, `git config code-production.repository.<name> <path>`, before its
+   first `start_task`; the tool refuses a missing line and a wrong branch.
 2. Merge the base branch into the feature branch without rewriting history,
    then run `bun run agent:install`.
 3. Different agents may implement Stages in parallel only when the plan
