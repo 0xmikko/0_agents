@@ -1,9 +1,9 @@
 # One plan across two repositories
 
-Status: SPEC_DRAFT  
-Spec lock: unlocked  
+Status: SPEC_LOCKED  
+Spec lock: sha256:83fbbd5233813f4b648809abee976f6eb50dd4b8b3a0cb8b3ddbb52dde117dc5 owner:Сделай возможность работать в двух репозиториях  
 Implementation lock: unlocked  
-Active Delivery: none  
+Active Delivery: D1  
 Unattended decisions: allowed  
 
 <!-- plan:spec:start -->
@@ -229,8 +229,174 @@ export interface ProgressView {
 
 <!-- plan:implementation:start -->
 ## Implementation contract
+
+<!-- plan:delivery:D1:start -->
+<!-- plan:delivery-meta:{"active":true,"depends":[],"predictedExternalWaitMinutes":30} -->
+### PR Delivery D1 — A plan across two repositories
+
+Branch: `feat/planctl-multirepo`; Depends: none; Gate: cd planctl && bun run agent:verify:pr.
+
+Stage graph: `D1-S1 -> D1-S2 -> D1-S3 -> D1-S4`.
+
+Forecast: 250 active min / 0 credits across 4 Stages; longest dependency path 250 active min; external waits 30 min.
+
+What changed for people. A plan in the app can carry a Delivery whose branch, commits and PR live in the catalog checkout. The agent names the repository once and sets one config line on the machine. Start, complete, close and progress then act there with the same tools.
+
+What changed in the code. DeliveryInput and DeliveryMeta carry repository. deliveryRoot resolves the checkout from code-production.repository.<name>. startTask, completeTask, closePlanStage and planProgress act in that checkout; the server and the CLI pass the plan root and let the core resolve the rest.
+
+How it was proven. Unit tests on a second fixture repository. The field round-trips; start refuses a missing line and a wrong branch; completion refuses a commit from the plan's repository; close runs a criterion in the checkout; progress shows two Publish lines.
+
+Not in this PR. A Delivery in a third repository is the same mechanism; the catalog's own hooks and gates stay the catalog's.
+
+<!-- plan:stage:D1-S1:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["planctl/src/core/plan-update.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/plan-update.test.ts","planctl/test/mcp.test.ts","shared/skills/blueprint/SKILL.md","shared/code-production/laws/plan-format.md"],"tempRoot":".tmp/code-production/planctl-multirepo/D1-S1","predictedActiveMinutes":80,"predictedCredits":0,"verifyActiveMinutes":10,"verifyCredits":0} -->
+#### Stage D1-S1 — Name the repository of a Delivery
+
+- Owner: claude; Profile: strong; Depends: none; Parallel with: none.
+- Writes: `planctl/src/core/plan-update.ts`, `planctl/src/mcp/server.ts`, `planctl/src/cli/main.ts`, `planctl/test/plan-update.test.ts`, `planctl/test/mcp.test.ts`, `shared/skills/blueprint/SKILL.md`, `shared/code-production/laws/plan-format.md`.
+- Temp root: `.tmp/code-production/planctl-multirepo/D1-S1` (must be absent at handoff).
+- Of which verification: 10 active min / 0 credits.
+
+feat(planctl): a Delivery names its repository
+
+Done for the first and second Goal outcomes: a Delivery carries an optional repository name, rendered in its metadata line and read back by deliveryMetas, and deliveryRoot resolves the checkout from one git config line of the plan's repository, refusing a missing line with the command that sets it. The plan stays portable: it names the repository, never a path.
+
+Proven by the plan-update tests on the field round trip and on deliveryRoot, the MCP test on put_delivery with repository, and the instruction audit on the skill and the law.
+
+##### Tasks
+
+- [ ] MR_001 — Add `repository` to `DeliveryInput` and `DeliveryMeta` in `planctl/src/core/plan-update.ts` and render it in the Delivery metadata line. (25 min)
+<!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":25,"predictedCredits":0,"how":"Write tst_scripts_planupdate_028 in planctl/test/plan-update.test.ts: putDelivery with repository renders it in the delivery-meta line and deliveryMetas reads it; a Delivery without it reads null. Extend DeliveryInput, DeliveryMeta, renderDelivery and deliveryMetas in planctl/src/core/plan-update.ts.","red":"bun run agent:test:backend -- test/plan-update.test.ts -t tst_scripts_planupdate_028"} -->
+- [ ] MR_002 — Add `deliveryRoot` in `planctl/src/core/plan-update.ts` and accept `repository` in `put_delivery` and `put-delivery`. (30 min)
+<!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/mcp.test.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":30,"predictedCredits":0,"how":"Write tst_unit_planctl_mcp_005 in planctl/test/mcp.test.ts: put_delivery with repository saves it; deliveryRoot without the config line throws naming git config code-production.repository.catalog, with it returns the configured path. Add deliveryRoot to planctl/src/core/plan-update.ts, the field to the put_delivery schema in planctl/src/mcp/server.ts and to the put-delivery help in planctl/src/cli/main.ts.","red":"bun run agent:test:backend -- test/mcp.test.ts -t tst_unit_planctl_mcp_005"} -->
+- [ ] MR_003 — Name the Delivery field and the config line in `shared/skills/blueprint/SKILL.md` and `shared/code-production/laws/plan-format.md`. (15 min)
+<!-- plan:task-meta:{"writes":["shared/skills/blueprint/SKILL.md","shared/code-production/laws/plan-format.md"],"predictedActiveMinutes":15,"predictedCredits":0,"how":"Add one sentence to the Implementation contract step of shared/skills/blueprint/SKILL.md and one to the Delivery paragraph of shared/code-production/laws/plan-format.md; the instruction audit over the skills stays green.","red":"bun run agent:test:backend -- test/instruction-audit.test.ts"} -->
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/plan-update.test.ts` exits 0 — the field round-trips and deliveryRoot refuses and resolves
+- [ ] `cd planctl && bun run agent:test:backend -- test/mcp.test.ts` exits 0 — put_delivery carries the repository
+- [ ] `cd planctl && bun run typecheck` exits 0 — the new field compiles everywhere
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S1:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S1:end -->
+<!-- plan:stage:D1-S1:end -->
+
+<!-- plan:stage:D1-S2:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S1"],"parallelWith":[],"writes":["planctl/src/core/plan-update.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/plan-update.test.ts","shared/skills/blueprint-start/SKILL.md"],"tempRoot":".tmp/code-production/planctl-multirepo/D1-S2","predictedActiveMinutes":60,"predictedCredits":0,"verifyActiveMinutes":10,"verifyCredits":0} -->
+#### Stage D1-S2 — Start a Task in the Delivery's checkout
+
+- Owner: claude; Profile: strong; Depends: D1-S1; Parallel with: none.
+- Writes: `planctl/src/core/plan-update.ts`, `planctl/src/mcp/server.ts`, `planctl/src/cli/main.ts`, `planctl/test/plan-update.test.ts`, `shared/skills/blueprint-start/SKILL.md`.
+- Temp root: `.tmp/code-production/planctl-multirepo/D1-S2` (must be absent at handoff).
+- Of which verification: 10 active min / 0 credits.
+
+feat(planctl): start a Task in the Delivery's checkout
+
+Done for the first Goal outcome: startTask asks deliveryRoot for the checkout of the Task's Delivery, refuses a checkout on another branch naming both branches, and records worktree and baseHead from that checkout while the start record stays in the plan's repository. The blueprint-start skill creates the branch in the checkout and sets the config line before the first start.
+
+Proven by the plan-update test on a second fixture repository and the instruction audit.
+
+##### Tasks
+
+- [ ] MR_004 — Resolve the checkout with `deliveryRoot` in `startTask` of `planctl/src/core/plan-update.ts`: refuse a wrong branch, record `worktree` and `baseHead` from it. (35 min)
+<!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/plan-update.test.ts"],"predictedActiveMinutes":35,"predictedCredits":0,"how":"Write tst_scripts_planupdate_029 in planctl/test/plan-update.test.ts with a second repository as the catalog: start_task on its Delivery refuses without the config line, refuses on the wrong branch naming both, and on the right branch records worktree and baseHead of the checkout. Change startTask in planctl/src/core/plan-update.ts; the server and the CLI keep passing the plan root.","red":"bun run agent:test:backend -- test/plan-update.test.ts -t tst_scripts_planupdate_029"} -->
+- [ ] MR_005 — Tell `shared/skills/blueprint-start/SKILL.md` to create the Delivery branch in the checkout and set the config line before `start_task`. (15 min)
+<!-- plan:task-meta:{"writes":["shared/skills/blueprint-start/SKILL.md"],"predictedActiveMinutes":15,"predictedCredits":0,"how":"Add the two sentences to the Start section of shared/skills/blueprint-start/SKILL.md; the instruction audit stays green.","red":"bun run agent:test:backend -- test/instruction-audit.test.ts"} -->
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/plan-update.test.ts` exits 0 — start refuses and records in the checkout
+- [ ] `cd planctl && bun run typecheck` exits 0 — the start path compiles
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S2:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S2:end -->
+<!-- plan:stage:D1-S2:end -->
+
+<!-- plan:stage:D1-S3:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S2"],"parallelWith":[],"writes":["planctl/src/core/plan-update.ts","planctl/src/core/plan-gate.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/mcp.test.ts"],"tempRoot":".tmp/code-production/planctl-multirepo/D1-S3","predictedActiveMinutes":70,"predictedCredits":0,"verifyActiveMinutes":10,"verifyCredits":0} -->
+#### Stage D1-S3 — Complete and close a Stage in the checkout
+
+- Owner: claude; Profile: strong; Depends: D1-S2; Parallel with: none.
+- Writes: `planctl/src/core/plan-update.ts`, `planctl/src/core/plan-gate.ts`, `planctl/src/mcp/server.ts`, `planctl/src/cli/main.ts`, `planctl/test/mcp.test.ts`.
+- Temp root: `.tmp/code-production/planctl-multirepo/D1-S3` (must be absent at handoff).
+- Of which verification: 10 active min / 0 credits.
+
+feat(planctl): complete and close a Stage in the Delivery's checkout
+
+Done for the first Goal outcome: completeTask checks the commit's ancestry, its paths and its exported types in the Delivery's checkout and writes the result row into the plan; closePlanStage runs the criteria with the checkout as the working directory. A commit from the plan's repository handed to a catalog Delivery is refused as not descending from the start base.
+
+Proven by the MCP test driving a catalog Delivery through start, complete and close on a second fixture repository.
+
+##### Tasks
+
+- [ ] MR_006 — Check ancestry, diff paths and exported types in the Delivery's checkout in `completeTask` of `planctl/src/core/plan-update.ts`. (35 min)
+<!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/core/plan-gate.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/mcp.test.ts"],"predictedActiveMinutes":35,"predictedCredits":0,"how":"Write tst_unit_planctl_mcp_006 in planctl/test/mcp.test.ts: a catalog Delivery completes with a commit made in the catalog fixture and is refused with a commit made in the app fixture. Resolve the checkout in completeTask and pass it to stageResultCommitPaths and undeclaredExportedTypes in planctl/src/core/plan-gate.ts.","red":"bun run agent:test:backend -- test/mcp.test.ts -t tst_unit_planctl_mcp_006"} -->
+- [ ] MR_007 — Run `closePlanStage` criteria with the Delivery's checkout as cwd, from `planctl/src/mcp/server.ts` and `planctl/src/cli/main.ts`. (25 min)
+<!-- plan:task-meta:{"writes":["planctl/src/core/plan-update.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/mcp.test.ts"],"predictedActiveMinutes":25,"predictedCredits":0,"how":"Write tst_unit_planctl_mcp_007 in planctl/test/mcp.test.ts: close_stage runs a criterion that exists only in the catalog fixture and closes the Stage. Pass deliveryRoot of the Stage's Delivery as options.root to closePlanStage in the server and the CLI.","red":"bun run agent:test:backend -- test/mcp.test.ts -t tst_unit_planctl_mcp_007"} -->
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/mcp.test.ts` exits 0 — a catalog Delivery completes and closes in its checkout
+- [ ] `cd planctl && bun run typecheck` exits 0 — the completion path compiles
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S3:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S3:end -->
+<!-- plan:stage:D1-S3:end -->
+
+<!-- plan:stage:D1-S4:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":["D1-S3"],"parallelWith":[],"writes":["planctl/src/core/plan-progress.ts","planctl/src/cli/render.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/plan-progress.test.ts"],"tempRoot":".tmp/code-production/planctl-multirepo/D1-S4","predictedActiveMinutes":40,"predictedCredits":0,"verifyActiveMinutes":10,"verifyCredits":0} -->
+#### Stage D1-S4 — Progress across both repositories
+
+- Owner: claude; Profile: strong; Depends: D1-S3; Parallel with: none.
+- Writes: `planctl/src/core/plan-progress.ts`, `planctl/src/cli/render.ts`, `planctl/src/mcp/server.ts`, `planctl/src/cli/main.ts`, `planctl/test/plan-progress.test.ts`.
+- Temp root: `.tmp/code-production/planctl-multirepo/D1-S4` (must be absent at handoff).
+- Of which verification: 10 active min / 0 credits.
+
+feat(planctl): progress shows every Delivery in its own repository
+
+Done for the third Goal outcome: planProgress asks for the publication of every Delivery in its own checkout and the screen shows one Publish line per Delivery with its repository name, PR and CI; the active Delivery keeps its place.
+
+Proven by the plan-progress test answering two fake publications per checkout.
+
+##### Tasks
+
+- [ ] MR_008 — Ask the publication of every Delivery in its own checkout in `planProgress` of `planctl/src/core/plan-progress.ts` and render one Publish line per Delivery. (30 min)
+<!-- plan:task-meta:{"writes":["planctl/src/core/plan-progress.ts","planctl/src/cli/render.ts","planctl/src/mcp/server.ts","planctl/src/cli/main.ts","planctl/test/plan-progress.test.ts"],"predictedActiveMinutes":30,"predictedCredits":0,"how":"Write tst_unit_planctl_progress_004 in planctl/test/plan-progress.test.ts: two Deliveries, one in a catalog fixture, two fake gh answers keyed by checkout, two Publish lines naming their repositories. Add publications and the repository name to ProgressView, resolve each Delivery's checkout with deliveryRoot, render in planctl/src/cli/render.ts.","red":"bun run agent:test:backend -- test/plan-progress.test.ts -t tst_unit_planctl_progress_004"} -->
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:test:backend -- test/plan-progress.test.ts` exits 0 — two Publish lines, one per repository
+- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete gate for the finished PR
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S4:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S4:end -->
+<!-- plan:stage:D1-S4:end -->
+<!-- plan:delivery:D1:end -->
 <!-- plan:implementation:end -->
 
 <!-- plan:execution:start -->
 ## Execution log
+
+- lock-spec sha256:83fbbd5233813f4b648809abee976f6eb50dd4b8b3a0cb8b3ddbb52dde117dc5 owner:Сделай возможность работать в двух репозиториях
 <!-- plan:execution:end -->
