@@ -109,6 +109,11 @@ describe("findings an agent can act on", () => {
       expect(await typescript(withUntyped)).toEqual([[withUntyped.split("\n").indexOf("function companyFor(domainKey, observed: string): string {") + 1, "untyped parameter `domainKey` in `companyFor`: pseudocode is TypeScript with types"]]);
       const withJavascript = spec.replace(anchor, `${anchor}\n${javascript}`);
       expect(await typescript(withJavascript)).toEqual([[withJavascript.split("\n").indexOf("```javascript") + 1, "code block in `javascript`: pseudocode is TypeScript with types, in a ```typescript block"]]);
+      // Names are camelCase, always: a snake_case field, parameter or method is refused by name; a PascalCase type is not a name in question.
+      const snake = "```typescript\ninterface WireShape {\n  sync_enabled: boolean;\n  readonly isTracked: boolean;\n}\nfunction applySelection(tracked_handles: string[]): void {\n  return;\n}\n```\n\n";
+      const withSnake = spec.replace(anchor, `${anchor}\n${snake}`);
+      const start = withSnake.split("\n").indexOf("interface WireShape {") + 1;
+      expect(await typescript(withSnake)).toEqual([[start + 1, "`sync_enabled` is not camelCase; TypeScript names are camelCase, always"], [start + 4, "`tracked_handles` is not camelCase; TypeScript names are camelCase, always"]]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
