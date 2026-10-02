@@ -591,7 +591,7 @@ async function startTask(args: readonly string[]): Promise<void> {
     taskId: optionalFlag(args, "--task") ?? null,
     checkpoint: optionalFlag(args, "--checkpoint") ?? null,
     identity,
-    publication: (branch: string) => readPublication(rootPath, branch),
+    publication: readPublication,
     decodeRun: taskRunFrom,
   });
   const render = await import("./render");

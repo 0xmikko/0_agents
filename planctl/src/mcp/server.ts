@@ -281,7 +281,7 @@ const TOOLS = {
         taskId: task ?? null,
         checkpoint: checkpoint ?? null,
         identity: null,
-        publication: (branch) => deps.publication(root, branch),
+        publication: deps.publication,
         decodeRun: decodeTaskRun,
       });
       return reply({ ...brief }, renderTaskBrief(brief, "none (MCP record)"));

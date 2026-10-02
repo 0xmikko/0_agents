@@ -183,6 +183,73 @@ describe("planctl mcp", () => {
     }
   }, 120_000);
 
+  /**
+   * @test-id: tst_unit_planctl_mcp_009
+   * @scenario: scn_planctl_mcp_repository_002
+   * @covers: planctl/src/mcp/server.ts::start_task; planctl/src/core/plan-update.ts::parentRefusal
+   * @deterministic: yes
+   * @invariant: progress and start_task observe a parent in its configured repository; the parent's current head is resolved there even when the plan repository has a branch with the same name.
+   */
+  it("tst_unit_planctl_mcp_009 starts a child using the parent PR and head from the app checkout", async () => {
+    const catalog = fixture("parent-catalog");
+    const app = fixture("parent-app");
+    const calls: { root: string; branch: string }[] = [];
+    const head = app.git("rev-parse", "HEAD");
+    let publishedHead = head;
+    const deps = {
+      cwd: home,
+      publication: (root: string, branch: string) => {
+        calls.push({ root, branch });
+        return root === app.root && branch === delivery.branch
+          ? { prUrl: "https://example.test/app/pull/299", ci: "green" as const, headSha: publishedHead, runId: "1", attempt: 1, merged: false }
+          : null;
+      },
+      sourceCommit: "s".repeat(40), eventLog: join(home, "events-009.jsonl"),
+      publisher: (_repository: string, plan: string) => `http://fixture/${plan}`,
+    };
+    try {
+      app.git("checkout", "-qb", delivery.branch);
+      catalog.git("commit", "-q", "--allow-empty", "-m", "the catalog has a different head");
+      catalog.git("branch", delivery.branch);
+      catalog.git("config", "code-production.repository.app", app.root);
+      const started = await dispatchTool(deps, "init", { root: catalog.root, title: "Continue after the app CI passes" });
+      const absolute = join(catalog.root, (started.structuredContent as { plan: string }).plan);
+      const seen = await dispatchTool(deps, "progress", { root: catalog.root });
+      const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result.");
+      const submitted = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Continue after the app CI passes", spec });
+      expect(submitted.isError ?? false, text(submitted)).toBe(false);
+      const locked = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec" });
+      expect(locked.isError ?? false, text(locked)).toBe(false);
+      for (const [name, args] of [
+        ["put_delivery", { delivery: { ...delivery, repository: "app" } }],
+        ["put_stage", { stage }],
+        ["put_delivery", { delivery: { ...delivery, id: "D2", title: "Catalog", branch: "feat/parent-catalog", depends: ["D1"], active: false, stageGraph: "D2-S1" } }],
+        ["put_stage", { stage: { ...stage, id: "D2-S1", deliveryId: "D2", tempRoot: ".tmp/code-production/fixture/D2-S1", tasks: stage.tasks.map((task) => ({ ...task, id: "MCP_FIX_002" })) } }],
+        ["approve_plan", { ownerWord: "plan" }],
+      ] as const) {
+        const result = await dispatchTool(deps, name, { plan: absolute, ...args });
+        expect(result.isError ?? false, text(result)).toBe(false);
+      }
+      const progress = await dispatchTool(deps, "progress", { plan: absolute });
+      expect(progress.structuredContent?.publication).toMatchObject({ prUrl: "https://example.test/app/pull/299", ci: "green", headSha: head });
+      publishedHead = catalog.git("rev-parse", delivery.branch);
+      const stale = await dispatchTool(deps, "start_task", { plan: absolute, task: "MCP_FIX_002" });
+      expect(stale.isError, text(stale)).toBe(true);
+      expect(text(stale)).toContain(`PR head ${publishedHead.slice(0, 7)} is not the current head ${head.slice(0, 7)}`);
+      expect(readFileSync(absolute, "utf8")).toMatch(/^Active Delivery: D1\s*$/m);
+      publishedHead = head;
+      calls.length = 0;
+      const brief = await dispatchTool(deps, "start_task", { plan: absolute, task: "MCP_FIX_002" });
+      expect(brief.isError ?? false, text(brief)).toBe(false);
+      expect(brief.structuredContent?.taskId).toBe("MCP_FIX_002");
+      expect(calls).toEqual([{ root: app.root, branch: delivery.branch }]);
+      expect(readFileSync(absolute, "utf8")).toMatch(/^Active Delivery: D2\s*$/m);
+    } finally {
+      rmSync(catalog.root, { recursive: true, force: true });
+      rmSync(app.root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
   /** An app plan whose one active Delivery lives in a catalog checkout on the Delivery's branch; the config line binds the name. */
   async function catalogPlan(name: string, criteria: readonly string[]): Promise<{ app: Fixture; catalog: Fixture; deps: Parameters<typeof dispatchTool>[0]; absolute: string; plan: string }> {
     const app = fixture(`${name}-app`);
