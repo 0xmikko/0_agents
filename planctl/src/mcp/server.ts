@@ -6,7 +6,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { z } from "zod";
 import { appendEvent } from "../core/event-log";
 import type { EventRecord } from "../core/event-log";
-import { authoringContract, lint } from "../core/plan-gate";
+import { authoringContract, lint, protocolLanguageViolations } from "../core/plan-gate";
 import type { GateViolation } from "../core/plan-gate";
 import { planProgress, progressNote } from "../core/plan-progress";
 import type { ProgressView } from "../core/plan-progress";
@@ -19,10 +19,12 @@ import {
   deliveryFrom,
   deliveryStart,
   initPlan,
+  lockPlanOutline,
   lockPlanSpec,
   mutatePlanFile,
   needsOwner,
   patchFrom,
+  planOutline,
   planState,
   protocolImplementationHash,
   protocolSpecHash,
@@ -30,6 +32,7 @@ import {
   putStage,
   recordDeviation,
   removeDraftStage,
+  replaceDraftOutline,
   resumeTask,
   stageEnd,
   stageFrom,
@@ -51,8 +54,6 @@ interface ServerDependencies {
   readonly sourceCommit: string;
   /** The events.jsonl every call appends one line to. */
   readonly eventLog: string;
-  /** The one bounded model call submit_spec makes for the changed lines. */
-  readonly model: (prompt: string, deadlineMs: number) => Promise<string>;
   /** Publishes the saved bytes after every write and returns the URL. */
   readonly publisher: (root: string, plan: string) => string;
 }
@@ -146,19 +147,43 @@ const TOOLS = {
       ].join("\n"));
     },
   }),
-  submit_spec: tool({
-    description: "Replace the whole SPEC of a draft. Fixes line endings and vocabulary itself, returns every lint error at once and the model's notes on the changed lines. Refuses a stale revision and a locked plan.",
-    schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string() }),
-    run: async (deps, { plan, baseRevision, ownerRequest, spec }) => {
+  submit_outline: tool({
+    description: "Write the outline of a draft: the Goal as agreed and one line per flow, in English. The SPEC that follows fills exactly these flows. Refuses a stale revision.",
+    schema: z.object({ plan: z.string(), baseRevision: z.string(), goal: z.string(), flows: z.array(z.object({ name: z.string(), line: z.string() })) }),
+    run: async (deps, { plan, baseRevision, goal, flows }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
-      const result = await submitSpec(root, { plan: relative, baseRevision, ownerRequest, spec }, deps.model);
+      const body = readFileSync(resolve(root, relative), "utf8");
+      const current = protocolSpecHash(body);
+      if (baseRevision !== current) throw new Error(`stale revision ${baseRevision}; the plan is at ${current}`);
+      const language = protocolLanguageViolations(replaceDraftOutline(body, { goal, flows }).body);
+      if (language.length > 0) throw new Error(language.join("\n"));
+      mutatePlanFile(root, relative, "set-outline", (draft) => replaceDraftOutline(draft, { goal, flows }));
+      const saved = readFileSync(resolve(root, relative), "utf8");
+      return reply({ plan: relative, revision: protocolSpecHash(saved), state: "SPEC_DRAFT", flows: flows.map((flow) => flow.name) }, [`Outline: ${flows.length} flow(s)`, ...flows.map((flow) => `- ${flow.name}: ${flow.line}`)].join("\n"));
+    },
+  }),
+  approve_outline: tool({
+    description: "Record the owner's word on the outline: the Goal and the flow names are fixed, and submit_spec fills them and nothing else.",
+    schema: z.object({ plan: z.string(), ownerWord: z.string() }),
+    run: async (deps, { plan, ownerWord }) => {
+      const { root, plan: relative } = located(deps.cwd, plan);
+      mutatePlanFile(root, relative, "lock-outline", (body) => lockPlanOutline(body, ownerWord));
+      const saved = readFileSync(resolve(root, relative), "utf8");
+      return reply({ plan: relative, revision: protocolSpecHash(saved), state: "SPEC_DRAFT", outline: planOutline(saved) }, `outline locked under "${ownerWord}"`);
+    },
+  }),
+  submit_spec: tool({
+    description: "Replace the whole SPEC of a draft, and its title when given. Fixes line endings and vocabulary itself, returns every lint error at once. Refuses a stale revision, a locked plan and a title in another language.",
+    schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string(), title: z.string().optional() }),
+    run: async (deps, { plan, baseRevision, ownerRequest, spec, title }) => {
+      const { root, plan: relative } = located(deps.cwd, plan);
+      const result = await submitSpec(root, title === undefined ? { plan: relative, baseRevision, ownerRequest, spec } : { plan: relative, baseRevision, ownerRequest, spec, title });
       const errors = result.findings.filter((finding) => finding.blocking).length;
-      const notes = result.findings.length - errors;
       // A refused flow shows the shape it lacks: a continued plan never saw init's example.
       const flowRefused = result.findings.some((finding) => finding.blocking && /^(flow «|The target has no flow)/.test(finding.text));
       return reply({ plan: relative, ...result }, [
         `Revision ${result.revision}, ${result.state}`,
-        `Checks: ${errors} errors, ${notes} model notes${result.checkStatus === "checked" ? "" : ` (${result.checkStatus}${result.checkError === null ? "" : `: ${result.checkError}`})`}`,
+        `Checks: ${errors} errors`,
         ...result.corrections.map((correction) => `Corrected line ${correction.line}: ${correction.after}`),
         ...result.findings.map((finding) => `line ${finding.line}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}`),
         ...(flowRefused ? [`Example flow:\n${(await authoringContract(root)).example}`] : []),
@@ -227,7 +252,7 @@ const TOOLS = {
     },
   }),
   amend: tool({
-    description: "Apply one exact replacement to the SPEC or the implementation under the owner's word; on an approved plan a SPEC correction keeps the approval.",
+    description: "Apply one exact replacement to the SPEC, the implementation or the title under the owner's word; on an approved plan a SPEC correction keeps the approval.",
     schema: z.object({ plan: z.string(), ownerWord: z.string(), patch: z.record(z.string(), z.unknown()) }),
     run: async (deps, { plan, ownerWord, patch }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
@@ -382,7 +407,7 @@ function published(deps: ServerDependencies, args: Record<string, unknown>, resu
   const revision = typeof structured.revision === "string" ? structured.revision : planRevision(saved, state);
   const findings = Array.isArray(structured.findings) ? structured.findings as readonly { blocking?: unknown }[] : null;
   const checks = "checkStatus" in structured && findings !== null
-    ? { errors: findings.filter((finding) => finding.blocking === true).length, notes: findings.filter((finding) => finding.blocking === false).length }
+    ? { errors: findings.filter((finding) => finding.blocking === true).length }
     : null;
   let url: string;
   try {

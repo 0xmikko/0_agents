@@ -16,6 +16,7 @@ import {
   applyUnattendedAmendment,
   lockPlanSpec,
   mutatePlanFile,
+  planJournalPath,
   putDelivery,
   putStage,
   recordStageApproval,
@@ -36,6 +37,14 @@ const IMPLEMENTATION_START = "<!-- plan:implementation:start -->";
 const IMPLEMENTATION_END = "<!-- plan:implementation:end -->";
 const EXECUTION_START = "<!-- plan:execution:start -->";
 const EXECUTION_END = "<!-- plan:execution:end -->";
+
+/** The files the model SPEC cites: a plan names only paths that exist, so every fixture repository carries them. */
+function seedCitedFiles(root: string): void {
+  for (const path of ["src/change.ts", "src/save.ts", "test/change.test.ts"]) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), "export {};\n");
+  }
+}
 
 function draft(): string {
   return [
@@ -173,6 +182,7 @@ describe("plan-update", () => {
       git("init", "-q");
       git("config", "user.email", "t@t");
       git("config", "user.name", "t");
+      seedCitedFiles(root);
       writeFileSync(plan, draft());
       writeFileSync(deliveryJson, `${JSON.stringify(delivery())}\n`);
       git("add", "plan.md");
@@ -194,8 +204,7 @@ describe("plan-update", () => {
       execFileSync("bun", [writer, "plan.md", "verify-staged"], { cwd: root });
       git("commit", "-qm", "legal mutation");
       execFileSync("bun", [writer, "plan.md", "clear-spent", "--commit", "HEAD"], { cwd: root });
-      const journal = git("rev-parse", "--path-format=absolute", "--git-path", "plan-update-journal.json");
-      expect(existsSync(journal)).toBe(false);
+      expect(existsSync(planJournalPath(root, "plan.md"))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -203,6 +212,44 @@ describe("plan-update", () => {
 
   // @test-id: tst_scripts_planupdate_004
   // @scenario: scn_codeprod_002
+  // @test-id: tst_scripts_planupdate_027
+  // @covers: planctl/src/core/plan-update.ts::planJournalPath,mutatePlanFile,verifyStagedPlan,clearSpentJournal
+  // @deterministic: yes
+  // @invariant: two plans in one worktree keep two journals: the second plan's transaction never replaces the first's, each verifies on its own, and a commit spends only the journal it carries.
+  it("tst_scripts_planupdate_027 keeps one journal per plan in one worktree", () => {
+    const root = mkdtempSync(join(tmpdir(), "two-plans-one-journal-"));
+    const writer = join(import.meta.dir, "../src/core/plan-update.ts");
+    const git = (...args: readonly string[]): string => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+    try {
+      git("init", "-q");
+      git("config", "user.email", "t@t");
+      git("config", "user.name", "t");
+      seedCitedFiles(root);
+      writeFileSync(join(root, "a.md"), draft());
+      writeFileSync(join(root, "b.md"), draft());
+      git("add", "a.md", "b.md");
+      git("commit", "-qm", "two drafts");
+      execFileSync("bun", [writer, "a.md", "lock-spec", "--owner-word", "a"], { cwd: root });
+      const second = spawnSync("bun", [writer, "b.md", "lock-spec", "--owner-word", "b"], { cwd: root, encoding: "utf8" });
+      expect(second.status, second.stderr).toBe(0);
+      expect(planJournalPath(root, "a.md")).not.toBe(planJournalPath(root, "b.md"));
+      expect(existsSync(planJournalPath(root, "a.md"))).toBe(true);
+      expect(existsSync(planJournalPath(root, "b.md"))).toBe(true);
+      for (const plan of ["a.md", "b.md"]) {
+        const verified = spawnSync("bun", [writer, plan, "verify-staged"], { cwd: root, encoding: "utf8" });
+        expect(verified.status, verified.stderr).toBe(0);
+      }
+      git("commit", "-qm", "both locked");
+      execFileSync("bun", [writer, "a.md", "clear-spent", "--commit", "HEAD"], { cwd: root });
+      expect(existsSync(planJournalPath(root, "a.md"))).toBe(false);
+      expect(existsSync(planJournalPath(root, "b.md"))).toBe(true);
+      execFileSync("bun", [writer, "b.md", "clear-spent", "--commit", "HEAD"], { cwd: root });
+      expect(existsSync(planJournalPath(root, "b.md"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   // @covers: planctl/src/core/plan-update.ts::verifyStagedPlan
   // @deterministic: yes
   // @invariant: a merge that carries an approved plan is committable — the
@@ -217,6 +264,7 @@ describe("plan-update", () => {
       git("init", "-q", "-b", "main");
       git("config", "user.email", "t@t");
       git("config", "user.name", "t");
+      seedCitedFiles(root);
       // A plan that is locked on both branches, and a second file each side
       // changes so the merge is a real one.
       writeFileSync(plan, lockPlanSpec(draft(), "spec").body);
@@ -239,7 +287,7 @@ describe("plan-update", () => {
       // is no journal and there cannot be one.
       const merge = spawnSync("git", ["-C", root, "merge", "--no-commit", "--no-ff", "side"], { encoding: "utf8" });
       expect(merge.status).toBe(0);
-      expect(existsSync(git("rev-parse", "--path-format=absolute", "--git-path", "plan-update-journal.json"))).toBe(false);
+      expect(existsSync(planJournalPath(root, "plan.md"))).toBe(false);
 
       const staged = spawnSync("bun", [writer, "plan.md", "verify-staged"], { cwd: root, encoding: "utf8" });
       expect(staged.stderr).not.toContain("no journal");
@@ -338,6 +386,18 @@ describe("plan-update", () => {
     expect(result.body).toContain("owner_review_pending");
     expect(result.body).toContain("Status: APPROVED");
     expect(result.body).toContain("D1-S2 -> D1-S3");
+    // The title is the owner's to change: an unattended decision never touches it.
+    expect(() => applyUnattendedAmendment(body, {
+      version: 1,
+      decidedAt: "2026-08-27T23:00:00Z",
+      goalPreserved: "one observable result still ships",
+      decision: "rename the plan",
+      alternatives: ["keep the title"],
+      whyContinueNow: "the change is bounded and reversible",
+      affectedScope: ["title"],
+      rollbackBase: "b".repeat(40),
+      verification: ["bun run agent:test:backend -- test/plan-update.test.ts"],
+    }, { section: "title", find: "Fixture plan", replace: "Renamed plan" })).toThrow(/never the title/);
   });
 
   // @test-id: tst_scripts_planupdate_005
@@ -518,6 +578,11 @@ describe("the owner's word on a Stage", () => {
     expect(stageApproved(approved, "D1-S2")).toBe(false);
     expect(() => recordStageApproval(body, "D1-S9", "да")).toThrow(/unknown Stage/);
     expect(() => recordStageApproval(body, "D1-S1", "")).toThrow(/owner word/);
+    // The owner's word is the approval itself, never a pasted message: one line, at most 80 characters.
+    const message = "Окей, тогда давай мы это все сделаем и посмотрим. У нас сейчас все наши модули и LinkedIn.";
+    expect(() => lockPlanSpec(draft(), message)).toThrow(`owner word is ${message.length} characters; record the owner's approval word, not their message (at most 80)`);
+    expect(() => recordStageApproval(body, "D1-S1", message)).toThrow(/at most 80/);
+    expect(lockPlanSpec(draft(), "Окей, делаем.").body).toContain("owner:Окей, делаем.");
     // an unjournaled mention elsewhere in the plan is not an approval
     const forged = body.replace("## Execution log", "## Execution log\n\nThe owner said approve-stage D1-S2 owner:да in chat.");
     expect(stageApproved(forged, "D1-S2")).toBe(false);

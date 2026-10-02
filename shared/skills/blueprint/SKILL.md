@@ -1,6 +1,6 @@
 ---
 name: blueprint
-description: Author one plan through the planctl tools and stop twice for the owner's word, first on the SPEC, then on the implementation contract. Use when work needs a plan.
+description: Author one plan through the planctl tools and stop three times for the owner's word, on the outline, on the SPEC, then on the implementation contract. Use when work needs a plan.
 ---
 
 # Blueprint
@@ -25,23 +25,33 @@ that reply to the owner verbatim.
    the flows, the measures, the constraints, the reuse and the testable
    invariants. The SPEC says what will be; the past appears only as one
    sentence "now X" where X is being fixed.
-3. Write the SPEC as one text with the returned sections, in the vocabulary,
-   in English, title included; the owner's words may be quoted in «…».
-   The target is flows shaped like the example `init` returned: one `###`
-   heading per flow, its mermaid diagram, a few lines of explanation, its
-   implementation map (Owner, Target files, Input / wake, Output / durable
-   state, RED test), and its types in Interfaces. The tool refuses a flow
-   without its diagram or its map. Pseudocode is TypeScript with every
-   parameter typed, never another language. Send it with `submit_spec`: the
-   plan, the `baseRevision` that `init` or `progress` returned, the owner's
-   request in their words, and the whole SPEC. The tool fixes line endings
-   and vocabulary itself, returns every lint error at once with its line and
-   replacement, and asks the model once about the changed lines.
-   Fix the errors and resubmit with the returned revision; unchanged text
-   calls nothing.
-4. Show the owner the reply and stop. This is the first hard stop: ask
+3. Send the outline with `submit_outline`: the plan, the `baseRevision`
+   that `init` or `progress` returned, the Goal as agreed, in English, and
+   one line per flow in the order they happen. Show the owner the reply and
+   stop. This is the first hard stop: ask whether they approve the outline.
+4. After an explicit yes, call `approve_outline` with the owner's word.
+   From here the Goal and the flow names are fixed.
+5. Fill the outline with `submit_spec`: the plan, the `baseRevision` the
+   last reply returned, the owner's request in their words, the whole SPEC,
+   and a `title` when the one from `init` must change. The SPEC carries the
+   returned sections, in the vocabulary, in English, title included; the
+   owner's words may be quoted in «…». The target holds exactly the approved
+   flows, each shaped like the example `init` returned: its `###` heading,
+   its mermaid diagram, a few lines of explanation, its implementation map
+   (Owner, Target files, Input / wake, Output / durable state, RED test),
+   and its types in Interfaces. Every path in the Target tree and the maps
+   exists in the repository or is a CREATE row of the Target tree. No line
+   repeats another. Pseudocode is TypeScript with every parameter typed,
+   never another language. The tool fixes line endings and vocabulary
+   itself and returns every lint error at once with its line and
+   replacement: a flow outside the outline, a changed Goal, a missing
+   file, a repeated line, a flow without its diagram or map. No model reads
+   the plan. Fix the errors and resubmit with the returned revision;
+   unchanged text changes nothing.
+6. Show the owner the reply and stop. This is the second hard stop: ask
    whether they approve the SPEC.
-5. After an explicit yes, call `approve_spec` with the owner's words.
+7. After an explicit yes, call `approve_spec` with the owner's word: the
+   approval itself, one short line, never their whole message.
 
 Bad Goal: "Make development faster."
 
@@ -72,9 +82,9 @@ locally and once on the published CI SHA."
 5. Trace each acceptance story through public calls before approval. A
    public type the work will change belongs in the SPEC Interfaces; completion
    refuses an exported type the SPEC does not name.
-6. Show the owner the last reply and stop. This is the second hard stop: ask
+6. Show the owner the last reply and stop. This is the third hard stop: ask
    whether they approve the complete plan.
-7. After an explicit yes, call `approve_plan` with the owner's words. Approval
+7. After an explicit yes, call `approve_plan` with the owner's word. Approval
    runs the same lint the puts ran and finds nothing new. Then commit the
    plan once, `docs(plan): <title>`: the plan's only commit before the work
    starts.
@@ -89,5 +99,6 @@ Good Task story: Restore `creditOperationMarket` in
 `src/onchain/market/credit/index.ts`.
 
 After approval, the plan changes only through the tools: `amend` under the
-owner's word for scope, and `start_task`, `complete_task`, `add_deviation`
-and `close_stage` for execution.
+owner's word for scope and for the title (section `title`), and
+`start_task`, `complete_task`, `add_deviation` and `close_stage` for
+execution. Nothing imports the engine directly.

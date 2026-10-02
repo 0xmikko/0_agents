@@ -16,9 +16,14 @@ lives in [development-process.md](development-process.md).
 
 ## Sections, in this order
 
-The SPEC is the part the owner reads. It is written in English, title
-included; the owner's words may be quoted in «…», and `planctl` refuses
-any other line in another language. Eight sections, these headings, this
+A plan starts as an outline: the Goal as agreed in the conversation and one
+line per flow, approved by the owner's word before anything else is written
+(`submit_outline`, `approve_outline`). The SPEC then fills exactly those
+flows; `planctl` refuses a flow outside the outline, a Goal that changed, a
+path that does not exist unless the Target tree creates it, and a line that
+repeats another. The SPEC is the part the owner reads. It is written in
+English, title included; the owner's words may be quoted in «…», and
+`planctl` refuses any other line in another language. Eight sections, these headings, this
 order; `planctl` reports every missing or empty one at once. The same lint
 runs at every write: submission reports every error, approval refuses on
 any, and an amendment that adds one is refused. No size limit:
@@ -26,11 +31,10 @@ the best plans ran to two thousand lines. What the SPEC never carries is
 history: it says what WILL be, and the past appears only as one sentence
 "now X" where X is being fixed.
 
-1. **The Goal** — first, always. One to four numbered outcomes the owner
-   will see when the work is done. Each outcome names its measure: a
-   number, a count, a time, or the exact observable state before and after.
-   It promises only what the request asks: no vision, no how, no extra
-   scope. Plain English, one sentence per outcome.
+1. **The Goal** — first, always. One to six numbered outcomes the owner
+   reads as a whole: what will be done, in what order, who calls whom and
+   what results. A measure where one exists. It promises only what the
+   request asks: no vision, no backstory, no extra scope. Plain English.
 2. **Why now** — at most ten lines, dated: what is broken today and what it
    costs. Not a history.
 3. **The target** — how it looks when done, as flows. Each flow is one
@@ -56,7 +60,9 @@ history: it says what WILL be, and the past appears only as one sentence
    apart from inferred ones.
 
 Amendments and Deviations are Execution log lines `planctl` writes under the
-owner's word or the agent's decision; nobody hand-authors them.
+owner's word or the agent's decision; nobody hand-authors them. The owner's
+word is the approval itself, one line of at most 80 characters; `planctl`
+refuses a pasted message.
 
 ## The implementation contract
 

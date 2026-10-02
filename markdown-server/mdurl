@@ -110,6 +110,11 @@ case "$cmd" in
       exit 1
     }
 
+    # A diagram that does not parse renders as a bomb: the document is refused with the line.
+    CHECK="${MDURL_PLANCTL:-$HOME/Coding/0_agents/planctl/src/cli/main.ts}"
+    [[ -f "$CHECK" ]] || { echo "mdurl: checker not found: $CHECK (install ~/Coding/0_agents)" >&2; exit 2; }
+    bun "$CHECK" check-markdown "$SRC" >/dev/null
+
     ensure_user_dir
     DEST="$USER_DIR/$SLUG.md"
     cp -- "$SRC" "$DEST"

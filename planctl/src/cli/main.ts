@@ -26,12 +26,13 @@ const {
   mutatePlanFile,
   needsOwner: needsOwnerOperation,
   replaceDraftSpec,
+  replaceDraftTitle,
   resumeTask: resumeTaskOperation,
   startTask: startTaskOperation,
   taskRunPath,
   verifyStagedPlan,
 } = await import(PLAN_UPDATE_FILE);
-const { authoringContract, protocolImplementationHash, protocolLockViolations } = await import(portableRuntimeFile("plan-gate.ts"));
+const { authoringContract, protocolImplementationHash, protocolLanguageViolations, protocolLockViolations } = await import(portableRuntimeFile("plan-gate.ts"));
 
 const GENERAL_HELP = `Usage: planctl <command> [arguments]
 
@@ -68,8 +69,9 @@ Execution:
   amend              Apply an explicit owner amendment
 
 Checks:
-  verify             Verify SPEC and implementation locks
+  verify             Verify SPEC and implementation locks, and that the plan is in English
   verify-staged      Verify the staged mutation journal
+  check-markdown     Exit 0 only if every mermaid block of a markdown file parses
 
 Run planctl <command> --help for exact syntax and JSON contracts.
 `;
@@ -83,9 +85,10 @@ the vocabulary pairs and the Goal rule. Refuses the integration branch and
 a missing code-production.base. The plan stays staged under one journal
 through authoring; it is committed once, after approve-plan.
 `,
-  "set-spec": `Usage: planctl set-spec <plan.md> --from <spec.md>
+  "set-spec": `Usage: planctl set-spec <plan.md> --from <spec.md> [--title <text>]
 
-Replaces only the marked SPEC in SPEC_DRAFT and stages the plan.
+Replaces only the marked SPEC in SPEC_DRAFT, and the title when given, and
+stages the plan. A title in another language is refused.
 `,
   "approve-spec": `Usage: planctl approve-spec <plan.md> --owner-word <receipt>
 
@@ -604,13 +607,11 @@ async function mcp(args: readonly string[]): Promise<void> {
   const { commandPublisher } = await import("../mcp/publish");
   const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
   const { eventLogPath } = await import("../core/event-log");
-  const { claudeModelRunner } = await import("../core/spec-submission");
   const server = createPlanctlServer({
     cwd: process.cwd(),
     publication: readPublication,
     sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
     eventLog: eventLogPath(homedir()),
-    model: claudeModelRunner,
     publisher: commandPublisher(optionalFlag(args, "--publisher") ?? "mdurl"),
   });
   const transport = new StdioServerTransport();
@@ -803,7 +804,15 @@ async function setSpec(args: readonly string[]): Promise<void> {
   // Through the journaled writer, like every other mutation: a SPEC written by
   // hand left no journal, and the managed pre-commit refuses a staged marker
   // plan that has none.
-  mutatePlanFile(rootPath, target.relative, "set-spec", (body: string) => replaceDraftSpec(body, spec));
+  const title = optionalFlag(args, "--title");
+  const candidate = (body: string): { body: string } => {
+    const withSpec = replaceDraftSpec(body, spec).body;
+    return title === undefined ? { body: withSpec } : replaceDraftTitle(withSpec, title);
+  };
+  // Every writer refuses another language before writing; this one needs no parser for that.
+  const language = protocolLanguageViolations(candidate(readFileSync(resolve(rootPath, target.relative), "utf8")).body);
+  if (language.length > 0) throw new Error(language.join("\n"));
+  mutatePlanFile(rootPath, target.relative, "set-spec", candidate);
   // The installed copy carries no lint; the launcher reports every error the saved SPEC has, like submit_spec.
   if (basename(import.meta.dir) !== "cli") return;
   const findings = await lintFindings(rootPath, target.relative);
@@ -850,9 +859,20 @@ function verify(args: readonly string[]): void {
   const plan = args[1];
   if (plan === undefined) throw new Error("plan path is required");
   const body = readFileSync(resolve(root(), plan), "utf8");
-  const violations = protocolLockViolations(body);
-  if (violations.length > 0) throw new Error(violations.join("; "));
-  console.log("planctl: locks verified");
+  const violations = [...protocolLockViolations(body), ...protocolLanguageViolations(body)];
+  if (violations.length > 0) throw new Error(violations.join("\n"));
+  console.log("planctl: locks verified, the plan is in English");
+}
+
+/** For a publisher: every mermaid block of a markdown file must parse, or the file is not published. */
+async function checkMarkdown(args: readonly string[]): Promise<void> {
+  dedicatedRuntime();
+  const file = args[1];
+  if (file === undefined) throw new Error("markdown file is required");
+  const { markdownDiagramErrors } = await import("../core/plan-gate");
+  const errors = await markdownDiagramErrors(readFileSync(resolve(process.cwd(), file), "utf8"));
+  if (errors.length > 0) throw new Error(`${file}: ${errors.length} mermaid block(s) do not parse\n${errors.join("\n")}`);
+  console.log(`planctl: ${file}: every mermaid block parses`);
 }
 
 function runEngine(args: readonly string[], engineCommand: string): number {
@@ -892,6 +912,10 @@ async function run(args: readonly string[]): Promise<number> {
   }
   if (command === "verify") {
     verify(args);
+    return 0;
+  }
+  if (command === "check-markdown") {
+    await checkMarkdown(args);
     return 0;
   }
   if (command === "start-task") {

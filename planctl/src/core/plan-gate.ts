@@ -8,11 +8,11 @@
 //
 //   bun planctl/src/core/plan-gate.ts <plan.md> [--lint [--commit <sha>]] [--closure] [--root <repo>]
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { execSync, spawnSync } from "node:child_process";
 import { basename, resolve } from "node:path";
 import type { Content, Root } from "mdast";
-import { stageInputs, stageResultCommitPaths, MACHINABLE, protocolSpecHash, protocolImplementationHash } from "./plan-update";
+import { currentOutline, planOutline, stageInputs, stageResultCommitPaths, MACHINABLE, protocolSpecHash, protocolImplementationHash, SPEC_SECTIONS } from "./plan-update";
 export { MACHINABLE, protocolSpecHash, protocolImplementationHash } from "./plan-update";
 
 /** Which lint rule a finding comes from; gate findings (receipts, boxes) carry none. */
@@ -59,6 +59,35 @@ export const RECEIPT = /—\s*([0-9a-f]{7,40})\s*$/;
 const DEFAULT_CRITERION_TIMEOUT_MS = 12 * 60_000;
 const PROTOCOL_SPEC_START = "<!-- plan:spec:start -->";
 const PROTOCOL_SPEC_END = "<!-- plan:spec:end -->";
+
+const LANGUAGE_RULE = "the plan is written in English; the owner's words may be quoted in «…»";
+
+/** The lines a plan is read in: its title and its SPEC, outside fenced code, with «…» and `…` spared. Cyrillic there is refused by line. */
+function languageLines(body: string): readonly { readonly line: number; readonly quote: string }[] {
+  const lines = body.split("\n");
+  const start = lines.indexOf(PROTOCOL_SPEC_START);
+  const end = lines.indexOf(PROTOCOL_SPEC_END);
+  // A plan without the SPEC markers predates the rule: history, not a plan to write.
+  if (start < 0 || end < start) return [];
+  const found: { line: number; quote: string }[] = [];
+  let fenced = false;
+  lines.forEach((text, index) => {
+    const title = index === 0 && text.startsWith("# ");
+    const inside = index > start && index < end;
+    if (text.trimStart().startsWith("```")) { fenced = !fenced; return; }
+    if (fenced || !(title || inside)) return;
+    const spared = text.replace(/«[^»]*»/g, "").replace(/`[^`]*`/g, "");
+    if (/[\u0400-\u04FF]/.test(spared)) found.push({ line: index + 1, quote: text.trim() });
+  });
+  return found;
+}
+
+/** Portable: the hooks and `verify` refuse a draft in another language without a parser.
+ * A locked SPEC changes only through the tools, whose lint judges every amendment. */
+export function protocolLanguageViolations(body: string): readonly string[] {
+  if (!/^Status:\s*SPEC_DRAFT\b/m.test(body)) return [];
+  return languageLines(body).map((found) => `line ${found.line}: ${LANGUAGE_RULE}: ${found.quote}`);
+}
 
 export function protocolLockViolations(body: string): readonly string[] {
   if (!body.includes(PROTOCOL_SPEC_START)) return [];
@@ -266,17 +295,12 @@ function lintTypes(
   return types;
 }
 
-/** A plan is written in English: Cyrillic in the title or in authored prose is refused at its line; the owner's words in «…» and code are not prose. */
-function lintLanguage(nodes: readonly (Root | Content)[], lines: readonly string[], add: AddFinding): void {
-  for (const node of nodes) {
-    if (node.type !== "text") continue;
-    const spared = node.value.replace(/«[^»]*»/g, (quoted) => " ".repeat(quoted.length));
-    const match = /[\u0400-\u04FF]/.exec(spared);
-    if (match === null) continue;
-    const offset = spared.slice(0, match.index).split("\n").length - 1;
-    const line = sourceLine(node) + offset;
-    add(line, "the plan is written in English; the owner's words may be quoted in «…»", "language", (lines[line - 1] ?? "").trim());
-  }
+/** Every mermaid block of a markdown document that does not parse, for a publisher that refuses it. */
+export async function markdownDiagramErrors(body: string): Promise<readonly string[]> {
+  const { fromMarkdown } = await import("mdast-util-from-markdown");
+  const errors: string[] = [];
+  await lintMermaid(markdownNodes(fromMarkdown(body)), (line, text) => { errors.push(`line ${line}: ${text}`); });
+  return errors;
 }
 
 async function lintMermaid(nodes: readonly (Root | Content)[], add: AddFinding): Promise<void> {
@@ -363,6 +387,17 @@ function specView(body: string, fromMarkdown: (value: string) => Root): {
   return { specStart, specEnd, specLines, nodes, blocks, headings, section };
 }
 
+/** The repository paths a line names: tokens with a slash, globs and URLs aside. */
+function namedPaths(line: string): readonly string[] {
+  const found = new Set<string>();
+  for (const match of line.matchAll(/(?:^|[\s|,;(`])((?:[\w.@-]+\/)+[\w.@\-\[\]]+)/g)) {
+    const path = match[1] ?? "";
+    if (path.includes("://") || path.includes("*")) continue;
+    found.add(path);
+  }
+  return [...found];
+}
+
 /** The rows every implementation map carries. */
 const MAP_ROWS = ["Owner", "Target files", "Input / wake", "Output / durable state", "RED test"] as const;
 
@@ -404,12 +439,11 @@ export async function undeclaredExportedTypes(root: string, commit: string, body
 }
 
 /** The SPEC sections every plan carries, in the order the owner reads them. */
-export const REQUIRED_SECTIONS = ["The Goal", "Why now", "The target", "Target tree", "Invariants", "Reuse", "New names", "Not verified"] as const;
+export const REQUIRED_SECTIONS = SPEC_SECTIONS;
 
 /** What a Goal is: the rule the agent reads at init and the model checks at submission. */
-export const GOAL_RULE = "The Goal is one to four numbered outcomes the owner will see when the work is done. "
-  + "Each outcome names its measure: a number, a count, a time, or the exact observable state before and after. "
-  + "It promises only what the request asks: no vision, no how, no extra scope. Plain English, one sentence per outcome.";
+export const GOAL_RULE = "The Goal is one to six numbered outcomes the owner reads as a whole: what will be done, in what order, "
+  + "who calls whom and what results. A measure where one exists. It promises only what the request asks: no vision, no backstory, no extra scope. Plain English.";
 
 /** What The target is: the rule the agent reads at init and the lint measures at submission. */
 export const TARGET_RULE = "The target is flows. Each flow is one ### heading, one mermaid diagram of that flow, a few lines of explanation, "
@@ -486,6 +520,43 @@ export async function lint(body: string, root: string, commit?: string): Promise
   }
   const names = section("New names");
   if (names !== null && !/^\|\s*-{3,}\s*\|\s*-{3,}/m.test(names.text)) add(names.line, "New names needs a name/reason table", "structure");
+  // The approved outline is the whole-plan contract the SPEC fills: the Goal as agreed and exactly these flows.
+  const outline = planOutline(body);
+  if (outline !== null) {
+    const now = currentOutline(body);
+    const goalLine = section("The Goal")?.line ?? specStart + 2;
+    const targetLine = section("The target")?.line ?? specStart + 2;
+    if (now.goal !== outline.goal) add(goalLine, "the Goal differs from the approved outline", "structure");
+    for (const name of outline.flows) if (!now.flows.includes(name)) add(targetLine, `outline flow «${name}» is missing`, "structure", name);
+    for (const name of now.flows) if (!outline.flows.includes(name)) add(section(name)?.line ?? targetLine, `flow «${name}» is not in the approved outline`, "structure", name);
+  }
+  // Every file a plan names exists, or the Target tree creates it: an invented layer has nothing to cite.
+  const creates = new Set<string>();
+  const cited: { readonly line: number; readonly path: string }[] = [];
+  const tree = section("Target tree");
+  if (tree !== null) tree.text.split("\n").forEach((line, index) => {
+    const action = /^\|\s*(CREATE|MODIFY|DELETE)\b/i.exec(line);
+    if (action === null) return;
+    for (const path of namedPaths(line)) ((action[1] ?? "").toUpperCase() === "CREATE" ? creates.add(path) : cited.push({ line: tree.line + index, path }));
+  });
+  const targetSection = section("The target");
+  if (targetSection !== null) targetSection.text.split("\n").forEach((line, index) => {
+    if (/^\|\s*Target files\s*\|/.test(line)) for (const path of namedPaths(line)) cited.push({ line: targetSection.line + index, path });
+  });
+  for (const entry of cited) {
+    if (!creates.has(entry.path) && !existsSync(resolve(root, entry.path))) add(entry.line, `file does not exist: ${entry.path}; name it CREATE in the Target tree if the plan creates it`, "structure", entry.path);
+  }
+  // A line that repeats another says nothing twice.
+  const firstSeen = new Map<string, number>();
+  let fenced = false;
+  specLines.forEach((text, index) => {
+    if (text.trimStart().startsWith("```")) { fenced = !fenced; return; }
+    const key = text.trim();
+    if (fenced || key.startsWith("|") || key.split(/\s+/).length < 6) return;
+    const first = firstSeen.get(key);
+    if (first !== undefined) add(index + 1, `line ${index + 1} repeats line ${first}`, "structure", key);
+    else firstSeen.set(key, index + 1);
+  });
   const flows = targetFlows(specLines, blocks, headings);
   if (flows !== null) {
     if (flows.flows.length === 0) add(flows.line, "The target has no flow: one ### heading per flow, each with its mermaid diagram and its implementation map", "structure");
@@ -499,8 +570,7 @@ export async function lint(body: string, root: string, commit?: string): Promise
   const implementationEnd = lines.indexOf("<!-- plan:implementation:end -->");
   const authored = fullNodes.filter((node) => specStart < 0 || (sourceLine(node) > specStart && (implementationEnd < 0 ? sourceLine(node) < specEnd : sourceLine(node) < implementationEnd)));
   lintProse(authored, (text) => vocabularyMatches(text, vocabulary), add);
-  const title = fullNodes.find((node) => node.type === "heading" && node.depth === 1);
-  lintLanguage([...(title === undefined ? [] : markdownNodes(title)), ...authored], lines, add);
+  for (const found of languageLines(body)) add(found.line, LANGUAGE_RULE, "language", found.quote);
   const interfaces = section("Interfaces");
   const types = lintTypes(nodes, interfaces, ts, add);
   const target = section("Target tree");
