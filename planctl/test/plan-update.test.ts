@@ -38,6 +38,14 @@ const IMPLEMENTATION_END = "<!-- plan:implementation:end -->";
 const EXECUTION_START = "<!-- plan:execution:start -->";
 const EXECUTION_END = "<!-- plan:execution:end -->";
 
+/** The files the model SPEC cites: a plan names only paths that exist, so every fixture repository carries them. */
+function seedCitedFiles(root: string): void {
+  for (const path of ["src/change.ts", "src/save.ts", "test/change.test.ts"]) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), "export {};\n");
+  }
+}
+
 function draft(): string {
   return [
     "# Fixture plan",
@@ -174,6 +182,7 @@ describe("plan-update", () => {
       git("init", "-q");
       git("config", "user.email", "t@t");
       git("config", "user.name", "t");
+      seedCitedFiles(root);
       writeFileSync(plan, draft());
       writeFileSync(deliveryJson, `${JSON.stringify(delivery())}\n`);
       git("add", "plan.md");
@@ -215,6 +224,7 @@ describe("plan-update", () => {
       git("init", "-q");
       git("config", "user.email", "t@t");
       git("config", "user.name", "t");
+      seedCitedFiles(root);
       writeFileSync(join(root, "a.md"), draft());
       writeFileSync(join(root, "b.md"), draft());
       git("add", "a.md", "b.md");
@@ -254,6 +264,7 @@ describe("plan-update", () => {
       git("init", "-q", "-b", "main");
       git("config", "user.email", "t@t");
       git("config", "user.name", "t");
+      seedCitedFiles(root);
       // A plan that is locked on both branches, and a second file each side
       // changes so the merge is a real one.
       writeFileSync(plan, lockPlanSpec(draft(), "spec").body);

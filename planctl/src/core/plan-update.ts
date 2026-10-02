@@ -362,6 +362,105 @@ function assertPlanTitle(title: string): void {
   if (/[\u0400-\u04FF]/.test(title)) throw new Error("the plan is written in English, title included");
 }
 
+/** The SPEC sections every plan carries, in the order the owner reads them. */
+export const SPEC_SECTIONS = ["The Goal", "Why now", "The target", "Target tree", "Invariants", "Reuse", "New names", "Not verified"] as const;
+
+const OUTLINE_META = "<!-- plan:outline-meta:";
+
+/** What the owner approves first: the Goal as agreed and the flow names, nothing else. */
+export interface PlanOutline {
+  readonly goal: string;
+  readonly flows: readonly string[];
+}
+
+/** What the agent submits as the outline: the Goal and one line per flow. */
+export interface OutlineInput {
+  readonly goal: string;
+  readonly flows: readonly {
+    readonly name: string;
+    readonly line: string;
+  }[];
+}
+
+function normalizedText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/** The outline the SPEC carries now: the Goal's text and the flow headings under The target, named sections aside. */
+export function currentOutline(body: string): PlanOutline {
+  const from = body.indexOf(SPEC_START);
+  const to = body.indexOf(SPEC_END);
+  const lines = (from < 0 || to < from ? body : body.slice(from + SPEC_START.length, to)).split("\n");
+  const sectionEnd = (start: number): number => {
+    const next = lines.findIndex((line, index) => index > start && /^## /.test(line));
+    return next === -1 ? lines.length : next;
+  };
+  const goalStart = lines.findIndex((line) => /^## the goal$/i.test(line.trim()));
+  const goal = goalStart === -1 ? "" : normalizedText(lines.slice(goalStart + 1, sectionEnd(goalStart)).join("\n"));
+  const targetStart = lines.findIndex((line) => /^## the target$/i.test(line.trim()));
+  const named = new Set<string>([...SPEC_SECTIONS, "Interfaces", "What changes"].map((name) => name.toLowerCase()));
+  const flows = targetStart === -1
+    ? []
+    : lines.slice(targetStart + 1, sectionEnd(targetStart)).filter((line) => /^### /.test(line)).map((line) => line.slice(4).trim()).filter((name) => !named.has(name.toLowerCase()));
+  return { goal, flows };
+}
+
+/** The outline the owner approved, or null before approve_outline. */
+export function planOutline(body: string): PlanOutline | null {
+  const line = body.split("\n").find((entry) => entry.startsWith(OUTLINE_META));
+  if (line === undefined) return null;
+  const parsed: unknown = JSON.parse(line.slice(OUTLINE_META.length, line.lastIndexOf(" -->")));
+  if (typeof parsed !== "object" || parsed === null) throw new Error("outline metadata is not an object");
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.goal !== "string" || !Array.isArray(record.flows) || !record.flows.every((entry) => typeof entry === "string")) throw new Error("outline metadata has an unsupported shape");
+  return { goal: record.goal, flows: record.flows };
+}
+
+function outlineHash(outline: PlanOutline): string {
+  return createHash("sha256").update(outline.goal).update("\n").update(outline.flows.join("\n")).digest("hex");
+}
+
+/** Write the outline into a draft: the Goal and one line per flow. The SPEC that follows fills exactly these flows. */
+export function replaceDraftOutline(body: string, outline: OutlineInput): MutationResult {
+  requireState(body, "SPEC_DRAFT");
+  assertNonEmpty(outline.goal, "Goal");
+  if (outline.flows.length === 0) throw new Error("an outline names at least one flow");
+  const names = new Set<string>();
+  for (const flow of outline.flows) {
+    assertSafeInline(flow.name, "flow name");
+    assertSafeInline(flow.line, "flow line");
+    if (names.has(flow.name)) throw new Error(`flow «${flow.name}» is named twice`);
+    names.add(flow.name);
+  }
+  const spec = ["## The Goal", "", outline.goal.trim(), "", "## The target", "", ...outline.flows.flatMap((flow) => [`### ${flow.name}`, "", flow.line.trim(), ""])].join("\n").trimEnd();
+  return replaceDraftSpec(body, spec);
+}
+
+function withHeader(body: string, name: string, value: string): string {
+  if (new RegExp(`^${name}:`, "m").test(body)) return replaceHeader(body, name, value);
+  return body.replace(/^(Spec lock:.*\n)/m, `$1${name}: ${value}  \n`);
+}
+
+function withOutlineMeta(body: string, outline: PlanOutline): string {
+  const line = `${OUTLINE_META}${JSON.stringify(outline)} -->`;
+  const lines = body.split("\n");
+  const existing = lines.findIndex((entry) => entry.startsWith(OUTLINE_META));
+  if (existing !== -1) lines[existing] = line;
+  else lines.splice(lines.indexOf(SPEC_START), 0, line);
+  return lines.join("\n");
+}
+
+/** The owner's word on the outline: the Goal and the flow names are fixed; the SPEC fills them and nothing else. */
+export function lockPlanOutline(body: string, ownerWord: string): MutationResult {
+  requireState(body, "SPEC_DRAFT");
+  assertOwnerWord(ownerWord);
+  const outline = currentOutline(body);
+  if (outline.goal === "" || outline.flows.length === 0) throw new Error("the SPEC has no outline to approve: a Goal and at least one flow");
+  const hash = outlineHash(outline);
+  const next = withOutlineMeta(withHeader(body, "Outline lock", `sha256:${hash} owner:${ownerWord}`), outline);
+  return { body: appendExecution(next, `lock-outline sha256:${hash} owner:${ownerWord}`) };
+}
+
 /** The plan's title: its first line. */
 function planTitle(body: string): string {
   const end = body.indexOf("\n");
@@ -388,6 +487,7 @@ export function createDraftPlan(title: string): string {
     "",
     "Status: SPEC_DRAFT  ",
     "Spec lock: unlocked  ",
+    "Outline lock: unlocked  ",
     "Implementation lock: unlocked  ",
     "Active Delivery: none  ",
     "Unattended decisions: allowed  ",

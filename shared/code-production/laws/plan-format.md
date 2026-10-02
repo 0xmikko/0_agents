@@ -16,9 +16,14 @@ lives in [development-process.md](development-process.md).
 
 ## Sections, in this order
 
-The SPEC is the part the owner reads. It is written in English, title
-included; the owner's words may be quoted in «…», and `planctl` refuses
-any other line in another language. Eight sections, these headings, this
+A plan starts as an outline: the Goal as agreed in the conversation and one
+line per flow, approved by the owner's word before anything else is written
+(`submit_outline`, `approve_outline`). The SPEC then fills exactly those
+flows; `planctl` refuses a flow outside the outline, a Goal that changed, a
+path that does not exist unless the Target tree creates it, and a line that
+repeats another. The SPEC is the part the owner reads. It is written in
+English, title included; the owner's words may be quoted in «…», and
+`planctl` refuses any other line in another language. Eight sections, these headings, this
 order; `planctl` reports every missing or empty one at once. The same lint
 runs at every write: submission reports every error, approval refuses on
 any, and an amendment that adds one is refused. No size limit:

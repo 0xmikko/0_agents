@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { lint } from "../src/core/plan-gate";
 import { createDraftPlan, journalCreatedPlan, lockPlanSpec, mutatePlanFile, protocolSpecHash } from "../src/core/plan-update";
 import { submitSpec } from "../src/core/spec-submission";
@@ -18,6 +18,10 @@ function repository(): string {
   git("config", "user.name", "Test");
   git("commit", "-q", "--allow-empty", "-m", "the repository");
   mkdirSync(join(root, "docs/plans"), { recursive: true });
+  for (const [path, text] of [["src/change.ts", "export const change = 1;\n"], ["src/save.ts", "export const save = 1;\n"], ["test/change.test.ts", "export {};\n"]] as const) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
   const body = createDraftPlan("Fixture plan");
   writeFileSync(join(root, PLAN), body);
   git("add", PLAN);

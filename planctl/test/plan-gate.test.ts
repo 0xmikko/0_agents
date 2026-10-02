@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { execSync, spawnSync } from "node:child_process";
 
 import { lockPlanSpec, putDelivery, putStage, stageInputs, type StageInput } from "../src/core/plan-update";
@@ -45,6 +45,10 @@ function makeRepo(): { root: string; sha: string } {
   git(root, "init -q");
   git(root, 'config user.email t@t && git config user.name t');
   writeFileSync(join(root, "seed.txt"), "seed\n");
+  for (const [path, text] of [["src/change.ts", "export const change = 1;\n"], ["src/save.ts", "export const save = 1;\n"], ["test/change.test.ts", "export {};\n"]] as const) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
   git(root, "add -A");
   git(root, '-c user.email=t@t -c user.name=t commit -qm seed');
   // init refuses the integration branch and a missing base
@@ -312,7 +316,7 @@ ${spec}<!-- plan:spec:end -->
       const smallResult = check(small.body);
       expect(smallResult.status).toBe(1);
       expect(smallResult.stdout).toContain("two files or fewer");
-      mkdirSync(join(root, "src"));
+      mkdirSync(join(root, "src"), { recursive: true });
       writeFileSync(join(root, writes[0]), "export interface Change { name: string; }\nexport type Surprise = string;\n");
       git(root, "add src/change.ts");
       git(root, 'commit -qm "introduce public input"');

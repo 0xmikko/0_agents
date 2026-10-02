@@ -6,7 +6,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { z } from "zod";
 import { appendEvent } from "../core/event-log";
 import type { EventRecord } from "../core/event-log";
-import { authoringContract, lint } from "../core/plan-gate";
+import { authoringContract, lint, protocolLanguageViolations } from "../core/plan-gate";
 import type { GateViolation } from "../core/plan-gate";
 import { planProgress, progressNote } from "../core/plan-progress";
 import type { ProgressView } from "../core/plan-progress";
@@ -19,10 +19,12 @@ import {
   deliveryFrom,
   deliveryStart,
   initPlan,
+  lockPlanOutline,
   lockPlanSpec,
   mutatePlanFile,
   needsOwner,
   patchFrom,
+  planOutline,
   planState,
   protocolImplementationHash,
   protocolSpecHash,
@@ -30,6 +32,7 @@ import {
   putStage,
   recordDeviation,
   removeDraftStage,
+  replaceDraftOutline,
   resumeTask,
   stageEnd,
   stageFrom,
@@ -142,6 +145,31 @@ const TOOLS = {
         `Target rule: ${contract.targetRule}`,
         `Example flow:\n${contract.example}`,
       ].join("\n"));
+    },
+  }),
+  submit_outline: tool({
+    description: "Write the outline of a draft: the Goal as agreed and one line per flow, in English. The SPEC that follows fills exactly these flows. Refuses a stale revision.",
+    schema: z.object({ plan: z.string(), baseRevision: z.string(), goal: z.string(), flows: z.array(z.object({ name: z.string(), line: z.string() })) }),
+    run: async (deps, { plan, baseRevision, goal, flows }) => {
+      const { root, plan: relative } = located(deps.cwd, plan);
+      const body = readFileSync(resolve(root, relative), "utf8");
+      const current = protocolSpecHash(body);
+      if (baseRevision !== current) throw new Error(`stale revision ${baseRevision}; the plan is at ${current}`);
+      const language = protocolLanguageViolations(replaceDraftOutline(body, { goal, flows }).body);
+      if (language.length > 0) throw new Error(language.join("\n"));
+      mutatePlanFile(root, relative, "set-outline", (draft) => replaceDraftOutline(draft, { goal, flows }));
+      const saved = readFileSync(resolve(root, relative), "utf8");
+      return reply({ plan: relative, revision: protocolSpecHash(saved), state: "SPEC_DRAFT", flows: flows.map((flow) => flow.name) }, [`Outline: ${flows.length} flow(s)`, ...flows.map((flow) => `- ${flow.name}: ${flow.line}`)].join("\n"));
+    },
+  }),
+  approve_outline: tool({
+    description: "Record the owner's word on the outline: the Goal and the flow names are fixed, and submit_spec fills them and nothing else.",
+    schema: z.object({ plan: z.string(), ownerWord: z.string() }),
+    run: async (deps, { plan, ownerWord }) => {
+      const { root, plan: relative } = located(deps.cwd, plan);
+      mutatePlanFile(root, relative, "lock-outline", (body) => lockPlanOutline(body, ownerWord));
+      const saved = readFileSync(resolve(root, relative), "utf8");
+      return reply({ plan: relative, revision: protocolSpecHash(saved), state: "SPEC_DRAFT", outline: planOutline(saved) }, `outline locked under "${ownerWord}"`);
     },
   }),
   submit_spec: tool({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
 import type { DeliveryInput, StageInput, StageResultReceipt } from "../src/core/plan-update";
@@ -94,6 +94,11 @@ function fixtureRepository(): {
   git(root, "config", "code-production.base", git(root, "branch", "--show-current"));
   git(root, "checkout", "-qb", "feat/fixture");
   mkdirSync(join(root, "docs", "plans"), { recursive: true });
+  for (const [path, text] of [["src/change.ts", "export const change = 1;\n"], ["src/save.ts", "export const save = 1;\n"], ["test/change.test.ts", "export {};\n"]] as const) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
+
   const plan = join(root, "docs", "plans", "fixture.md");
   const spec = join(root, "spec.md");
   const delivery = join(root, "delivery.json");
