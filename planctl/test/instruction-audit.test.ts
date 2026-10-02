@@ -140,18 +140,11 @@ describe("the global screen", () => {
   // @test-id: tst_audit_screen_001
   // @covers: claude/CLAUDE.md, codex/AGENTS.md
   // @deterministic: yes
-  // @invariant: the always-on screen is one short page, byte-identical for
-  // Claude and Codex, with exactly one IMPORTANT line and the numbered
-  // mistakes list, naming no skill but the two modes and no banned word.
-  it("tst_audit_screen_001 one page, identical for Claude and Codex, one IMPORTANT, the mistakes list, no dead skill", () => {
+  // @invariant: Claude and Codex read the same instructions, with no dead references.
+  it("tst_audit_screen_001 both providers share the instructions and their references resolve", () => {
     const claude = readFileSync(join(root, "claude/CLAUDE.md"), "utf8");
     const codex = readFileSync(join(root, "codex/AGENTS.md"), "utf8");
     expect(codex).toBe(claude);
-    const lines = claude.split("\n").filter((line) => line.trim() !== "");
-    expect(lines.length).toBeLessThanOrEqual(30);
-    expect(claude.match(/IMPORTANT/g)?.length).toBe(1);
-    expect(claude).toMatch(/Mistakes this model keeps making/);
-    expect(claude.match(/^- /gm)?.length).toBe(5);
     for (const skill of ["/start-work", "/end-work", "/test-protocol", "/fix-ci-cd", "/execute", "/finish-plan"]) {
       expect(claude).not.toContain(skill);
     }

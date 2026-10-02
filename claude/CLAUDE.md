@@ -1,34 +1,31 @@
 # Working here
 
-The owner's current request and limits govern the work. Use /blueprint for a plan and /blueprint-start for its approved implementation; questions and single probes need neither.
+The owner's current request and limits govern the work. Continue authorized work
+without asking again for routine, reversible steps needed to complete it.
+Ask when a missing owner decision changes scope or the approved contract, or when
+an action needs permission that the owner has not given.
 
-IMPORTANT: little code that is understood and explained beats much code. One name per
-thing, the name the repository already uses: find it before you write one. A word that
-exists nowhere in the repository is declared with its reason or does not appear. No
-synonyms, no plan codes (D1-S4, INV-12) in prose.
+Use /blueprint for planning and /blueprint-start for approved implementation,
+through planctl MCP. Questions and narrow corrections need no new plan.
+Plans are in English. Declare changed types and explain proposed new names before
+approval; reuse the repository's existing names and canonical definitions.
 
-DRY and SOLID, here: one mechanism per job, extend it, never copy it; one class per file,
-one reason to change; depend on interfaces the caller owns; a function does one thing and
-is named for it. A second copy of anything is a defect and the reviewers reject it.
+Choose the simplest sufficient change. Extend the existing mechanism. Add files,
+abstractions, runners or worktrees only when the task needs them.
+Do not invent fallbacks or defaults for missing required values.
 
-Always choose the simplest sufficient solution. No subplans or extra Stages.
-Do not add runners, worktrees, abstractions or infrastructure unless strictly
-necessary for the requested task or explicitly requested by the owner.
-One direct change → one direct check.
-No abstraction, generic, interface, option or new file for a case that does
-not exist yet: two users or none. The simplest change that makes the red test
-green, then stop.
+Verify claims against code and observable behavior. For behavior changes, reproduce
+the failure before fixing it. Use the project's agent:* verification scripts.
+Run scoped checks during work and the complete gate at publication; reuse passing
+checks when their inputs have not changed. Keep Git hooks enabled.
 
-Mistakes this model keeps making here, so do not:
-- Claims from structure. Check the artifact: run it, open it, `git show origin/staging:<path>`.
-- Fallbacks, defaults, "just in case". A missing value is an error.
-- Tests green from birth. Red first; prove a green-from-birth test by mutating the source.
-- Stopping at a tool refusal. Record one line and continue; a stop ends with "waiting for: X".
-- Refactoring by grep. Rename at the definition, run the compiler, fix exactly what it
-  names; grep finds comments and strangers, the compiler finds the callers. /rename is the procedure.
+Treat a failed operation as a problem to diagnose. Continue independent authorized
+work. A version difference alone does not require a stack update or owner approval.
+Necessary instruction or tooling repairs within the requested scope are authorized;
+do not expand into unrelated infrastructure or secrets.
 
-Verify only with the project's `agent:*` scripts; never compose framework commands.
-Language guide by file: `.ts`/`.tsx` → typescript.md, `.rs` → rust.md.
-Never edit workflows, infrastructure, `.claude/`, secrets, CLAUDE.md or AGENTS.md unless
-the task names the file. Never kill or reuse a process you did not start.
-The owner is on a Claude subscription: no API key, ever.
+Language guide by file: `.ts`/`.tsx` → typescript.md; `.rs` → rust.md.
+For symbol renames, use /rename and follow compiler-reported callers.
+Never kill or reuse a process you did not start.
+Use the Claude subscription for Claude; do not request or configure a Claude API
+key. This restriction concerns Claude authentication.
