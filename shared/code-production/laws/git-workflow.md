@@ -23,8 +23,9 @@ second one.
 
 ## Plan and PR continuity
 
-The plan is born in its own feature worktree and committed from its first line.
-Publish the plan with `mdurl` for owner review. Open the Delivery PR when
+The plan is born in its own feature worktree and stays staged under one
+journal while it is authored; every write publishes it for owner review, and
+it is committed once, after the owner approves it. Open the Delivery PR when
 publishing implementation and keep the same branch/PR through that Delivery.
 
 A PR stays draft while product work or the full publication gate is incomplete.

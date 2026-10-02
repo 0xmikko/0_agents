@@ -165,7 +165,7 @@ claude_sessions = "${join(root, "sessions/claude")}"
     },
   });
   expect(legacy.status, legacy.stderr).toBe(0);
-  expect(legacy.stdout).toContain("TaskRunV1");
+  expect(legacy.stdout).toContain("Observer identity: none (local record)");
 
   const started = spawnSync("bun", [
     CLI,
@@ -189,17 +189,15 @@ claude_sessions = "${join(root, "sessions/claude")}"
   });
   expect(started.status, started.stderr).toBe(0);
   expect(started.stdout).toContain("Task CORR_001 STARTED");
-  expect(started.stdout).toContain("TaskRunV2");
+  expect(started.stdout).toContain("Observer identity: machine-a / codex:fixture-session / github.com/fixture/repository");
 
   const receiptRoot = join(root, ".git/planctl/task-runs");
   const receiptFile = readdirSync(receiptRoot).find((entry) => entry.endsWith(".json"));
   if (receiptFile === undefined) throw new Error("start-task receipt was not written");
   const receiptPath = join(receiptRoot, receiptFile);
   expect(JSON.parse(readFileSync(receiptPath, "utf8"))).toMatchObject({
-    version: 2,
-    machineId: "machine-a",
-    agentId: "codex:fixture-session",
-    repositoryId: "github.com/fixture/repository",
+    version: 3,
+    identity: { machineId: "machine-a", agentId: "codex:fixture-session", repositoryId: "github.com/fixture/repository" },
     worktree: root,
     branch: "feat/correlation",
   });
@@ -210,8 +208,14 @@ claude_sessions = "${join(root, "sessions/claude")}"
     plan,
     "--task",
     "CORR_001",
-    "--reason",
+    "--context",
     "Choose the fixture endpoint",
+    "--option",
+    "local: the fixture answers itself",
+    "--recommendation",
+    "local, because nothing else exists in the fixture",
+    "--answer",
+    "local or remote",
   ], { cwd: root, encoding: "utf8" });
   expect(waiting.status, waiting.stderr).toBe(0);
   const waitRoot = join(root, ".git/planctl/owner-waits");

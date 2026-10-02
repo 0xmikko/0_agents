@@ -1,10 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
 import type { DeliveryInput, StageInput, StageResultReceipt } from "../src/core/plan-update";
+import { createDraftPlan, lockPlanSpec, putDelivery } from "../src/core/plan-update";
 import { ownerWaitPath, readOwnerWait } from "../src/core/task-run";
 
 /**
@@ -53,7 +54,7 @@ const STAGE: StageInput = {
   profile: "strong",
   depends: [],
   parallelWith: [],
-  writes: ["scripts/example.ts"],
+  writes: ["scripts/example.ts", "scripts/example.test.ts", "scripts/example-helpers.ts"],
   tempRoot: ".tmp/code-production/fixture/D1-S1",
   predictedActiveMinutes: 13,
   predictedCredits: 3,
@@ -63,7 +64,7 @@ const STAGE: StageInput = {
   tasks: [{
     id: "PLANCTL_001",
     story: "extend the canonical writer facade exposed by scripts/example.ts",
-    writes: ["scripts/example.ts"],
+    writes: ["scripts/example.ts", "scripts/example.test.ts", "scripts/example-helpers.ts"],
     predictedActiveMinutes: 10,
     predictedCredits: 2,
     how: "extend scripts/example.ts through the canonical plan-update mutation engine",
@@ -89,7 +90,16 @@ function fixtureRepository(): {
   git(root, "config", "user.name", "Planctl Test");
   // a plan is born in a repository with history: the journal binds to HEAD
   git(root, "commit", "-q", "--allow-empty", "-m", "the repository");
+  // init refuses the integration branch and a missing base: the fixture
+  // names its base and works on a feature branch, like every real plan
+  git(root, "config", "code-production.base", git(root, "branch", "--show-current"));
+  git(root, "checkout", "-qb", "feat/fixture");
   mkdirSync(join(root, "docs", "plans"), { recursive: true });
+  for (const [path, text] of [["src/change.ts", "export const change = 1;\n"], ["src/save.ts", "export const save = 1;\n"], ["test/change.test.ts", "export {};\n"]] as const) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
+
   const plan = join(root, "docs", "plans", "fixture.md");
   const spec = join(root, "spec.md");
   const delivery = join(root, "delivery.json");
@@ -105,6 +115,79 @@ function run(root: string, ...args: readonly string[]) {
 }
 
 describe("planctl", () => {
+  /**
+   * @test-id: tst_scripts_planctl_014
+   * @scenario: scn_planctl_actions_publication_001
+   * @covers: planctl/src/cli/main.ts::readPublication
+   * @deterministic: yes
+   * @fixtures: isolated Git repository, scripted gh with Checks denied and paginated Actions responses
+   * The latest run of every workflow/event on the PR head determines CI; obsolete runs cannot change it.
+   */
+  it("tst_scripts_planctl_014 reads CI from Actions without requiring Checks access", () => {
+    const fixture = fixtureRepository();
+    try {
+      writeFileSync(fixture.plan, putDelivery(lockPlanSpec(createDraftPlan("Publication fixture"), "owner").body, DELIVERY).body);
+      const head = git(fixture.root, "rev-parse", "HEAD");
+      const bin = join(fixture.root, "bin");
+      mkdirSync(bin);
+      writeFileSync(join(bin, "gh"), `#!/usr/bin/env bun
+import { readFileSync } from "node:fs";
+const args = process.argv.slice(2);
+if (args.includes("--json") && args[args.indexOf("--json") + 1].includes("statusCheckRollup")) {
+  console.error("Resource not accessible by personal access token (statusCheckRollup)");
+  process.exit(1);
+}
+if (args[0] === "pr" && args[1] === "list") {
+  console.log(JSON.stringify([{ url: "https://github.com/fixture/repo/pull/1", headRefOid: "${head}", mergedAt: null }]));
+} else if (args[0] === "api" && args.includes("repos/{owner}/{repo}/actions/runs")
+  && args.includes("GET") && args.includes("head_sha=${head}") && args.includes("branch=${DELIVERY.branch}")
+  && args.includes("--paginate") && args.includes("--slurp")) {
+  const response = readFileSync("actions.json", "utf8");
+  if (response === "denied") { console.error("Actions access denied"); process.exit(1); }
+  console.log(response);
+} else {
+  console.error("Unexpected gh arguments: " + JSON.stringify(args));
+  process.exit(1);
+}
+`, { mode: 0o755 });
+      const progress = () => spawnSync("bun", [join(import.meta.dir, "../src/cli/main.ts"), "progress", fixture.plan], {
+        cwd: fixture.root, encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      });
+      const success = { id: 20, workflow_id: 1, event: "pull_request", head_sha: head, status: "completed", conclusion: "success", run_attempt: 2 };
+      const oldFailure = { ...success, id: 10, conclusion: "failure", run_attempt: 1 };
+      const otherWorkflow = { ...success, id: 15, workflow_id: 2 };
+      const cases = [
+        { name: "successful rerun", pages: [[oldFailure, success], [otherWorkflow]], ci: "green" },
+        { name: "another workflow failed", pages: [[success], [{ ...otherWorkflow, conclusion: "failure" }]], ci: "red" },
+        { name: "another workflow is running", pages: [[success], [{ ...otherWorkflow, status: "in_progress", conclusion: null }]], ci: "pending" },
+        { name: "same workflow, another event failed", pages: [[success, { ...oldFailure, event: "push" }]], ci: "red" },
+        { name: "newer run is queued", pages: [[{ ...success, status: "queued", conclusion: null }, { ...oldFailure, conclusion: "success" }]], ci: "pending" },
+        ...["cancelled", "timed_out", "action_required", "startup_failure", "stale"].map((conclusion) => ({
+          name: conclusion, pages: [[{ ...success, conclusion }]], ci: "red",
+        })),
+        { name: "skipped workflow", pages: [[success, { ...otherWorkflow, conclusion: "skipped" }]], ci: "green" },
+        { name: "old head only", pages: [[{ ...success, head_sha: "f".repeat(40) }]], ci: "pending" },
+        { name: "no runs yet", pages: [[]], ci: "pending" },
+      ];
+      for (const testCase of cases) {
+        writeFileSync(join(fixture.root, "actions.json"), JSON.stringify(testCase.pages.map((workflow_runs) => ({ workflow_runs }))));
+        const result = progress();
+        expect(result.status, `${testCase.name}: ${result.stderr}`).toBe(0);
+        expect(result.stdout, testCase.name).toContain(`CI on ${head.slice(0, 7)} ${testCase.ci}`);
+        if (testCase.name === "successful rerun") expect(result.stdout).toContain("run 20 attempt 2");
+      }
+      for (const response of ["denied", "[{}]"]) {
+        writeFileSync(join(fixture.root, "actions.json"), response);
+        const result = progress();
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout).toContain("unavailable:");
+        expect(result.stdout).not.toContain(`CI on ${head.slice(0, 7)} green`);
+      }
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   /*
    * @test-id: tst_scripts_planctl_001
    * @scenario: scn_plan_control_001
@@ -160,6 +243,70 @@ describe("planctl", () => {
    * Mocks: none
    * Data: one SPEC, Delivery, Stage and Task
    */
+  /**
+   * @test-id: tst_scripts_planctl_012
+   * @scenario: scn_planctl_cli_lint_001
+   * @covers: planctl/src/cli/main.ts::approve-spec,set-spec
+   * @deterministic: yes
+   * @invariant: the CLI approvals run the same lint as the tools: a SPEC in another language is refused with its lines, set-spec reports the errors it saved, and the corrected SPEC locks.
+   */
+  /**
+   * @test-id: tst_scripts_planctl_013
+   * @scenario: scn_planctl_cli_markdown_001
+   * @covers: planctl/src/cli/main.ts::check-markdown
+   * @deterministic: yes
+   * @invariant: check-markdown exits 0 when every mermaid block of a file parses and 1 naming the block's line when one does not; the publisher refuses on 1.
+   */
+  it("tst_scripts_planctl_013 check-markdown refuses a document whose mermaid does not parse", () => {
+    const fixture = fixtureRepository();
+    try {
+      const good = join(fixture.root, "good.md");
+      const bad = join(fixture.root, "bad.md");
+      writeFileSync(good, "# Doc\n\n```mermaid\nflowchart LR\n  A --> B\n```\n");
+      writeFileSync(bad, "# Doc\n\nText.\n\n```mermaid\nflowchart LR\n  A -- > B\n```\n");
+      expect(run(fixture.root, "check-markdown", good).status).toBe(0);
+      const refused = run(fixture.root, "check-markdown", bad);
+      expect(refused.status).toBe(1);
+      expect(refused.stderr).toContain("mermaid block(s) do not parse");
+      expect(refused.stderr).toMatch(/line \d+: mermaid/);
+      // A plan in another language is not published either: the publisher runs the same language rule as the tools.
+      const russian = join(fixture.root, "russian-plan.md");
+      writeFileSync(russian, "# План\n\nStatus: SPEC_DRAFT  \n\n<!-- plan:spec:start -->\n## The Goal\n\nОтгрузить результат.\n<!-- plan:spec:end -->\n");
+      const unpublished = run(fixture.root, "check-markdown", russian);
+      expect(unpublished.status).toBe(1);
+      expect(unpublished.stderr).toContain("the plan is written in English");
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it("tst_scripts_planctl_012 refuses to approve a SPEC the lint refuses and reports set-spec errors", () => {
+    const fixture = fixtureRepository();
+    try {
+      expect(run(fixture.root, "init", fixture.plan, "--title", "Fixture plan").status).toBe(0);
+      git(fixture.root, "commit", "-qm", "docs: open the plan");
+      expect(run(fixture.root, "clear-transaction", fixture.plan, "--commit", git(fixture.root, "rev-parse", "HEAD")).status).toBe(0);
+      const russian = join(fixture.root, "russian.md");
+      writeFileSync(russian, readFileSync(fixture.spec, "utf8").replace("Reject empty names before saving.", "Отклонять пустые имена до сохранения."));
+      // Every writer refuses another language before writing, the installed copy included: set-spec needs no parser for that.
+      const before = readFileSync(fixture.plan, "utf8");
+      const saved = run(fixture.root, "set-spec", fixture.plan, "--from", russian);
+      expect(saved.status).toBe(1);
+      expect(saved.stderr).toContain("the plan is written in English");
+      expect(saved.stderr).toContain("Отклонять пустые имена до сохранения.");
+      expect(readFileSync(fixture.plan, "utf8")).toBe(before);
+      // Editorial advice does not block approval through the CLI either.
+      writeFileSync(join(fixture.root, "long.md"), readFileSync(fixture.spec, "utf8").replace("Reject empty names before saving.", `Reject empty names before saving. ${"word ".repeat(31)}ends.`));
+      const long = run(fixture.root, "set-spec", fixture.plan, "--from", join(fixture.root, "long.md"));
+      expect(long.status, `${long.stdout}\n${long.stderr}`).toBe(0);
+      expect(long.stdout).toContain("Checks: 0 errors");
+      expect(run(fixture.root, "approve-spec", fixture.plan, "--owner-word", "yes").status).toBe(0);
+      expect(readFileSync(fixture.plan, "utf8")).toContain("Status: SPEC_LOCKED");
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   it("tst_scripts_planctl_002 authors and locks a plan through the canonical writer", () => {
     const fixture = fixtureRepository();
     try {
@@ -196,6 +343,51 @@ describe("planctl", () => {
       expect(approved).toContain("### PR Delivery D1 — Foundation");
       expect(approved).toContain("#### Stage D1-S1 — Canonical ownership");
       expect(approved).not.toContain("State: PLAN_APPROVED");
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  /*
+   * @test-id: tst_scripts_planctl_011
+   * @scenario: scn_plan_control_init_001
+   * @covers: planctl/src/cli/main.ts::init
+   * @deterministic: yes
+   * @fixtures: temporary Git repository
+   * Test environment: isolated local Git repository
+   * Clients: CLI
+   * Mocks: none
+   * Data: the branch name, the base config and the authoring contract
+   */
+  it("tst_scripts_planctl_011 names the plan from the branch, refuses the base branch and a missing base, and returns the contract", () => {
+    const fixture = fixtureRepository();
+    try {
+      const base = git(fixture.root, "config", "code-production.base");
+      git(fixture.root, "config", "--unset", "code-production.base");
+      const unset = run(fixture.root, "init", "--title", "Fixture plan");
+      expect(unset.status).not.toBe(0);
+      expect(unset.stderr).toContain("git config code-production.base <branch>");
+      git(fixture.root, "config", "code-production.base", base);
+      git(fixture.root, "checkout", "-q", base);
+      const onBase = run(fixture.root, "init", "--title", "Fixture plan");
+      expect(onBase.status).not.toBe(0);
+      expect(onBase.stderr).toContain(`integration branch ${base}`);
+      git(fixture.root, "checkout", "-qb", "feat/graph-Indexing_llm");
+      const russian = run(fixture.root, "init", "--title", "План индексации");
+      expect(russian.status).not.toBe(0);
+      expect(russian.stderr).toContain("the plan is written in English, title included");
+      const named = run(fixture.root, "init", "--title", "Fixture plan");
+      expect(named.status, `${named.stdout}\n${named.stderr}`).toBe(0);
+      const today = new Date().toISOString().slice(0, 10);
+      const plan = `docs/plans/${today}-graph-indexing-llm.md`;
+      expect(existsSync(join(fixture.root, plan))).toBe(true);
+      expect(named.stdout).toContain(`Plan: ${plan}`);
+      expect(named.stdout).toContain("Sections: The Goal, Why now, The target");
+      expect(named.stdout).toMatch(/Vocabulary: .+ → .+/);
+      expect(named.stdout).toContain("Goal rule: The Goal is one to six numbered outcomes");
+      expect(named.stdout).toContain("Target rule: Suggested layout:");
+      expect(named.stdout).toContain("Example flow:\n### Browser OAuth returns a provider URL");
+      expect(run(fixture.root, "verify-staged", plan).status).toBe(0);
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }
@@ -335,7 +527,7 @@ describe("planctl", () => {
     try {
       const expandedStage: StageInput = {
         ...STAGE,
-        writes: ["scripts/example.ts", "scripts/second.ts"],
+        writes: [...STAGE.writes, "scripts/second.ts"],
         predictedActiveMinutes: 21,
         predictedCredits: 4,
         verifyActiveMinutes: 3,
@@ -368,9 +560,9 @@ describe("planctl", () => {
       const started = run(fixture.root, "start-task", fixture.plan, "--task", "PLANCTL_001");
       expect(started.status, `${started.stdout}\n${started.stderr}`).toBe(0);
       expect(started.stdout).toContain("Task PLANCTL_001 STARTED");
-      expect(started.stdout).toContain("Source: docs/plans/fixture.md");
-      expect(started.stdout).toContain("Distributed correlation: unavailable (TaskRunV1)");
-      expect(started.stdout).toContain("Writes: scripts/example.ts");
+      expect(started.stdout).toContain("Plan: docs/plans/fixture.md");
+      expect(started.stdout).toContain("Observer identity: none (local record)");
+      expect(started.stdout).toContain("Folders: scripts/example.ts");
       expect(started.stdout).toContain("RED: bun run agent:test:backend -- test/planctl.test.ts");
       const startedAt = started.stdout.match(/^Started: (.+)$/m)?.[1];
       expect(startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -452,8 +644,16 @@ describe("planctl", () => {
         fixture.plan,
         "--task",
         "PLANCTL_001",
-        "--reason",
+        "--context",
         "Choose the public hostname",
+        "--option",
+        "public: reachable from the internet",
+        "--option",
+        "private: reachable from the office only",
+        "--recommendation",
+        "public, because the Goal names external users",
+        "--answer",
+        "public or private",
       );
       expect(waiting.status, `${waiting.stdout}\n${waiting.stderr}`).toBe(0);
       const waitPath = ownerWaitPath(join(fixture.root, ".git"), "docs/plans/fixture.md", "PLANCTL_001");
@@ -466,8 +666,16 @@ describe("planctl", () => {
         fixture.plan,
         "--task",
         "PLANCTL_001",
-        "--reason",
+        "--context",
         "Choose the public hostname",
+        "--option",
+        "public: reachable from the internet",
+        "--option",
+        "private: reachable from the office only",
+        "--recommendation",
+        "public, because the Goal names external users",
+        "--answer",
+        "public or private",
       ).status).toBe(0);
       const resumed = run(fixture.root, "resume-task", fixture.plan, "--task", "PLANCTL_001");
       expect(resumed.status, `${resumed.stdout}\n${resumed.stderr}`).toBe(0);
@@ -475,8 +683,9 @@ describe("planctl", () => {
 
       const progress = run(fixture.root, "progress", fixture.plan);
       expect(progress.status, `${progress.stdout}\n${progress.stderr}`).toBe(0);
-      expect(progress.stdout).toContain("Source: local plan docs/plans/fixture.md");
-      expect(progress.stdout).toContain("Progress: 0.0% (0/1 Tasks)");
+      expect(progress.stdout).toContain("Plan      docs/plans/fixture.md (APPROVED)");
+      expect(progress.stdout).toContain("Delivery  D1 · 0 of 1 Tasks");
+      expect(progress.stdout).toContain("Now       PLANCTL_001 since");
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }

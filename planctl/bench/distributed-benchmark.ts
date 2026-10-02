@@ -59,6 +59,7 @@ function progress(): ReportedPlanProgress {
     progress: {
       deliveryId: "D1",
       tasks: { completed: 5, total: 10 },
+      wholePlan: { completed: 5, total: 10 },
       activeMinutes: { completed: 50, remaining: 50, total: 100 },
       credits: { completed: 20, remaining: 20, total: 40 },
       completionPercent: 50,

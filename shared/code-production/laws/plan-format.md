@@ -14,30 +14,62 @@ owner shaped sets the tone; `planctl` and the managed hooks enforce mechanics.
 The process around plans (cadence, micro-review, the two-mode contract)
 lives in [development-process.md](development-process.md).
 
-## Sections, in this order
+## SPEC sections
 
-1. **The goal** — first, always. CONCRETE and unsugared: what gets faster,
-   cheaper, smaller or safer, and by how much — numbers wherever they
-   exist; a bullet list of measurable outcomes beats a paragraph of vision.
-   The goal names its **currency**: deleted lines for a refactor, measured
-   time for performance, the thing the user sees for a feature. Every stage
-   pays a stated share; its receipt records the measured payment (a number,
-   a benchmark table, a screenshot attached to the PR).
-2. **The target** — how it looks when done: a mermaid flowchart that
-   underlines the one architectural decision (never a walk of how a signal
-   travels), the target file tree with per-file purpose, the interfaces in
-   TypeScript rather than prose. Unknown facts are `<placeholders>` a
-   Stage 0 pins — never guessed.
-3. **Today, measured against that** — the distance, measured on a pinned
-   base SHA: line counts, file:line anchors, the one deciding fact. Past
-   tense once fixed. Includes the **Reuse map**: what existing code the
-   change extends, and the greps proving nothing existing covers the need.
-   A second copy of an existing mechanism means the plan is wrong.
-4. **Invariants** — plain one-pass statements; each is a named test,
-   written RED before the stage that makes it true.
-5. **Implementation** — sequential PR Deliveries, each containing Stages:
+The SPEC develops through code exploration and discussion. There are two
+approvals: the SPEC, then the implementation contract. Draft goals and flows
+can change as evidence arrives; there is no separate outline approval.
 
-   `planctl` renders this owner-view shape; the hidden comment is abbreviated
+The SPEC is written in English, title included; the owner's words may be
+quoted in «…». The Goal and The target headings are required so progress can
+find them. The other sections and the flow example guide authoring. Lint
+reports editorial advice separately from blocking errors. Advice about
+wording, length or layout never prevents approval or an amendment. Submission
+preserves the authored words; it normalizes line endings, not vocabulary.
+Missing files, invalid TypeScript or diagrams, untyped pseudocode and an
+invalid implementation contract remain errors. Approved content changes only
+through an amendment under the owner's word.
+
+Preserve the scenarios, evidence, decisions and file changes needed to assess
+the solution. Do not discard them to fit a heading, diagram or length limit.
+
+1. **The Goal** — first, always. One to six numbered outcomes the owner
+   reads as a whole: what will be done, in what order, who calls whom and
+   what results. A measure where one exists. It promises only what the
+   request asks: no vision, no backstory, no extra scope. Plain English.
+2. **Why now** — at most ten lines, dated: what is broken today and what it
+   costs. Not a history.
+3. **The target** — how it looks when done, as flows. A useful example has a
+   `###` heading, a mermaid diagram, an explanation, and an implementation
+   map table with the rows Owner,
+   Target files, Input / wake, Output / durable state, RED test; the
+   **Interfaces** declare in TypeScript every exported type the plan
+   changes, because completion refuses a changed exported type the SPEC
+   does not name. `init` returns an example flow. Missing flow diagrams and maps are
+   advice; choose the layout that explains the actual solution.
+   Pseudocode is TypeScript with types, in a ```typescript block, every
+   parameter typed, every name camelCase (fields, parameters, methods,
+   variables; types PascalCase); `planctl` refuses another language, an
+   untyped parameter and a snake_case name.
+4. **Target tree** — every file the plan creates or modifies, one line of
+   purpose each.
+5. **Invariants** — plain one-pass statements; each names the test that
+   proves it.
+6. **Reuse** — what existing code the change extends. A second copy of an
+   existing mechanism means the plan is wrong.
+7. **New names** — a name/reason table for every word the repository does
+   not already use.
+8. **Not verified** — what this plan does not prove and why, measured facts
+   apart from inferred ones.
+
+Amendments and Deviations are Execution log lines `planctl` writes under the
+owner's word or the agent's decision; nobody hand-authors them. The owner's
+word is the approval itself, one line of at most 80 characters; `planctl`
+refuses a pasted message.
+
+## The implementation contract
+
+Sequential PR Deliveries, each containing Stages. `planctl` renders this owner-view shape; the hidden comment is abbreviated
    below and agents never hand-author it:
 
    ```markdown
@@ -57,6 +89,10 @@ lives in [development-process.md](development-process.md).
    text as of the merge — what changed for people, what changed in the code,
    how it was proven, what is not in this PR. Paragraphs. A Delivery without
    it is refused.>
+   <A Delivery that lives in another repository names it, `repository`:
+   the name, never a path. The checkout is one config line on the machine,
+   `git config code-production.repository.<name> <path>`; its branch,
+   commits and PR are checked there.>
 
    #### Stage D1-S1 — Reject overlapping scheduler work
 
@@ -66,10 +102,13 @@ lives in [development-process.md](development-process.md).
    Predict: 12 active min / 3 credits.
    Of which verification: 2 active min / 1 credits.
 
-   What this Stage solves. <The Stage `description`, rendered here from the
-   Stage JSON: what this stage solves and why now, what is built and where,
-   how it is proven, and the commit message — subject, then body. Paragraphs;
-   meaning over volume. A Stage without it is refused; start-task prints it.>
+   feat(scheduler): reject overlapping Stage writes
+
+   <The Stage `description` is the future commit message of the finished
+   Stage, written before the work: the subject line first, then what was
+   done for which Goal outcome and why this way, then how it is proven.
+   Past tense, as the agent will report it. Paragraphs; meaning over
+   volume. A Stage without it is refused; start-task prints it.>
 
    ##### Tasks
 
@@ -91,11 +130,15 @@ lives in [development-process.md](development-process.md).
    credits, How and RED. `planctl start-task` prints that hidden contract to the
    executor. Legacy five-line Tasks remain readable but are never generated.
 
-   A Task story is one concrete change, no more than 200 characters. Its
-   writes are files, directories (`dir/`) or globs and are the contract the
-   commit is checked against: files touched beyond them are named in the
-   result row, not refused. Split independent actions instead of hiding them
-   in a rename map or branch history.
+   A Task story explains one concrete change; length is authoring advice. Stage
+   writes are folders (`dir/`); Task writes are the files inside them. The
+   commit is checked against both: a file inside the Stage folders but
+   beyond the Task writes is named in the result row, not refused; a test
+   may live anywhere; a file outside the Stage folders refuses; a protected
+   path (`.github/`, `.githooks/`, `.claude/`, `.agents/`, `.codex/`,
+   `CLAUDE.md`, `AGENTS.md`) refuses unless the Task names it. Split
+   independent actions instead of hiding them in a rename map or branch
+   history.
 
    ```markdown
    Bad:  D1-S2-T1 — Finish the colleague's half-landed Verify rewire in the named files.
@@ -141,24 +184,14 @@ lives in [development-process.md](development-process.md).
    Read in order, Stage titles and Task stories tell the plan's whole story
    without exposing execution metadata. A Stage is a coherent commit, not a
    bucket for unrelated cleanup.
-6. **Amendments** — owner-approved plan changes, one dated line each,
-   written before the edit they license.
-7. **Deviations** — agent-recorded shortfalls: stage, target vs reached,
-   the decision taken; written the moment they happen.
-8. **Execution contract** — a short pointer: the law is
-   `development-process.md`; note only what this plan overrides or scopes
-   (its affected suites, its scoped-test command).
-9. **The pre-approval screen** — the LAST block before the owner is asked
-   "Утверждаешь?", and the one the owner actually reads (adopted from the
-   closed-PR retro, 2026-08-21: every steering intervention across three
-   branches was one of these three categories). Three parts, no jargon:
-   - the FILE TREE this plan produces, one line of responsibility per
-     file;
-   - the acceptance STORIES in human language ("after the merge the owner
-     opens the trigger list and sees the next run time" — not a test id);
-   - what is deliberately NOT verified and why ("Playwright not run — no
-     UI touched").
-   Seen once here, corrections land before the run instead of steering it.
+## The owner screen
+
+Every `planctl` write republishes the plan and returns its URL with a
+three-line reply the agent shows the owner verbatim: the plan URL, the
+revision and state, the check counts. The owner reads the SPEC in its own
+order: the Goal, Why now and the diagram first. No separate publish step,
+no pre-approval summary rewritten by hand: the plan itself is the screen,
+and a correction lands as an amendment under the owner's word.
 
 ## Two locks and one writer
 

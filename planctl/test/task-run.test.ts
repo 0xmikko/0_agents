@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import { decodeMachineSnapshot } from "../src/core/snapshot-protocol";
 import { completedStageSamples } from "../src/core/plan-update";
-import { decodeTaskRun, taskRunCorrelation } from "../src/core/task-run";
+import { accountOwnerWait, decodeTaskRun, taskRunCorrelation, taskRunIdentity } from "../src/core/task-run";
 
 describe("Task run and snapshot contracts", () => {
   /**
@@ -129,6 +129,7 @@ describe("Task run and snapshot contracts", () => {
         progress: {
           deliveryId: "D1",
           tasks: { completed: 0, total: 1 },
+          wholePlan: { completed: 0, total: 1 },
           activeMinutes: { completed: 0, remaining: 10, total: 10 },
           credits: { completed: 0, remaining: 1, total: 1 },
           completionPercent: 0,
@@ -154,5 +155,58 @@ describe("Task run and snapshot contracts", () => {
       ...snapshot,
       agents: [{ ...snapshot.agents[0], state: "attention_guess" }],
     })).toThrow("agent state");
+  });
+});
+
+describe("TaskRunV3", () => {
+  const base = {
+    plan: "docs/plans/example.md",
+    deliveryId: "D1",
+    stageId: "D1-S1",
+    taskId: "TASK_001",
+    startedAt: "2026-09-25T10:00:00.000Z",
+    baseHead: "a".repeat(40),
+    worktree: "/work/example",
+    branch: "feat/example",
+    ownerWait: null,
+    accumulatedOwnerWaitSeconds: 0,
+    lastAccountedOwnerWaitStartedAt: null,
+  };
+
+  /**
+   * @test-id: tst_unit_planctl_task_run_next
+   * @scenario: scn_planctl_task_run_002
+   * @covers: planctl/src/core/task-run.ts::decodeTaskRun,taskRunIdentity,taskRunCorrelation,accountOwnerWait
+   * @deterministic: yes
+   * @invariant: a local clone writes a V3 record with a checkpoint and no observer identity; an observer identity travels with the record and its worktree; owner waits accumulate on V3.
+   */
+  it("tst_unit_planctl_task_run_next keeps a checkpoint and a nullable identity on the worktree's own record", () => {
+    const local = decodeTaskRun({ version: 3, ...base, checkpoint: "RED written, GREEN next", identity: null });
+    if (local.version !== 3) throw new Error("expected a V3 record");
+    expect(local.checkpoint).toBe("RED written, GREEN next");
+    expect(local.worktree).toBe("/work/example");
+    expect(taskRunIdentity(local)).toBeNull();
+    expect(taskRunCorrelation(local)).toBeNull();
+
+    const observed = decodeTaskRun({
+      version: 3,
+      ...base,
+      checkpoint: null,
+      identity: { machineId: "u3775", agentId: "codex:session-1", repositoryId: "0xmikko/0_agents", planRevision: "b".repeat(64) },
+    });
+    expect(taskRunIdentity(observed)).toEqual({ machineId: "u3775", agentId: "codex:session-1", repositoryId: "0xmikko/0_agents", planRevision: "b".repeat(64) });
+    expect(taskRunCorrelation(observed)).toEqual({
+      machineId: "u3775",
+      agentId: "codex:session-1",
+      repositoryId: "0xmikko/0_agents",
+      worktree: "/work/example",
+      branch: "feat/example",
+      planRevision: "b".repeat(64),
+    });
+    const waited = accountOwnerWait(local, { reason: "hostname", startedAt: "2026-09-25T10:10:00.000Z" }, "2026-09-25T10:30:00.000Z");
+    if (waited.version !== 3) throw new Error("expected a V3 record");
+    expect(waited.accumulatedOwnerWaitSeconds).toBe(1200);
+    expect(waited.checkpoint).toBe("RED written, GREEN next");
+    expect(() => decodeTaskRun({ version: 3, ...base, identity: null })).toThrow("checkpoint");
   });
 });

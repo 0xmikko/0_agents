@@ -1,0 +1,33 @@
+# The planctl package gate on every pull request: install, docs, the PR gate.
+name: planctl
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: planctl-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: planctl
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Install exact workspace
+        run: bun run agent:install
+      - name: Verify process and documentation
+        run: bun run agent:verify:docs
+      - name: Verify the package
+        run: bun run agent:verify:pr

@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { expect, it } from "bun:test";
 
@@ -68,11 +68,13 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
     mkdirSync(join(consumer, "docs/plans"), { recursive: true });
     git(consumer, "add", ".");
     git(consumer, "commit", "-qm", "test: consumer fixture");
+    git(consumer, "config", "code-production.base", git(consumer, "branch", "--show-current"));
+    git(consumer, "checkout", "-qb", "feat/fixture");
 
     const installed = installStack(consumer);
 
     // Four runtime programs, vocabulary, three hooks, and the workflow.
-    expect(installed.files).toHaveLength(9);
+    expect(installed.files).toHaveLength(15);
     for (const [source, target] of CANONICAL_RUNTIME) {
       expect(readFileSync(join(consumer, target), "utf8")).toBe(
         readFileSync(join(REPOSITORY_ROOT, "planctl", source), "utf8"),
@@ -88,6 +90,7 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
     const plan = "docs/plans/lint.md";
     expect(run("init", plan, "--title", "Lint").status).toBe(0);
     git(consumer, "commit", "-qm", "open the plan");
+    for (const path of ["src/change.ts", "src/save.ts", "test/change.test.ts"]) { mkdirSync(dirname(join(consumer, path)), { recursive: true }); writeFileSync(join(consumer, path), "export {};\n"); }
     writeFileSync(join(consumer, "spec.md"), readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8"));
     expect(run("set-spec", plan, "--from", "spec.md").status).toBe(0);
     // The installed copy carries no parser: approval lints from the source
@@ -109,4 +112,26 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
   } finally {
     rmSync(consumer, { recursive: true, force: true });
   }
+});
+
+/*
+ * @test-id: tst_unit_planctl_package_002
+ * @scenario: scn_planctl_package_ci_001
+ * @covers: .github/workflows/planctl.yml
+ * @deterministic: yes
+ * @fixtures: none
+ * Test environment: source checkout
+ * Clients: workflow file
+ * Mocks: none
+ * Data: the package gate commands
+ */
+it("tst_unit_planctl_package_002 runs the package gate on every pull request of the source repository", () => {
+  const workflow = readFileSync(join(import.meta.dir, "../../.github/workflows/planctl.yml"), "utf8");
+  expect(workflow).toContain("pull_request:");
+  expect(workflow).toContain("working-directory: planctl");
+  expect(workflow).toContain("bun-version: 1.4.2");
+  for (const command of ["bun run agent:install", "bun run agent:verify:docs", "bun run agent:verify:pr"]) {
+    expect(workflow).toContain(`run: ${command}`);
+  }
+  expect(workflow).not.toContain("verify:commit");
 });

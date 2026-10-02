@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { execSync, spawnSync } from "node:child_process";
 
 import { lockPlanSpec, putDelivery, putStage, stageInputs, type StageInput } from "../src/core/plan-update";
 
-import { checkPlanFreeze, gatePlan, planItems } from "../src/core/plan-gate";
+import { checkPlanFreeze, gatePlan, lint, planItems, protocolLanguageViolations } from "../src/core/plan-gate";
 
 // This file used to `delete process.env.PLAN_GATE_NESTED` here, so that the
 // suite could still exercise criterion execution when it ran AS a criterion
@@ -45,14 +45,133 @@ function makeRepo(): { root: string; sha: string } {
   git(root, "init -q");
   git(root, 'config user.email t@t && git config user.name t');
   writeFileSync(join(root, "seed.txt"), "seed\n");
+  for (const [path, text] of [["src/change.ts", "export const change = 1;\n"], ["src/save.ts", "export const save = 1;\n"], ["test/change.test.ts", "export {};\n"]] as const) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
   git(root, "add -A");
   git(root, '-c user.email=t@t -c user.name=t commit -qm seed');
+  // init refuses the integration branch and a missing base
+  git(root, `config code-production.base ${git(root, "branch --show-current")}`);
+  git(root, "checkout -qb feat/fixture");
   return { root, sha: git(root, "rev-parse --short HEAD") };
 }
 
 function planWith(body: string): string {
   return `# A plan\n\n## Stages\n\n${body}\n`;
 }
+
+describe("findings an agent can act on", () => {
+  const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8");
+
+  // @test-id: tst_gate_lint_004
+  // @scenario: scn_plan_form_findings_001
+  // @covers: planctl/src/core/plan-gate.ts::lint
+  // @deterministic: yes
+  // @invariant: every lint finding carries rule, line, quote and replacement; one call reports every error; What changes is not required.
+  it("tst_gate_lint_004 returns every error at once with rule, quote, line and replacement, and asks for no What changes", async () => {
+    const { root } = makeRepo();
+    try {
+      const body = spec
+        .replace("The current parser accepts empty names.", `Continue D1-S4 before the blueprint document lands. ${"word ".repeat(31)}ends.`)
+        .replace("### What changes\n\nReject empty names before saving.\n\n", "");
+      const report = await lint(body, root);
+      const rules = report.violations.map((violation) => violation.rule).sort();
+      expect(rules).toEqual(["codes", "sentence", "vocabulary"]);
+      const vocabulary = report.violations.find((violation) => violation.rule === "vocabulary");
+      expect(vocabulary).toMatchObject({ blocking: false, quote: "blueprint document", replacement: "plan" });
+      expect(report.violations.every((violation) => !violation.blocking)).toBe(true);
+      expect(vocabulary?.line).toBe(body.split("\n").findIndex((line) => line.includes("Continue D1-S4")) + 1);
+      const sentence = report.violations.find((violation) => violation.rule === "sentence");
+      expect(sentence?.quote).toContain("word word");
+      expect(sentence?.replacement).toBeNull();
+      expect(report.violations.some((violation) => violation.text.includes("What changes"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // @test-id: tst_gate_lint_006
+  // @scenario: scn_plan_form_findings_001
+  // @covers: planctl/src/core/plan-gate.ts::lint
+  // @deterministic: yes
+  // @invariant: pseudocode is TypeScript with types: a code block in another language and an untyped parameter are refused at their lines; a typed function passes.
+  it("tst_gate_lint_006 refuses untyped pseudocode: another language, or a parameter without its type", async () => {
+    const { root } = makeRepo();
+    try {
+      const anchor = "`parseChange` refuses an empty name before `saveChange` runs.\n";
+      expect(spec).toContain(anchor);
+      const typed = "```typescript\nfunction contactFor(channelKey: string, observedName: string): string {\n  return channelKey + observedName;\n}\n```\n\n";
+      const untyped = "```typescript\nfunction companyFor(domainKey, observed: string): string {\n  return domainKey + observed;\n}\n```\n\n";
+      const javascript = "```javascript\nfunction prepareAddress(address) {\n  return { entities: [address] };\n}\n```\n\n";
+      const typescript = async (body: string) => (await lint(body, root)).violations.filter((violation) => violation.rule === "typescript").map((violation) => [violation.line, violation.text]);
+      expect(await typescript(spec.replace(anchor, `${anchor}\n${typed}`))).toEqual([]);
+      const withUntyped = spec.replace(anchor, `${anchor}\n${untyped}`);
+      expect(await typescript(withUntyped)).toEqual([[withUntyped.split("\n").indexOf("function companyFor(domainKey, observed: string): string {") + 1, "untyped parameter `domainKey` in `companyFor`: pseudocode is TypeScript with types"]]);
+      const withJavascript = spec.replace(anchor, `${anchor}\n${javascript}`);
+      expect(await typescript(withJavascript)).toEqual([[withJavascript.split("\n").indexOf("```javascript") + 1, "code block in `javascript`: pseudocode is TypeScript with types, in a ```typescript block"]]);
+      // Names are camelCase, always: a snake_case field, parameter or method is refused by name; a PascalCase type is not a name in question.
+      const snake = "```typescript\ninterface WireShape {\n  sync_enabled: boolean;\n  readonly isTracked: boolean;\n}\nfunction applySelection(tracked_handles: string[]): void {\n  return;\n}\n```\n\n";
+      const withSnake = spec.replace(anchor, `${anchor}\n${snake}`);
+      const start = withSnake.split("\n").indexOf("interface WireShape {") + 1;
+      expect(await typescript(withSnake)).toEqual([[start + 1, "`sync_enabled` is not camelCase; TypeScript names are camelCase, always"], [start + 4, "`tracked_handles` is not camelCase; TypeScript names are camelCase, always"]]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // @test-id: tst_gate_lint_007
+  // @scenario: scn_plan_form_findings_001
+  // @covers: planctl/src/core/plan-gate.ts::lint
+  // @deterministic: yes
+  // @invariant: a plan is written in English: Cyrillic in the title or in SPEC prose is refused at its line with the line quoted; the owner's words in «…» and code are exempt.
+  it("tst_gate_lint_007 refuses a plan written in another language, line by line, sparing quoted owner words and code", async () => {
+    const { root } = makeRepo();
+    try {
+      const anchor = "`parseChange` refuses an empty name before `saveChange` runs.\n";
+      const language = async (body: string) => (await lint(body, root)).violations.filter((violation) => violation.rule === "language").map((violation) => [violation.line, violation.quote]);
+      const wrapped = (title: string, spec: string) => `# ${title}\n\nStatus: SPEC_DRAFT  \nSpec lock: unlocked owner:важно  \n\n<!-- plan:spec:start -->\n${spec}<!-- plan:spec:end -->\n`;
+      expect(await language(wrapped("Reject an empty name", spec))).toEqual([]);
+      // A plan without the SPEC markers is history: the rule does not reach it.
+      expect(await language("# Старый план\n\nСтарый текст без маркеров.\n")).toEqual([]);
+      // The lint judges a locked SPEC too (amend goes through it); only the hooks' verify leaves locked history alone.
+      expect(await language(wrapped("Пустое имя отклоняется", spec).replace("Status: SPEC_DRAFT", "Status: SPEC_LOCKED"))).toEqual([[1, "# Пустое имя отклоняется"]]);
+      expect(protocolLanguageViolations(wrapped("Пустое имя отклоняется", spec).replace("Status: SPEC_DRAFT", "Status: SPEC_LOCKED"))).toEqual([]);
+      expect(protocolLanguageViolations(wrapped("Пустое имя отклоняется", spec))).toEqual(["line 1: the plan is written in English; the owner's words may be quoted in «…»: # Пустое имя отклоняется"]);
+      expect(await language(wrapped("Пустое имя отклоняется", spec))).toEqual([[1, "# Пустое имя отклоняется"]]);
+      const russian = wrapped("Reject an empty name", spec.replace(anchor, `${anchor}Пустое имя отклоняется до сохранения.\nThe owner said «пустые имена не нужны».\n\n\`\`\`text\nкомментарий в коде\n\`\`\`\n\n`));
+      const line = russian.split("\n").indexOf("Пустое имя отклоняется до сохранения.") + 1;
+      expect(await language(russian)).toEqual([[line, "Пустое имя отклоняется до сохранения."]]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // @test-id: tst_gate_lint_005
+  // @scenario: scn_plan_form_findings_001
+  // @covers: planctl/src/core/plan-gate.ts::lint
+  // @deterministic: yes
+  // @invariant: The target is flows: a flow without its mermaid diagram or its implementation map is refused by name at its heading, a target without flows is refused, and the model SPEC passes.
+  it("tst_gate_lint_005 refuses a flow without its diagram or its implementation map and a target without flows, by name", async () => {
+    const { root } = makeRepo();
+    try {
+      const diagram = "```mermaid\nflowchart LR\n  Input[\"Change (input)\"] --> Parser[\"One parser\"]\n```\n\n";
+      const map = spec.slice(spec.indexOf("| Implementation map"), spec.indexOf("### Interfaces"));
+      expect(spec).toContain(diagram);
+      expect(map).toContain("| RED test |");
+      const lines = spec.split("\n");
+      const flowLine = lines.indexOf("### Reject an empty name") + 1;
+      const targetLine = lines.indexOf("## The target") + 1;
+      const structure = async (body: string) => (await lint(body, root)).violations.filter((violation) => violation.rule === "structure").map((violation) => [violation.line, violation.text]);
+      expect(await structure(spec)).toEqual([]);
+      expect(await structure(spec.replace(diagram, ""))).toEqual([[flowLine, "flow «Reject an empty name» has no mermaid diagram"]]);
+      expect(await structure(spec.replace(map, ""))).toEqual([[flowLine, "flow «Reject an empty name» has no implementation map: a table with the rows Owner, Target files, Input / wake, Output / durable state, RED test"]]);
+      expect(await structure(spec.replace("### Reject an empty name\n\n", ""))).toEqual([[targetLine, "The target has no flow: one ### heading per flow, each with its mermaid diagram and its implementation map"]]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("plan form", () => {
   const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8");
@@ -64,7 +183,7 @@ describe("plan form", () => {
   // @covers: planctl/src/core/plan-gate.ts --lint
   // @deterministic: yes
   // @fixtures: plan-lint.md, changed once per form defect
-  it("tst_gate_lint_001 refuses each form defect with its source line and accepts valid syntax", () => {
+  it("tst_gate_lint_001 separates blocking syntax errors from editorial advice at their source lines", () => {
     const { root } = makeRepo();
     try {
       const plan = join(root, "plan.md");
@@ -87,7 +206,7 @@ describe("plan form", () => {
         if (body === undefined || reason === undefined) throw new Error("invalid defect fixture");
         writeFileSync(plan, body);
         const run = spawnSync("bun", [gate, plan, "--lint", "--root", root], { encoding: "utf8", env: CLEAN_GIT_ENV, timeout: 15_000 });
-        expect(run.status, `${reason}: ${run.stdout}\n${run.stderr}`).toBe(1);
+        expect(run.status, `${reason}: ${run.stdout}\n${run.stderr}`).toBe(["TypeScript", "mermaid", "criterion"].includes(reason) ? 1 : 0);
         expect(run.stdout).toContain(reason);
         expect(run.stdout).toMatch(/line [1-9]\d*:/);
         const locations: Readonly<Record<string, string>> = { field: "readonly name:", mermaid: "Input[Change", TypeScript: "readonly name:", Stage: "This phase", code: "Continue D1-S4", thirty: "word word", Predict: "- Predict:", criterion: "- [ ] Works" };
@@ -120,7 +239,7 @@ describe("plan form", () => {
       const before = readFileSync(join(root, plan), "utf8");
       const refused = run("approve-spec", plan, "--owner-word", "yes");
       expect(refused.status, `${refused.stdout}\n${refused.stderr}`).toBe(1);
-      expect(refused.stderr).toContain("Why now");
+      expect(refused.stderr).toContain("The target");
       expect(readFileSync(join(root, plan), "utf8")).toBe(before);
       writeFileSync(join(root, "spec.md"), spec);
       expect(run("set-spec", plan, "--from", "spec.md").status).toBe(0);
@@ -196,14 +315,14 @@ ${spec}<!-- plan:spec:end -->
       ]) {
         if (changed === undefined || reason === undefined) throw new Error("missing fixture");
         const rejected = check(changed);
-        expect(rejected.status, rejected.stdout).toBe(1);
+        expect(rejected.status, rejected.stdout).toBe(0);
         expect(rejected.stdout).toContain(reason);
       }
       const small = putStage(base.body, { ...input, writes: writes.slice(0, 2), tasks: input.tasks.map((task) => ({ ...task, writes: writes.slice(0, 2) })) });
       const smallResult = check(small.body);
-      expect(smallResult.status).toBe(1);
+      expect(smallResult.status).toBe(0);
       expect(smallResult.stdout).toContain("two files or fewer");
-      mkdirSync(join(root, "src"));
+      mkdirSync(join(root, "src"), { recursive: true });
       writeFileSync(join(root, writes[0]), "export interface Change { name: string; }\nexport type Surprise = string;\n");
       git(root, "add src/change.ts");
       git(root, 'commit -qm "introduce public input"');
@@ -227,8 +346,18 @@ ${spec}<!-- plan:spec:end -->
       mkdirSync(join(root, "docs"));
       writeFileSync(join(root, "docs/graph.md"), "| Term | Meaning | Not |\n|---|---|---|\n| name | input name | label |\n");
       const glossary = check(body.replace("empty names", "empty label"));
-      expect(glossary.status).toBe(1);
+      expect(glossary.status).toBe(0);
       expect(glossary.stdout).toContain("say name instead of label");
+      // Only the vocabulary table names synonyms; another table on the page
+      // (parts, states, places) is not a list of words to replace.
+      writeFileSync(join(root, "docs/graph.md"), [
+        "| Term | Meaning | Not |", "|---|---|---|", "| name | input name | label |", "",
+        "| Part | State | Where |", "|---|---|---|", "| The indexer: pull, admit, write | not built | plan |", "",
+      ].join("\n"));
+      const shaped = check(body.replace("empty names", "empty label in the plan"));
+      expect(shaped.status).toBe(0);
+      expect(shaped.stdout).toContain("say name instead of label");
+      expect(shaped.stdout).not.toContain("instead of plan");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

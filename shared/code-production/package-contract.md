@@ -27,6 +27,16 @@ Rules:
 6. Final review reuses the published-SHA gate result. It reruns a suite only
    when the reviewed SHA changed.
 
+## The base branch and the skill copies
+
+`agent-stack install --base <branch>` writes `code-production.base`, the
+branch every plan of the repository branches from; `check` refuses a missing
+value and names the command. The three flow skills (`blueprint`,
+`blueprint-start`, `end-work`) are managed copies under `.claude/skills` and
+`.agents/skills`, written from `shared/skills` on every install and compared
+by `check`, like the runtime. Skills the repository owns beside them are not
+touched.
+
 ## Existing CI
 
 The managed GitHub workflow is the default. A repository that already owns an

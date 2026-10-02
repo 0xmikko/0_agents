@@ -191,6 +191,7 @@ describe("authenticated snapshot ingest", () => {
             progress: {
               deliveryId: "D1",
               tasks: { completed: 1, total: 2 },
+              wholePlan: { completed: 1, total: 2 },
               activeMinutes: { completed: 10, remaining: 10, total: 20 },
               credits: { completed: 1, remaining: 1, total: 2 },
               completionPercent: 50,

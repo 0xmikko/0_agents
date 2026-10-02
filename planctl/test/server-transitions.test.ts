@@ -55,6 +55,7 @@ function progress(planRevision: string): MachineSnapshot["plans"][number] {
     progress: {
       deliveryId: "D1",
       tasks: { completed: 0, total: 1 },
+      wholePlan: { completed: 0, total: 1 },
       activeMinutes: { completed: 0, remaining: 20, total: 20 },
       credits: { completed: 0, remaining: 5, total: 5 },
       completionPercent: 0,

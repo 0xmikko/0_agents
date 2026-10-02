@@ -1,16 +1,17 @@
 ---
 name: review-plan
-description: Plan review via Codex with strict iterate-until-APPROVED loop and finding triage. After every fix, re-run Codex; never self-assert. For context-mismatched findings (e.g. security on local-only code), ask the user before applying.
+description: Plan review by Codex with a strict iterate-until-APPROVED loop and finding triage. After every fix, re-run Codex; never self-assert. For context-mismatched findings (e.g. security on local-only code), ask the user before applying.
 user-invocable: true
 disable-model-invocation: true
 ---
 
 <!-- KEEP-ALIGNED: codex/skills/review-plan/SKILL.md — both tools have a divergent copy of this skill (different project doc references and review tool). When changing this file, sync the twin or document why they intentionally diverge. -->
 
-# MCP Plan Review
+# Codex Plan Review
 
-Call `mcp__codex__codex` to review the active plan, triage findings, loop
-until APPROVED, or escalate to the user when stuck.
+Run Codex non-interactively over the active plan, triage its findings, loop
+until APPROVED, or escalate to the user when stuck. Codex 0.156 has no MCP
+server mode: the reviewer is `codex exec`, run from Bash.
 
 ## Rules (do not violate)
 
@@ -18,6 +19,9 @@ until APPROVED, or escalate to the user when stuck.
   findings, should be approved now") is NOT review. Only the most recent
   Codex output counts as the verdict.
 - **Never apply Codex's fixes blindly.** Triage every finding (see below).
+- **Never edit the plan by hand.** A REAL finding is applied through the
+  planctl tools: `submit_spec` on a draft, `amend` under the owner's word on
+  a locked plan, `put_stage` for the contract.
 - **Never exit on NEEDS_WORK.** The loop continues until APPROVED, or
   until the iteration cap forces a human decision.
 - **Iteration cap: 3 Codex rounds.** If after round 3 Codex still returns
@@ -55,36 +59,53 @@ Wait for the user's answer per finding before continuing.
 
 ### How to find the plan
 
-1. If plan mode is active — the path is in the system prompt
-   (e.g. `/Users/mikko/.claude/plans/<name>.md`).
-2. Otherwise — find the most recently modified `.md` in `/Users/mikko/.claude/plans/`.
+The plan lives in the repository: call `progress` with `root` (the
+worktree); it names `docs/plans/<slug>.md`. When the user names another
+plan, review that one.
 
 ### How to call Codex
 
-Plan files live in user home (`~/.claude/plans/`), NOT in the repo. Codex
-runs in a sandbox rooted at the repo and CANNOT read files outside it.
+Codex reads the plan itself: it runs in a read-only sandbox rooted at the
+worktree. Write the prompt to a file in the scratchpad, then run from Bash;
+the prompt comes in on stdin and the verdict lands in the file `-o` names.
+The stream on stdout is progress only.
 
-**Therefore:** Read the plan file with the Read tool, then pass its CONTENT
-directly in the Codex prompt. Do NOT copy files. Do NOT create temp files.
-Just read → paste into prompt.
+```bash
+cd <worktree>
+codex exec --sandbox read-only -C "$PWD" -o <scratchpad>/review-round-<N>.md < <scratchpad>/review-prompt-<N>.md
+```
+
+The prompt names the plan path and asks for exactly this answer: the first
+line `APPROVED` or `NEEDS_WORK`, then one finding per line as
+`<section or line>: <what is missing or wrong>`. No rewrites, no proposed
+text: Codex names the gap, the agent fixes it through the tools.
+
+A Delivery in another repository changes nothing above: the worktree stays
+the root, and the prompt names that checkout's absolute path, read from
+`git config code-production.repository.<name>` in the worktree. The
+read-only sandbox reads outside its root. Never run from a directory above
+both checkouts: it is no repository, and `--skip-git-repo-check` is not used.
 
 ### What Codex evaluates
 
-Requirements completeness; architecture feasibility; file change map (every
-file listed with CREATE / MODIFY); test specification quality (step-by-step
-`Step N → Verify` behavioral scenarios, NOT pseudocode); test strategy;
-file count justification.
+Requirements completeness against the owner's request; architecture
+feasibility; every flow of The target with its diagram and implementation
+map (Owner, Target files, Input / wake, Output / durable state, RED test);
+the Target tree (every file with CREATE / MODIFY); Invariants as
+`Step N → Verify` behavioral scenarios, not pseudocode; Reuse of existing
+mechanisms; the implementation contract's Stages as one commit each with
+RED commands.
 
 ## Loop
 
 ```
 round = 1
 while round ≤ 3:
-  pass plan content to mcp__codex__codex
-  if output starts with APPROVED:
+  run codex exec over the plan
+  if the verdict file starts with APPROVED:
     return "APPROVED — Codex agreed in round N"
   triage findings → REAL / CONTEXT-MISMATCHED / STYLE
-  for each REAL: apply fix to plan
+  for each REAL: apply the fix through the planctl tools
   for each CONTEXT-MISMATCHED: ask user, follow their decision
   ignore STYLE
   round += 1

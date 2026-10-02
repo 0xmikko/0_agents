@@ -2,6 +2,7 @@ import { isAbsolute, relative } from "node:path";
 
 import type { AgentSnapshot, AgentProvider } from "../../core/snapshot-protocol";
 import type { TaskRun } from "../../core/task-run";
+import { taskRunIdentity } from "../../core/task-run";
 
 export interface SessionActivity {
   readonly agentId: string;
@@ -114,10 +115,10 @@ export function classifySessionActivities(input: SessionClassificationInput): re
       const lastActivityMs = timestampMs(activity.lastActivityAt, "session lastActivityAt");
       const idleSeconds = Math.max(0, Math.floor((nowMs - lastActivityMs) / 1_000));
       const run = input.taskRuns
-        .filter((candidate) => candidate.version === 2 && candidate.agentId === activity.agentId)
+        .filter((candidate) => taskRunIdentity(candidate)?.agentId === activity.agentId)
         .sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt))[0];
       const discoveredWorktree = worktreeFor(activity.cwd, input.worktrees);
-      const correlated = run?.version === 2 && contains(run.worktree, activity.cwd) ? run : null;
+      const correlated = run !== undefined && run.version !== 1 && contains(run.worktree, activity.cwd) ? run : null;
       const externalOwnerWait = correlated === null
         ? null
         : input.ownerWaits?.find((wait) => wait.plan === correlated.plan && wait.taskId === correlated.taskId
@@ -147,15 +148,16 @@ export function classifySessionActivities(input: SessionClassificationInput): re
           - correlated.accumulatedOwnerWaitSeconds * 1_000
           - currentOwnerWaitMs
         ) / 60_000);
+      const identity = correlated === null ? null : taskRunIdentity(correlated);
       return {
         agentId: activity.agentId,
         provider: activity.provider,
         state,
-        repositoryId: correlated?.repositoryId ?? discoveredWorktree?.repositoryId ?? null,
+        repositoryId: identity?.repositoryId ?? discoveredWorktree?.repositoryId ?? null,
         worktree: correlated?.worktree ?? discoveredWorktree?.path ?? (processLive ? activity.cwd : null),
         branch: correlated?.branch ?? discoveredWorktree?.branch ?? null,
-        planId: correlated === null ? null : `${correlated.repositoryId}:${correlated.plan}`,
-        planRevision: correlated?.planRevision ?? null,
+        planId: correlated === null || identity === null ? null : `${identity.repositoryId}:${correlated.plan}`,
+        planRevision: identity?.planRevision ?? null,
         taskId: correlated?.taskId ?? null,
         lastActivityAt: new Date(lastActivityMs).toISOString(),
         idleSeconds,
