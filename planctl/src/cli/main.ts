@@ -875,9 +875,13 @@ async function checkMarkdown(args: readonly string[]): Promise<void> {
   const file = args[1];
   if (file === undefined) throw new Error("markdown file is required");
   const { markdownDiagramErrors } = await import("../core/plan-gate");
-  const errors = await markdownDiagramErrors(readFileSync(resolve(process.cwd(), file), "utf8"));
+  const body = readFileSync(resolve(process.cwd(), file), "utf8");
+  const errors = await markdownDiagramErrors(body);
   if (errors.length > 0) throw new Error(`${file}: ${errors.length} mermaid block(s) do not parse\n${errors.join("\n")}`);
-  console.log(`planctl: ${file}: every mermaid block parses`);
+  // A plan is published in English only: the same rule the tools and the hooks run.
+  const language = protocolLanguageViolations(body);
+  if (language.length > 0) throw new Error(`${file}:\n${language.join("\n")}`);
+  console.log(`planctl: ${file}: every mermaid block parses, the plan is in English`);
 }
 
 function runEngine(args: readonly string[], engineCommand: string): number {

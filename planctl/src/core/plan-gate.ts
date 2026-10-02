@@ -272,6 +272,15 @@ function lintTypes(
       if (ts.isInterfaceDeclaration(syntax) || ts.isTypeAliasDeclaration(syntax)) {
         if (interfaces !== null && sourceLine(node) > interfaces.line && sourceLine(node) <= interfaces.line + interfaces.text.split("\n").length) types.add(syntax.name.text);
       }
+      // Names are camelCase, always: a field, parameter, method, variable or function with an underscore is refused by name.
+      if ((ts.isPropertySignature(syntax) || ts.isPropertyDeclaration(syntax) || ts.isParameter(syntax) || ts.isMethodSignature(syntax)
+        || ts.isMethodDeclaration(syntax) || ts.isVariableDeclaration(syntax) || ts.isFunctionDeclaration(syntax) || ts.isPropertyAssignment(syntax)) && syntax.name !== undefined) {
+        const name = syntax.name.getText(source).replace(/^["'`]|["'`]$/g, "");
+        if (name.includes("_")) {
+          const row = source.getLineAndCharacterOfPosition(syntax.name.getStart(source)).line;
+          add(sourceLine(node) + row + 1, `\`${name}\` is not camelCase; TypeScript names are camelCase, always`, "typescript", name);
+        }
+      }
       if (ts.isFunctionLike(syntax)) {
         for (const parameter of syntax.parameters) {
           if (parameter.type !== undefined) continue;
