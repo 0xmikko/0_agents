@@ -88,14 +88,20 @@ function deadReferences(root: string, all: readonly Line[], skills: readonly str
 }
 
 /** The vocabulary table: term → the words that mean the same thing here and
- * are therefore not used. Read from the "Not" column of every row. */
+ * are therefore not used. Read from the "Not" column of every row of the
+ * table whose header ends in "Not"; another table on the page is not a word list. */
 export function synonyms(root: string, file = VOCABULARY): Map<string, string> {
   const path = join(root, file);
   if (!existsSync(path)) return new Map();
   const map = new Map<string, string>();
-  for (const line of readFileSync(path, "utf8").split("\n")) {
-    const cells = line.split("|").map((cell) => cell.trim());
-    if (cells.length < 5 || cells[1] === "Term" || cells[1]?.startsWith("---")) continue;
+  const lines = readFileSync(path, "utf8").split("\n");
+  let vocabularyTable = false;
+  for (let index = 0; index < lines.length; index++) {
+    const cells = (lines[index] ?? "").split("|").map((cell) => cell.trim());
+    if (cells.length < 5) { vocabularyTable = false; continue; }
+    const header = (lines[index + 1] ?? "").split("|").map((cell) => cell.trim())[1]?.startsWith("---") === true;
+    if (header) { vocabularyTable = cells[3] === "Not"; index++; continue; }
+    if (!vocabularyTable) continue;
     const term = cells[1] ?? "";
     for (const word of (cells[3] ?? "").split(",").map((w) => w.trim().toLowerCase()).filter((w) => w !== "")) {
       if (!map.has(word)) map.set(word, term);

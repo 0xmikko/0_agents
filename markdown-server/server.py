@@ -290,6 +290,14 @@ def index_html() -> str:
     return "".join(parts)
 
 
+def document_title(md_text: str, file_name: str) -> str:
+    """The tab carries the document's own title: its first H1; a document without one is named by its file."""
+    for line in md_text.splitlines():
+        if line.startswith("# "):
+            return line[2:].strip()
+    return file_name
+
+
 def render_page(body_html: str, title: str) -> bytes:
     return PAGE.format(title=html_lib.escape(title), css=CSS, body=body_html).encode("utf-8")
 
@@ -316,7 +324,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
 
             md_text = target.read_text(encoding="utf-8", errors="replace")
-            self._send(render_page(render_markdown(md_text), target.name))
+            self._send(render_page(render_markdown(md_text), document_title(md_text, target.name)))
         except PermissionError as e:
             self._error(500, f"cannot read file: {e}")
         except Exception as e:  # noqa: BLE001 -- server should not crash

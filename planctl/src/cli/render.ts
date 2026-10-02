@@ -44,13 +44,16 @@ export function renderProgress(view: ProgressReport): string {
   ].join("\n");
 }
 
-/** The "where am I" screen. @tested-by: tst_unit_planctl_progress_002 */
+function renderPublication(publication: ProgressView["publication"]): string {
+  if (publication === null) return "none observed";
+  if ("error" in publication) return `unavailable: ${publication.error}`;
+  return `${publication.prUrl} · CI on ${publication.headSha.slice(0, 7)} ${publication.ci} (run ${publication.runId} attempt ${publication.attempt}) · merge: ${publication.merged ? "merged" : "not yet"}`;
+}
+
+/** The "where am I" screen: one Publish line per Delivery, in its own repository. @tested-by: tst_unit_planctl_progress_002, tst_unit_planctl_progress_004 */
 export function renderProgressView(view: ProgressView): string {
-  const publication = view.publication === null
-    ? "Publish   none observed"
-    : "error" in view.publication
-      ? `Publish   unavailable: ${view.publication.error}`
-      : `Publish   ${view.publication.prUrl} · CI on ${view.publication.headSha.slice(0, 7)} ${view.publication.ci} (run ${view.publication.runId} attempt ${view.publication.attempt}) · merge: ${view.publication.merged ? "merged" : "not yet"}`;
+  const publications = view.publications.map((entry) =>
+    `Publish   ${entry.deliveryId}${entry.repository === null ? "" : ` in ${entry.repository}`} · ${renderPublication(entry.publication)}`);
   const runtime = view.runtime === null
     ? "Runtime   unavailable: no installed manifest"
     : `Runtime   installed ${view.runtime.installed.slice(0, 7)} · source ${view.runtime.source.slice(0, 7)}${view.runtime.stale ? " · stale" : ""}`;
@@ -66,7 +69,7 @@ export function renderProgressView(view: ProgressView): string {
     view.currentTask === null ? "Now       no Task running" : `Now       ${view.currentTask.id} since ${view.currentTask.startedAt}${view.currentTask.checkpoint === null ? "" : ` · ${view.currentTask.checkpoint}`}`,
     delivery,
     `Plan      ${view.wholePlan.completedTasks} of ${view.wholePlan.totalTasks} Tasks · ${view.wholePlan.deliveries.map((entry) => `${entry.id} ${entry.state}`).join(", ") || "no Deliveries"}`,
-    publication,
+    ...publications,
     runtime,
     eligible,
   ].join("\n");

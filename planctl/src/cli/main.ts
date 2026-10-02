@@ -4,8 +4,9 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { z } from "zod";
 
-import type { AuthoringContract } from "../core/plan-gate";
+import type { AuthoringContract, GateViolation } from "../core/plan-gate";
 import type { TaskBrief } from "../core/plan-update";
 import type { OwnerWaitReceipt, TaskRun, TaskRunIdentity, TaskRunV1 } from "../core/task-run";
 import type { GitWorktreeIdentity } from "../machine/sessions/session-source";
@@ -26,12 +27,13 @@ const {
   mutatePlanFile,
   needsOwner: needsOwnerOperation,
   replaceDraftSpec,
+  replaceDraftTitle,
   resumeTask: resumeTaskOperation,
   startTask: startTaskOperation,
   taskRunPath,
   verifyStagedPlan,
 } = await import(PLAN_UPDATE_FILE);
-const { authoringContract, protocolImplementationHash, protocolLockViolations } = await import(portableRuntimeFile("plan-gate.ts"));
+const { authoringContract, protocolImplementationHash, protocolLanguageViolations, protocolLockViolations } = await import(portableRuntimeFile("plan-gate.ts"));
 
 const GENERAL_HELP = `Usage: planctl <command> [arguments]
 
@@ -41,7 +43,7 @@ edited directly.
 
 Authoring:
   init               Create and stage a SPEC_DRAFT plan
-  mcp                Serve the tools over stdio for Claude and Codex
+  mcp                Serve the tools over stdio for Claude and Codex; --tools lists their names
   stats              The five tables from ~/.local/share/planctl/events.jsonl
   set-spec           Replace and stage SPEC while it is still draft
   approve-spec       Lock SPEC after explicit owner approval
@@ -68,8 +70,9 @@ Execution:
   amend              Apply an explicit owner amendment
 
 Checks:
-  verify             Verify SPEC and implementation locks
+  verify             Verify SPEC and implementation locks, and that the plan is in English
   verify-staged      Verify the staged mutation journal
+  check-markdown     Exit 0 only if every mermaid block of a markdown file parses
 
 Run planctl <command> --help for exact syntax and JSON contracts.
 `;
@@ -80,11 +83,13 @@ const COMMAND_HELP: Readonly<Record<string, string>> = {
 Creates docs/plans/<date>-<slug>.md from the branch (or the named file),
 stages it, journals it, and prints the authoring contract: the sections,
 the vocabulary pairs and the Goal rule. Refuses the integration branch and
-a missing code-production.base. Commit the plan before locking SPEC.
+a missing code-production.base. The plan stays staged under one journal
+through authoring; it is committed once, after approve-plan.
 `,
-  "set-spec": `Usage: planctl set-spec <plan.md> --from <spec.md>
+  "set-spec": `Usage: planctl set-spec <plan.md> --from <spec.md> [--title <text>]
 
-Replaces only the marked SPEC in SPEC_DRAFT and stages the plan.
+Replaces only the marked SPEC in SPEC_DRAFT, and the title when given, and
+stages the plan. A title in another language is refused.
 `,
   "approve-spec": `Usage: planctl approve-spec <plan.md> --owner-word <receipt>
 
@@ -102,6 +107,10 @@ services — kept apart from active work. The active-work total and the longest
 dependency path are derived from the Stages and rendered as one "Forecast:"
 line under the Stage graph, recomputed on every put-stage, frozen by
 approve-plan and compared against the Stage Results afterwards.
+
+"repository" names the repository a Delivery lives in when it is not the
+plan's own; the checkout is one config line on the machine,
+git config code-production.repository.<name> <path>. Absent: this repository.
 
 "description" is the pull request text as of the merge, in plain language:
 what changed for people, what changed in the code, how it was proven, what is
@@ -517,7 +526,7 @@ async function progress(args: readonly string[]): Promise<void> {
   const progressCore = await import("../core/plan-progress");
   const view = await progressCore.planProgress(rootPath, {
     plan: explicit,
-    publication: (branch) => readPublication(rootPath, branch),
+    publication: readPublication,
     sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
     decodeRun: taskRunFrom,
   });
@@ -595,17 +604,19 @@ async function startTask(args: readonly string[]): Promise<void> {
 /** Serve the tools over stdio; diagnostics go to stderr, the protocol owns stdout. */
 async function mcp(args: readonly string[]): Promise<void> {
   dedicatedRuntime();
-  const { createPlanctlServer } = await import("../mcp/server");
+  const { createPlanctlServer, toolNames } = await import("../mcp/server");
+  if (args.includes("--tools")) {
+    console.log(toolNames().join("\n"));
+    return;
+  }
   const { commandPublisher } = await import("../mcp/publish");
   const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
   const { eventLogPath } = await import("../core/event-log");
-  const { claudeModelRunner } = await import("../core/spec-submission");
   const server = createPlanctlServer({
     cwd: process.cwd(),
     publication: readPublication,
     sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
     eventLog: eventLogPath(homedir()),
-    model: claudeModelRunner,
     publisher: commandPublisher(optionalFlag(args, "--publisher") ?? "mdurl"),
   });
   const transport = new StdioServerTransport();
@@ -664,7 +675,9 @@ async function resumeTask(args: readonly string[]): Promise<void> {
     : `Task ${taskId} RESUMED\nCleared owner wait: ${resumed.marker.context}`);
 }
 
-/** What gh reports for a Delivery branch: the PR, its CI on the current head, the last run. */
+/** What gh reports for a Delivery branch: the PR, its Actions CI on the current head, the last run.
+ * @tested-by: tst_scripts_planctl_014
+ */
 function readPublication(rootPath: string, branch: string): import("../core/plan-progress").ProgressView["publication"] {
   const gh = (...ghArgs: readonly string[]): string => {
     const result = spawnSync("gh", ghArgs, { cwd: rootPath, encoding: "utf8" });
@@ -672,24 +685,43 @@ function readPublication(rootPath: string, branch: string): import("../core/plan
     if (result.status !== 0) throw new Error(result.stderr.trim() || `gh ${ghArgs[0]} exited ${result.status}`);
     return result.stdout;
   };
-  const pulls: unknown = JSON.parse(gh("pr", "list", "--head", branch, "--state", "all", "--limit", "1", "--json", "url,headRefOid,mergedAt,statusCheckRollup"));
-  if (!Array.isArray(pulls) || pulls.length === 0) return null;
-  const pull = pulls[0] as Readonly<Record<string, unknown>>;
-  if (typeof pull.url !== "string" || typeof pull.headRefOid !== "string") throw new Error("gh pr list returned no url or head");
-  const checks = Array.isArray(pull.statusCheckRollup) ? pull.statusCheckRollup as readonly Readonly<Record<string, unknown>>[] : [];
-  const conclusions = checks.map((check) => `${check.conclusion ?? check.state ?? ""}`.toUpperCase());
-  const ci = conclusions.some((value) => ["FAILURE", "ERROR", "CANCELLED", "TIMED_OUT"].includes(value))
+  const pulls = z.array(z.object({ url: z.string(), headRefOid: z.string(), mergedAt: z.string().nullable() })).parse(
+    JSON.parse(gh("pr", "list", "--head", branch, "--state", "all", "--limit", "1", "--json", "url,headRefOid,mergedAt")),
+  );
+  const pull = pulls[0];
+  if (pull === undefined) return null;
+  const pages = z.array(z.object({ workflow_runs: z.array(z.object({
+    id: z.number().int().positive(),
+    workflow_id: z.number().int().positive(),
+    event: z.string(),
+    head_sha: z.string(),
+    status: z.string(),
+    conclusion: z.string().nullable(),
+    run_attempt: z.number().int().positive(),
+  })) })).parse(JSON.parse(gh("api", "--method", "GET", "repos/{owner}/{repo}/actions/runs",
+    "-f", `head_sha=${pull.headRefOid}`, "-f", `branch=${branch}`, "-f", "per_page=100", "--paginate", "--slurp")));
+  const seen = new Set<string>();
+  const runs = pages.flatMap((page) => page.workflow_runs)
+    .filter((run) => run.head_sha === pull.headRefOid)
+    .sort((left, right) => right.id - left.id)
+    .filter((run) => {
+      const key = `${run.workflow_id}:${run.event}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  const passed = new Set(["success", "skipped", "neutral"]);
+  const ci = runs.some((run) => run.status === "completed" && run.conclusion !== null && !passed.has(run.conclusion))
     ? "red"
-    : conclusions.length > 0 && conclusions.every((value) => ["SUCCESS", "SKIPPED", "NEUTRAL"].includes(value)) ? "green" : "pending";
-  const runs: unknown = JSON.parse(gh("run", "list", "--branch", branch, "--commit", pull.headRefOid, "--limit", "1", "--json", "databaseId,attempt"));
-  const run = Array.isArray(runs) && runs.length > 0 ? runs[0] as Readonly<Record<string, unknown>> : null;
+    : runs.length > 0 && runs.every((run) => run.status === "completed" && run.conclusion !== null && passed.has(run.conclusion)) ? "green" : "pending";
+  const run = runs[0];
   return {
     prUrl: pull.url,
     ci,
     headSha: pull.headRefOid,
-    runId: run === null ? "" : String(run.databaseId),
-    attempt: run !== null && typeof run.attempt === "number" ? run.attempt : 0,
-    merged: typeof pull.mergedAt === "string",
+    runId: run === undefined ? "" : String(run.id),
+    attempt: run === undefined ? 0 : run.run_attempt,
+    merged: pull.mergedAt !== null,
   };
 }
 
@@ -757,7 +789,8 @@ async function completeTask(args: readonly string[]): Promise<number> {
     if (run.plan !== target.relative || run.taskId === "" || !receipt.taskIds.includes(run.taskId)) {
       throw new Error("Task start receipt does not match the Stage result");
     }
-    if (spawnSync("git", ["-C", rootPath, "merge-base", "--is-ancestor", run.baseHead, receipt.commit]).status !== 0) {
+    // The record names the checkout the Task ran in; the commit is judged there.
+    if (spawnSync("git", ["-C", run.version === 3 ? run.worktree : rootPath, "merge-base", "--is-ancestor", run.baseHead, receipt.commit]).status !== 0) {
       throw new Error(`Task ${run.taskId} result commit does not descend from its start base`);
     }
   }
@@ -784,10 +817,12 @@ async function init(args: readonly string[]): Promise<void> {
     `Sections: ${contract.sections.join(", ")}`,
     ...contract.vocabulary.map((pair) => `Vocabulary: ${pair.word} → ${pair.term}`),
     `Goal rule: ${contract.goalRule}`,
+    `Target rule: ${contract.targetRule}`,
+    `Example flow:\n${contract.example}`,
   ].join("\n"));
 }
 
-function setSpec(args: readonly string[]): void {
+async function setSpec(args: readonly string[]): Promise<void> {
   const plan = args[1];
   if (plan === undefined) throw new Error("plan path is required");
   const rootPath = root();
@@ -796,7 +831,36 @@ function setSpec(args: readonly string[]): void {
   // Through the journaled writer, like every other mutation: a SPEC written by
   // hand left no journal, and the managed pre-commit refuses a staged marker
   // plan that has none.
-  mutatePlanFile(rootPath, target.relative, "set-spec", (body: string) => replaceDraftSpec(body, spec));
+  const title = optionalFlag(args, "--title");
+  const candidate = (body: string): { body: string } => {
+    const withSpec = replaceDraftSpec(body, spec).body;
+    return title === undefined ? { body: withSpec } : replaceDraftTitle(withSpec, title);
+  };
+  // Every writer refuses another language before writing; this one needs no parser for that.
+  const language = protocolLanguageViolations(candidate(readFileSync(resolve(rootPath, target.relative), "utf8")).body);
+  if (language.length > 0) throw new Error(language.join("\n"));
+  mutatePlanFile(rootPath, target.relative, "set-spec", candidate);
+  // The installed copy carries no lint; the launcher reports every error the saved SPEC has, like submit_spec.
+  if (basename(import.meta.dir) !== "cli") return;
+  const findings = await lintFindings(rootPath, target.relative);
+  console.log([`Checks: ${findings.length} errors`, ...findings].join("\n"));
+}
+
+/** Every lint error of a plan, one line each, as the tools print them. */
+async function lintFindings(rootPath: string, plan: string): Promise<readonly string[]> {
+  const { lint } = await import(portableRuntimeFile("plan-gate.ts"));
+  const report = await lint(readFileSync(resolve(rootPath, plan), "utf8"), rootPath);
+  return report.violations.filter((violation: GateViolation) => violation.blocking).map((violation: GateViolation) => `line ${violation.line}: ${violation.text}${violation.replacement === null ? "" : ` → ${violation.replacement}`}`);
+}
+
+/** Approval runs the same lint as submission on the same bytes; every error refuses, like the tools. */
+async function refuseLintErrors(args: readonly string[]): Promise<void> {
+  // The installed copy carries no lint: lint() itself says to approve through the launcher.
+  const plan = args[1];
+  if (plan === undefined) throw new Error("plan path is required");
+  const rootPath = root();
+  const findings = await lintFindings(rootPath, addressedPath(rootPath, plan).relative);
+  if (findings.length > 0) throw new Error(`lint has ${findings.length} error(s):\n${findings.join("\n")}`);
 }
 
 async function configCommand(args: readonly string[]): Promise<void> {
@@ -822,9 +886,24 @@ function verify(args: readonly string[]): void {
   const plan = args[1];
   if (plan === undefined) throw new Error("plan path is required");
   const body = readFileSync(resolve(root(), plan), "utf8");
-  const violations = protocolLockViolations(body);
-  if (violations.length > 0) throw new Error(violations.join("; "));
-  console.log("planctl: locks verified");
+  const violations = [...protocolLockViolations(body), ...protocolLanguageViolations(body)];
+  if (violations.length > 0) throw new Error(violations.join("\n"));
+  console.log("planctl: locks verified, the plan is in English");
+}
+
+/** For a publisher: every mermaid block of a markdown file must parse, or the file is not published. */
+async function checkMarkdown(args: readonly string[]): Promise<void> {
+  dedicatedRuntime();
+  const file = args[1];
+  if (file === undefined) throw new Error("markdown file is required");
+  const { markdownDiagramErrors } = await import("../core/plan-gate");
+  const body = readFileSync(resolve(process.cwd(), file), "utf8");
+  const errors = await markdownDiagramErrors(body);
+  if (errors.length > 0) throw new Error(`${file}: ${errors.length} mermaid block(s) do not parse\n${errors.join("\n")}`);
+  // A plan is published in English only: the same rule the tools and the hooks run.
+  const language = protocolLanguageViolations(body);
+  if (language.length > 0) throw new Error(`${file}:\n${language.join("\n")}`);
+  console.log(`planctl: ${file}: every mermaid block parses, the plan is in English`);
 }
 
 function runEngine(args: readonly string[], engineCommand: string): number {
@@ -854,15 +933,20 @@ async function run(args: readonly string[]): Promise<number> {
     return 0;
   }
   if (command === "set-spec") {
-    setSpec(args);
+    await setSpec(args);
     return 0;
   }
+  if (command === "approve-spec" || command === "approve-plan") await refuseLintErrors(args);
   if (command === "config") {
     await configCommand(args);
     return 0;
   }
   if (command === "verify") {
     verify(args);
+    return 0;
+  }
+  if (command === "check-markdown") {
+    await checkMarkdown(args);
     return 0;
   }
   if (command === "start-task") {

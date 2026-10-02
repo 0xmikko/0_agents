@@ -2,12 +2,11 @@ import { describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { lint } from "../src/core/plan-gate";
 import { createDraftPlan, journalCreatedPlan, lockPlanSpec, mutatePlanFile, protocolSpecHash } from "../src/core/plan-update";
 import { submitSpec } from "../src/core/spec-submission";
 
-type ModelRunner = (prompt: string, deadlineMs: number) => Promise<string>;
 
 const PLAN = "docs/plans/2026-09-25-fixture.md";
 
@@ -19,6 +18,10 @@ function repository(): string {
   git("config", "user.name", "Test");
   git("commit", "-q", "--allow-empty", "-m", "the repository");
   mkdirSync(join(root, "docs/plans"), { recursive: true });
+  for (const [path, text] of [["src/change.ts", "export const change = 1;\n"], ["src/save.ts", "export const save = 1;\n"], ["test/change.test.ts", "export {};\n"]] as const) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
   const body = createDraftPlan("Fixture plan");
   writeFileSync(join(root, PLAN), body);
   git("add", PLAN);
@@ -27,7 +30,6 @@ function repository(): string {
 }
 
 const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result.");
-const silent: ModelRunner = () => Promise.resolve(JSON.stringify({ findings: [] }));
 
 describe("submit_spec", () => {
   /**
@@ -35,29 +37,29 @@ describe("submit_spec", () => {
    * @scenario: scn_planctl_spec_submission_001
    * @covers: planctl/src/core/spec-submission.ts::submitSpec
    * @deterministic: yes
-   * @invariant: a submission fixes line endings and vocabulary itself, returns every lint error at once, refuses a stale revision and a locked plan, and approval on the same bytes finds nothing new.
+   * @invariant: a submission preserves authored words, reports editorial advice without blocking, refuses stale and locked revisions, and approval on the same bytes finds nothing new.
    */
-  it("tst_unit_planctl_spec_submission_001 corrects, reports, refuses stale and locked, and leaves approval nothing new", async () => {
+  it("tst_unit_planctl_spec_submission_001 preserves words, reports advice, and refuses stale and locked revisions", async () => {
     const root = repository();
     try {
       const base = protocolSpecHash(readFileSync(join(root, PLAN), "utf8"));
       const draft = spec.replace("The current parser accepts empty names.", `The blueprint document names the parser. ${"word ".repeat(31)}ends.`).replace(/\n/g, "\r\n");
-      const result = await submitSpec(root, { plan: PLAN, baseRevision: base, ownerRequest: "Reject empty names", spec: draft }, silent);
+      const result = await submitSpec(root, { plan: PLAN, baseRevision: base, ownerRequest: "Reject empty names", spec: draft });
       expect(result.state).toBe("SPEC_DRAFT");
-      expect(result.corrections).toEqual([{ line: expect.any(Number), before: expect.stringContaining("The blueprint document names the parser."), after: expect.stringContaining("The plan names the parser.") }]);
-      expect(result.corrections[0]?.after).not.toContain("blueprint document");
+      expect(result.corrections).toEqual([]);
       const saved = readFileSync(join(root, PLAN), "utf8");
       expect(saved).not.toContain("\r");
-      expect(saved).toContain("The plan names the parser.");
+      expect(saved.split("<!-- plan:spec:start -->")[1]?.split("<!-- plan:spec:end -->")[0]?.trim()).toBe(draft.replace(/\r\n/g, "\n").trim());
       expect(result.revision).toBe(protocolSpecHash(saved));
-      expect(result.findings.map((finding) => finding.rule)).toEqual(["sentence"]);
+      expect(result.findings.map((finding) => finding.rule)).toEqual(["vocabulary", "sentence"]);
+      expect(result.findings.every((finding) => !finding.blocking)).toBe(true);
       const approval = await lint(saved, root);
       expect(approval.violations.map((finding) => `${finding.line}:${finding.text}`)).toEqual(result.findings.map((finding) => `${finding.line}:${finding.text}`));
 
-      await expect(submitSpec(root, { plan: PLAN, baseRevision: base, ownerRequest: "Reject empty names", spec }, silent)).rejects.toThrow(/stale revision/);
-      mutatePlanFile(root, PLAN, "lock-spec", (body) => lockPlanSpec(body.replace(`The plan names the parser. ${"word ".repeat(31)}ends.`, "The current parser accepts empty names."), "word"));
+      await expect(submitSpec(root, { plan: PLAN, baseRevision: base, ownerRequest: "Reject empty names", spec })).rejects.toThrow(/stale revision/);
+      mutatePlanFile(root, PLAN, "lock-spec", (body) => lockPlanSpec(body, "word"));
       const locked = protocolSpecHash(readFileSync(join(root, PLAN), "utf8"));
-      await expect(submitSpec(root, { plan: PLAN, baseRevision: locked, ownerRequest: "Reject empty names", spec }, silent)).rejects.toThrow(/locked/);
+      await expect(submitSpec(root, { plan: PLAN, baseRevision: locked, ownerRequest: "Reject empty names", spec })).rejects.toThrow(/locked/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -68,40 +70,22 @@ describe("submit_spec", () => {
    * @scenario: scn_planctl_spec_submission_002
    * @covers: planctl/src/core/spec-submission.ts::submitSpec
    * @deterministic: yes
-   * @invariant: one bounded model call per changed submission with the owner request, the Goal rule, the vocabulary and the changed lines; unchanged text calls nothing; a timeout or invalid output ends in unavailable without retry.
+   * @invariant: a submission is judged by the deterministic lint alone: no model is called, its findings are the lint's, and unchanged text reports no_change without writing.
    */
-  it("tst_unit_planctl_spec_submission_002 calls the model once per change and reports unavailable on timeout or invalid output", async () => {
+  it("tst_unit_planctl_spec_submission_002 judges by the lint alone and reports no_change for unchanged text", async () => {
     const root = repository();
     try {
-      const prompts: string[] = [];
-      const runner: ModelRunner = (prompt) => {
-        prompts.push(prompt);
-        return Promise.resolve(JSON.stringify({ findings: [{ rule: "goal", line: 3, quote: "Ship one observable result.", message: "name the measure", replacement: "Ship one observable result, counted in the release log." }] }));
-      };
       const base = protocolSpecHash(readFileSync(join(root, PLAN), "utf8"));
-      const checked = await submitSpec(root, { plan: PLAN, baseRevision: base, ownerRequest: "Reject empty names before saving", spec }, runner);
+      const checked = await submitSpec(root, { plan: PLAN, baseRevision: base, ownerRequest: "Reject empty names before saving", spec });
       expect(checked.checkStatus).toBe("checked");
-      const specStart = readFileSync(join(root, PLAN), "utf8").split("\n").indexOf("<!-- plan:spec:start -->") + 1;
-      expect(checked.findings).toEqual([expect.objectContaining({ rule: "goal", blocking: false, line: specStart + 3, quote: "Ship one observable result.", text: "name the measure", replacement: "Ship one observable result, counted in the release log." })]);
-      expect(prompts).toHaveLength(1);
-      expect(prompts[0]).toContain("Reject empty names before saving");
-      expect(prompts[0]).toContain("The Goal is one to four numbered outcomes");
-      expect(prompts[0]).toContain("blueprint document");
-      expect(prompts[0]).toContain("Ship one observable result.");
-
-      const unchanged = await submitSpec(root, { plan: PLAN, baseRevision: checked.revision, ownerRequest: "Reject empty names before saving", spec }, runner);
+      expect(checked.findings).toEqual((await lint(readFileSync(join(root, PLAN), "utf8"), root)).violations);
+      const unchanged = await submitSpec(root, { plan: PLAN, baseRevision: checked.revision, ownerRequest: "Reject empty names before saving", spec });
       expect(unchanged.checkStatus).toBe("no_change");
       expect(unchanged.revision).toBe(checked.revision);
-      expect(prompts).toHaveLength(1);
-
-      const slow: ModelRunner = () => Promise.reject(new Error("deadline of 15 seconds passed"));
-      const timedOut = await submitSpec(root, { plan: PLAN, baseRevision: checked.revision, ownerRequest: "x", spec: spec.replace("Ship one observable result.", "Ship two observable results.") }, slow);
-      expect(timedOut.checkStatus).toBe("unavailable");
-      expect(timedOut.checkError).toContain("deadline");
-      const noisy: ModelRunner = () => Promise.resolve("not json at all");
-      const garbled = await submitSpec(root, { plan: PLAN, baseRevision: timedOut.revision, ownerRequest: "x", spec: spec.replace("Ship one observable result.", "Ship three observable results.") }, noisy);
-      expect(garbled.checkStatus).toBe("unavailable");
-      expect(garbled.checkError).toContain("invalid");
+      // A SPEC in another language is refused before anything is written: nothing to save, nothing to publish.
+      const before = readFileSync(join(root, PLAN), "utf8");
+      await expect(submitSpec(root, { plan: PLAN, baseRevision: checked.revision, ownerRequest: "x", spec: spec.replace("Ship one observable result.", "Отгрузить один наблюдаемый результат.") })).rejects.toThrow("the plan is written in English");
+      expect(readFileSync(join(root, PLAN), "utf8")).toBe(before);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

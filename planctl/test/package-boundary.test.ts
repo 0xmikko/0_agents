@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { expect, it } from "bun:test";
 
@@ -74,7 +74,7 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
     const installed = installStack(consumer);
 
     // Four runtime programs, vocabulary, three hooks, and the workflow.
-    expect(installed.files).toHaveLength(9);
+    expect(installed.files).toHaveLength(15);
     for (const [source, target] of CANONICAL_RUNTIME) {
       expect(readFileSync(join(consumer, target), "utf8")).toBe(
         readFileSync(join(REPOSITORY_ROOT, "planctl", source), "utf8"),
@@ -90,6 +90,7 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
     const plan = "docs/plans/lint.md";
     expect(run("init", plan, "--title", "Lint").status).toBe(0);
     git(consumer, "commit", "-qm", "open the plan");
+    for (const path of ["src/change.ts", "src/save.ts", "test/change.test.ts"]) { mkdirSync(dirname(join(consumer, path)), { recursive: true }); writeFileSync(join(consumer, path), "export {};\n"); }
     writeFileSync(join(consumer, "spec.md"), readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8"));
     expect(run("set-spec", plan, "--from", "spec.md").status).toBe(0);
     // The installed copy carries no parser: approval lints from the source

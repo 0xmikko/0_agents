@@ -14,6 +14,7 @@ import {
   applyOwnerAmendment,
   approvePlan,
   closePlanStage,
+  closeRootOf,
   completeTask,
   deliveryEnd,
   deliveryFrom,
@@ -51,8 +52,6 @@ interface ServerDependencies {
   readonly sourceCommit: string;
   /** The events.jsonl every call appends one line to. */
   readonly eventLog: string;
-  /** The one bounded model call submit_spec makes for the changed lines. */
-  readonly model: (prompt: string, deadlineMs: number) => Promise<string>;
   /** Publishes the saved bytes after every write and returns the URL. */
   readonly publisher: (root: string, plan: string) => string;
 }
@@ -95,7 +94,7 @@ function refusal(text: string): ToolResult {
 }
 
 function describeFindings(findings: readonly GateViolation[]): string {
-  return findings.map((finding) => `line ${finding.line}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}`).join("\n");
+  return findings.map((finding) => `${finding.blocking ? "Error" : "Advice"} line ${finding.line}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}`).join("\n");
 }
 
 /** Every lint error of the whole plan plus what approval would refuse: duplicate IDs, unknown dependencies, cycles. */
@@ -115,7 +114,7 @@ async function refuseInsidePart(candidate: string, root: string, start: string, 
   const from = lines.indexOf(start) + 1;
   const to = lines.indexOf(end) + 1;
   const report = await lint(candidate, root);
-  const inside = report.violations.filter((violation) => violation.line >= from && violation.line <= to);
+  const inside = report.violations.filter((violation) => violation.blocking && violation.line >= from && violation.line <= to);
   if (inside.length > 0) throw new Error(`the submitted part has ${inside.length} error(s):\n${describeFindings(inside)}`);
 }
 
@@ -123,7 +122,8 @@ async function lintedApproval(deps: ServerDependencies, plan: string, operation:
   const { root, plan: relative } = located(deps.cwd, plan);
   const body = readFileSync(resolve(root, relative), "utf8");
   const report = await lint(body, root);
-  if (report.violations.length > 0) throw new Error(`lint has ${report.violations.length} error(s):\n${describeFindings(report.violations)}`);
+  const errors = report.violations.filter((finding) => finding.blocking);
+  if (errors.length > 0) throw new Error(`lint has ${errors.length} error(s):\n${describeFindings(errors)}`);
   mutatePlanFile(root, relative, operation, (current) => transform(current, ownerWord));
   return { root, plan: relative, saved: readFileSync(resolve(root, relative), "utf8") };
 }
@@ -141,22 +141,23 @@ const TOOLS = {
         `Sections: ${contract.sections.join(", ")}`,
         ...contract.vocabulary.map((pair) => `Vocabulary: ${pair.word} → ${pair.term}`),
         `Goal rule: ${contract.goalRule}`,
+        `Target rule: ${contract.targetRule}`,
+        `Example flow:\n${contract.example}`,
       ].join("\n"));
     },
   }),
   submit_spec: tool({
-    description: "Replace the whole SPEC of a draft. Fixes line endings and vocabulary itself, returns every lint error at once and the model's notes on the changed lines. Refuses a stale revision and a locked plan.",
-    schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string() }),
-    run: async (deps, { plan, baseRevision, ownerRequest, spec }) => {
+    description: "Replace the whole SPEC of a draft, and its title when given. Preserves authored words, normalizes line endings and reports blocking errors separately from editorial advice. Refuses a stale revision, a locked plan and a title in another language.",
+    schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string(), title: z.string().optional() }),
+    run: async (deps, { plan, baseRevision, ownerRequest, spec, title }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
-      const result = await submitSpec(root, { plan: relative, baseRevision, ownerRequest, spec }, deps.model);
+      const result = await submitSpec(root, title === undefined ? { plan: relative, baseRevision, ownerRequest, spec } : { plan: relative, baseRevision, ownerRequest, spec, title });
       const errors = result.findings.filter((finding) => finding.blocking).length;
-      const notes = result.findings.length - errors;
       return reply({ plan: relative, ...result }, [
         `Revision ${result.revision}, ${result.state}`,
-        `Checks: ${errors} errors, ${notes} model notes${result.checkStatus === "checked" ? "" : ` (${result.checkStatus}${result.checkError === null ? "" : `: ${result.checkError}`})`}`,
+        `Checks: ${errors} errors`,
         ...result.corrections.map((correction) => `Corrected line ${correction.line}: ${correction.after}`),
-        ...result.findings.map((finding) => `line ${finding.line}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}`),
+        ...(result.findings.length > 0 ? [describeFindings(result.findings)] : []),
       ].join("\n"));
     },
   }),
@@ -169,7 +170,7 @@ const TOOLS = {
     },
   }),
   approve_spec: tool({
-    description: "Record the owner's word on the SPEC. Runs the same lint as submission on the same bytes; every lint error refuses.",
+    description: "Record the owner's word on the SPEC. Runs the same lint as submission on the same bytes; only blocking errors refuse.",
     schema: z.object({ plan: z.string(), ownerWord: z.string() }),
     run: async (deps, { plan, ownerWord }) => {
       const done = await lintedApproval(deps, plan, "lock-spec", lockPlanSpec, ownerWord);
@@ -185,7 +186,7 @@ const TOOLS = {
     },
   }),
   put_delivery: tool({
-    description: "Write one PR Delivery. Refuses with every error of the Delivery at once; returns the whole-plan findings without refusing an incomplete draft.",
+    description: "Write one PR Delivery. A Delivery whose branch, commits and PR live in another repository names it with repository (a name, never a path); the checkout is one line per machine, git config code-production.repository.<name> <path>. Refuses with every error of the Delivery at once; returns the whole-plan findings without refusing an incomplete draft.",
     schema: z.object({ plan: z.string(), delivery: z.record(z.string(), z.unknown()) }),
     run: async (deps, { plan, delivery }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
@@ -222,16 +223,22 @@ const TOOLS = {
     },
   }),
   amend: tool({
-    description: "Apply one exact replacement to the SPEC or the implementation under the owner's word; on an approved plan a SPEC correction keeps the approval.",
+    description: "Apply one exact replacement to the SPEC, the implementation or the title under the owner's word; on an approved plan a SPEC correction keeps the approval.",
     schema: z.object({ plan: z.string(), ownerWord: z.string(), patch: z.record(z.string(), z.unknown()) }),
     run: async (deps, { plan, ownerWord, patch }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
       const replacement = patchFrom(patch);
+      // The same lint as submission, at every write: an amendment may leave old errors, never add one.
+      const current = readFileSync(resolve(root, relative), "utf8");
+      const before = (await lint(current, root)).violations.map((violation) => `${violation.text}|${violation.quote}`);
+      const after = (await lint(applyOwnerAmendment(current, ownerWord, replacement).body, root)).violations;
+      const added = after.filter((violation) => violation.blocking && !before.includes(`${violation.text}|${violation.quote}`));
+      if (added.length > 0) throw new Error(`amendment adds ${added.length} error(s):\n${describeFindings(added)}`);
       mutatePlanFile(root, relative, "amend", (body) => applyOwnerAmendment(body, ownerWord, replacement));
       const saved = readFileSync(resolve(root, relative), "utf8");
       return reply(
-        { plan: relative, section: replacement.section, specRevision: protocolSpecHash(saved), implementationRevision: protocolImplementationHash(saved) },
-        `${replacement.section} amended under "${ownerWord}"`,
+        { plan: relative, section: replacement.section, specRevision: protocolSpecHash(saved), implementationRevision: protocolImplementationHash(saved), findings: after },
+        [`${replacement.section} amended under "${ownerWord}"`, `Checks: ${after.filter((finding) => finding.blocking).length} errors`, ...(after.length > 0 ? [describeFindings(after)] : [])].join("\n"),
       );
     },
   }),
@@ -254,13 +261,14 @@ const TOOLS = {
       if (target === null) throw new Error("progress needs plan or root");
       const view = await planProgress(target.root, {
         plan: target.plan,
-        publication: (branch) => deps.publication(target.root, branch),
+        publication: deps.publication,
         sourceCommit: deps.sourceCommit,
         decodeRun: decodeTaskRun,
       });
       if (note === true) return reply({ note: progressNote(view) }, progressNote(view) ?? "");
       if (view === null) return reply({ plan: null }, "");
-      return reply({ ...view }, renderProgressView(view));
+      const revision = planRevision(readFileSync(resolve(target.root, view.plan), "utf8"), view.state);
+      return reply({ ...view, revision }, `${renderProgressView(view)}\nRevision  ${revision}`);
     },
   }),
   start_task: tool({
@@ -300,11 +308,13 @@ const TOOLS = {
     schema: z.object({ plan: z.string(), stage: z.string() }),
     run: async (deps, { plan, stage }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
-      const head = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+      // The Stage closes in its Delivery's checkout, at that checkout's head.
+      const at = closeRootOf(root, readFileSync(resolve(root, relative), "utf8"), stage);
+      const head = at.head;
       let status: "CLOSED" | "PARTIAL" = "PARTIAL";
       let closed = 0;
       mutatePlanFile(root, relative, "close", (body) => {
-        const result = closePlanStage(body, stage, { root, head });
+        const result = closePlanStage(body, stage, { root: at.root, head });
         status = result.status;
         closed = result.closed;
         return { body: result.body };
@@ -353,6 +363,11 @@ type ToolName = keyof typeof TOOLS;
 /** The tools that write the plan: each republishes it and returns url and reply. */
 const WRITERS: ReadonlySet<ToolName> = new Set<ToolName>(["submit_spec", "approve_spec", "approve_plan", "put_delivery", "put_stage", "remove_stage", "amend", "add_deviation", "complete_task", "close_stage"]);
 
+/** The revision a write must name: the SPEC hash while the SPEC is a draft, the implementation hash after. */
+function planRevision(saved: string, state: string): string {
+  return state === "SPEC_DRAFT" ? protocolSpecHash(saved) : protocolImplementationHash(saved);
+}
+
 /** After a write: publish the saved bytes and add url and the owner reply; a publish failure is an error, never a stale URL.
  * @tested-by: tst_unit_planctl_mcp_002
  */
@@ -362,12 +377,10 @@ function published(deps: ServerDependencies, args: Record<string, unknown>, resu
   const structured = result.structuredContent ?? {};
   const saved = readFileSync(resolve(root, plan), "utf8");
   const state = typeof structured.state === "string" ? structured.state : planState(saved);
-  const revision = typeof structured.revision === "string"
-    ? structured.revision
-    : state === "SPEC_DRAFT" ? protocolSpecHash(saved) : protocolImplementationHash(saved);
+  const revision = typeof structured.revision === "string" ? structured.revision : planRevision(saved, state);
   const findings = Array.isArray(structured.findings) ? structured.findings as readonly { blocking?: unknown }[] : null;
   const checks = "checkStatus" in structured && findings !== null
-    ? { errors: findings.filter((finding) => finding.blocking === true).length, notes: findings.filter((finding) => finding.blocking === false).length }
+    ? { errors: findings.filter((finding) => finding.blocking === true).length }
     : null;
   let url: string;
   try {
@@ -426,14 +439,14 @@ function eventOf(
 ): EventRecord {
   const location = calledLocation(deps.cwd, args);
   const structured = result.structuredContent ?? {};
-  const publication = typeof structured.publication === "object" && structured.publication !== null && "prUrl" in structured.publication
-    ? structured.publication as { prUrl: string; headSha: string; runId: string; attempt: number }
-    : null;
   const delivery = typeof structured.deliveryId === "string"
     ? structured.deliveryId
     : typeof structured.delivery === "object" && structured.delivery !== null && "id" in structured.delivery && typeof structured.delivery.id === "string"
       ? structured.delivery.id
       : null;
+  const publication = typeof structured.publication === "object" && structured.publication !== null && "prUrl" in structured.publication
+    ? structured.publication as { prUrl: string; headSha: string; runId: string; attempt: number }
+    : null;
   const planPath = location.plan !== "" ? resolve(location.repository, location.plan) : "";
   const revision = planPath !== "" && existsSync(planPath) ? protocolImplementationHash(readFileSync(planPath, "utf8")) : "";
   return {
@@ -483,6 +496,11 @@ export async function dispatchTool(deps: ServerDependencies, name: string, args:
   }
   appendEvent(deps.eventLog, eventOf(deps, name, args, result, at, Date.now() - began));
   return result;
+}
+
+/** The names of the tools the server serves, for the installer that approves them. */
+export function toolNames(): readonly string[] {
+  return Object.keys(TOOLS);
 }
 
 /** The planctl tools over stdio. @tested-by: tst_unit_planctl_mcp_001 */

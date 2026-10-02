@@ -9,6 +9,8 @@ import {
   applyOwnerAmendment,
   closePlanStage,
   completeTask,
+  deliveryMetas,
+  deliveryRoot,
   needsOwner,
   resumeTask,
   startTask,
@@ -16,6 +18,7 @@ import {
   applyUnattendedAmendment,
   lockPlanSpec,
   mutatePlanFile,
+  planJournalPath,
   putDelivery,
   putStage,
   recordStageApproval,
@@ -36,6 +39,14 @@ const IMPLEMENTATION_START = "<!-- plan:implementation:start -->";
 const IMPLEMENTATION_END = "<!-- plan:implementation:end -->";
 const EXECUTION_START = "<!-- plan:execution:start -->";
 const EXECUTION_END = "<!-- plan:execution:end -->";
+
+/** The files the model SPEC cites: a plan names only paths that exist, so every fixture repository carries them. */
+function seedCitedFiles(root: string): void {
+  for (const path of ["src/change.ts", "src/save.ts", "test/change.test.ts"]) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), "export {};\n");
+  }
+}
 
 function draft(): string {
   return [
@@ -173,6 +184,7 @@ describe("plan-update", () => {
       git("init", "-q");
       git("config", "user.email", "t@t");
       git("config", "user.name", "t");
+      seedCitedFiles(root);
       writeFileSync(plan, draft());
       writeFileSync(deliveryJson, `${JSON.stringify(delivery())}\n`);
       git("add", "plan.md");
@@ -194,8 +206,7 @@ describe("plan-update", () => {
       execFileSync("bun", [writer, "plan.md", "verify-staged"], { cwd: root });
       git("commit", "-qm", "legal mutation");
       execFileSync("bun", [writer, "plan.md", "clear-spent", "--commit", "HEAD"], { cwd: root });
-      const journal = git("rev-parse", "--path-format=absolute", "--git-path", "plan-update-journal.json");
-      expect(existsSync(journal)).toBe(false);
+      expect(existsSync(planJournalPath(root, "plan.md"))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -203,6 +214,75 @@ describe("plan-update", () => {
 
   // @test-id: tst_scripts_planupdate_004
   // @scenario: scn_codeprod_002
+  // @test-id: tst_scripts_planupdate_030
+  // @covers: planctl/src/core/plan-update.ts::putDelivery,deliveryMetas,deliveryRoot
+  // @deterministic: yes
+  // @invariant: a Delivery names its repository and reads it back; without one it reads null; deliveryRoot is the plan's root for the plan's own Delivery, refuses a missing config line naming the command, and returns the configured checkout.
+  it("tst_scripts_planupdate_030 a Delivery names its repository and deliveryRoot resolves its checkout", () => {
+    const locked = lockPlanSpec(draft(), "spec").body;
+    const withRepository = putDelivery(locked, { ...delivery(), repository: "catalog" }).body;
+    expect(withRepository).toContain('"repository":"catalog"');
+    const named = deliveryMetas(withRepository)[0];
+    expect(named?.repository).toBe("catalog");
+    const own = deliveryMetas(putDelivery(locked, delivery()).body)[0];
+    expect(own?.repository).toBeNull();
+    const root = mkdtempSync(join(tmpdir(), "delivery-root-"));
+    const checkout = mkdtempSync(join(tmpdir(), "delivery-checkout-"));
+    const git = (cwd: string, ...args: readonly string[]): string => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
+    try {
+      git(root, "init", "-q");
+      git(checkout, "init", "-q");
+      if (own === undefined || named === undefined) throw new Error("fixture lost its Deliveries");
+      expect(deliveryRoot(root, own)).toBe(root);
+      expect(() => deliveryRoot(root, named)).toThrow("repository catalog has no checkout on this machine; run: git config code-production.repository.catalog <path>");
+      git(root, "config", "code-production.repository.catalog", checkout);
+      expect(deliveryRoot(root, named)).toBe(git(checkout, "rev-parse", "--show-toplevel"));
+      git(root, "config", "code-production.repository.catalog", join(checkout, "missing"));
+      expect(() => deliveryRoot(root, named)).toThrow(/is not a repository checkout/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+
+  // @test-id: tst_scripts_planupdate_032
+  // @covers: planctl/src/core/plan-update.ts::planJournalPath,mutatePlanFile,verifyStagedPlan,clearSpentJournal
+  // @deterministic: yes
+  // @invariant: two plans in one worktree keep two journals: the second plan's transaction never replaces the first's, each verifies on its own, and a commit spends only the journal it carries.
+  it("tst_scripts_planupdate_032 keeps one journal per plan in one worktree", () => {
+    const root = mkdtempSync(join(tmpdir(), "two-plans-one-journal-"));
+    const writer = join(import.meta.dir, "../src/core/plan-update.ts");
+    const git = (...args: readonly string[]): string => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+    try {
+      git("init", "-q");
+      git("config", "user.email", "t@t");
+      git("config", "user.name", "t");
+      seedCitedFiles(root);
+      writeFileSync(join(root, "a.md"), draft());
+      writeFileSync(join(root, "b.md"), draft());
+      git("add", "a.md", "b.md");
+      git("commit", "-qm", "two drafts");
+      execFileSync("bun", [writer, "a.md", "lock-spec", "--owner-word", "a"], { cwd: root });
+      const second = spawnSync("bun", [writer, "b.md", "lock-spec", "--owner-word", "b"], { cwd: root, encoding: "utf8" });
+      expect(second.status, second.stderr).toBe(0);
+      expect(planJournalPath(root, "a.md")).not.toBe(planJournalPath(root, "b.md"));
+      expect(existsSync(planJournalPath(root, "a.md"))).toBe(true);
+      expect(existsSync(planJournalPath(root, "b.md"))).toBe(true);
+      for (const plan of ["a.md", "b.md"]) {
+        const verified = spawnSync("bun", [writer, plan, "verify-staged"], { cwd: root, encoding: "utf8" });
+        expect(verified.status, verified.stderr).toBe(0);
+      }
+      git("commit", "-qm", "both locked");
+      execFileSync("bun", [writer, "a.md", "clear-spent", "--commit", "HEAD"], { cwd: root });
+      expect(existsSync(planJournalPath(root, "a.md"))).toBe(false);
+      expect(existsSync(planJournalPath(root, "b.md"))).toBe(true);
+      execFileSync("bun", [writer, "b.md", "clear-spent", "--commit", "HEAD"], { cwd: root });
+      expect(existsSync(planJournalPath(root, "b.md"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   // @covers: planctl/src/core/plan-update.ts::verifyStagedPlan
   // @deterministic: yes
   // @invariant: a merge that carries an approved plan is committable — the
@@ -217,6 +297,7 @@ describe("plan-update", () => {
       git("init", "-q", "-b", "main");
       git("config", "user.email", "t@t");
       git("config", "user.name", "t");
+      seedCitedFiles(root);
       // A plan that is locked on both branches, and a second file each side
       // changes so the merge is a real one.
       writeFileSync(plan, lockPlanSpec(draft(), "spec").body);
@@ -239,7 +320,7 @@ describe("plan-update", () => {
       // is no journal and there cannot be one.
       const merge = spawnSync("git", ["-C", root, "merge", "--no-commit", "--no-ff", "side"], { encoding: "utf8" });
       expect(merge.status).toBe(0);
-      expect(existsSync(git("rev-parse", "--path-format=absolute", "--git-path", "plan-update-journal.json"))).toBe(false);
+      expect(existsSync(planJournalPath(root, "plan.md"))).toBe(false);
 
       const staged = spawnSync("bun", [writer, "plan.md", "verify-staged"], { cwd: root, encoding: "utf8" });
       expect(staged.stderr).not.toContain("no journal");
@@ -338,6 +419,18 @@ describe("plan-update", () => {
     expect(result.body).toContain("owner_review_pending");
     expect(result.body).toContain("Status: APPROVED");
     expect(result.body).toContain("D1-S2 -> D1-S3");
+    // The title is the owner's to change: an unattended decision never touches it.
+    expect(() => applyUnattendedAmendment(body, {
+      version: 1,
+      decidedAt: "2026-08-27T23:00:00Z",
+      goalPreserved: "one observable result still ships",
+      decision: "rename the plan",
+      alternatives: ["keep the title"],
+      whyContinueNow: "the change is bounded and reversible",
+      affectedScope: ["title"],
+      rollbackBase: "b".repeat(40),
+      verification: ["bun run agent:test:backend -- test/plan-update.test.ts"],
+    }, { section: "title", find: "Fixture plan", replace: "Renamed plan" })).toThrow(/never the title/);
   });
 
   // @test-id: tst_scripts_planupdate_005
@@ -518,6 +611,11 @@ describe("the owner's word on a Stage", () => {
     expect(stageApproved(approved, "D1-S2")).toBe(false);
     expect(() => recordStageApproval(body, "D1-S9", "да")).toThrow(/unknown Stage/);
     expect(() => recordStageApproval(body, "D1-S1", "")).toThrow(/owner word/);
+    // The owner's word is the approval itself, never a pasted message: one line, at most 80 characters.
+    const message = "Окей, тогда давай мы это все сделаем и посмотрим. У нас сейчас все наши модули и LinkedIn.";
+    expect(() => lockPlanSpec(draft(), message)).toThrow(`owner word is ${message.length} characters; record the owner's approval word, not their message (at most 80)`);
+    expect(() => recordStageApproval(body, "D1-S1", message)).toThrow(/at most 80/);
+    expect(lockPlanSpec(draft(), "Окей, делаем.").body).toContain("owner:Окей, делаем.");
     // an unjournaled mention elsewhere in the plan is not an approval
     const forged = body.replace("## Execution log", "## Execution log\n\nThe owner said approve-stage D1-S2 owner:да in chat.");
     expect(stageApproved(forged, "D1-S2")).toBe(false);
@@ -1054,8 +1152,8 @@ describe("story errors arrive together", () => {
   // @scenario: scn_plan_control_story_errors_001
   // @covers: planctl/src/core/plan-update.ts::putStage
   // @deterministic: yes
-  // @invariant: put-stage refuses with every story error of the Stage at once, like a compiler.
-  it("tst_scripts_planupdate_026 refuses a Stage with both story errors in one message", () => {
+  // @invariant: put-stage accepts detailed stories and reports vague outcomes and unresolved references together.
+  it("tst_scripts_planupdate_026 accepts a detailed story and reports substantive story errors together", () => {
     const locked = putDelivery(lockPlanSpec(draft(), "word").body, delivery()).body;
     const base = stage("D1-S1", ["scripts/base.ts"]);
     const task = base.tasks[0];
@@ -1063,14 +1161,16 @@ describe("story errors arrive together", () => {
     const vague = { ...task, id: "D1-S1-T1", story: "Fix the parser" };
     const long = { ...task, id: "D1-S1-T2", story: `Reject empty names before saving them ${"and report each one ".repeat(9)}to the caller` };
     expect(long.story.length).toBeGreaterThan(200);
+    expect(putStage(locked, { ...base, tasks: [long] }).body).toContain(long.story);
+    const unresolved = { ...task, id: "D1-S1-T2", story: "Reject empty names in the new files before saving them" };
     let message = "";
     try {
-      putStage(locked, { ...base, tasks: [vague, long] });
+      putStage(locked, { ...base, tasks: [vague, unresolved] });
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
     expect(message).toContain("D1-S1-T1 story must state a concrete observable outcome");
-    expect(message).toContain("D1-S1-T2 story must fit two lines");
+    expect(message).toContain("D1-S1-T2 story has an unresolved reference");
   });
 });
 
@@ -1176,6 +1276,46 @@ describe("the Task loop through the core", () => {
   const plan = "docs/plans/fixture.md";
   const unpublished = () => null;
   const noIdentity = { identity: null, decodeRun: decodeTaskRun, publication: unpublished };
+
+  // @test-id: tst_scripts_planupdate_031
+  // @scenario: scn_plan_control_task_loop_001
+  // @covers: planctl/src/core/plan-update.ts::startTask,deliveryRoot
+  // @deterministic: yes
+  // @invariant: a Task of a Delivery that names a repository starts in that checkout: without the config line start refuses naming the command, on another branch it refuses naming both branches, and on the Delivery's branch the record's worktree and baseHead come from the checkout while the record stays in the plan's repository.
+  it("tst_scripts_planupdate_031 starts a Task of a catalog Delivery in the catalog checkout", async () => {
+    let body = lockPlanSpec(draft(), "spec").body;
+    body = putDelivery(body, { ...delivery(), repository: "catalog" }).body;
+    body = putStage(body, { ...stage("D1-S1", ["scripts/"]), tasks: stage("D1-S1", ["scripts/base.ts"]).tasks }).body;
+    const { root, git } = repository(approvePlan(body, "approve").body);
+    const catalog = mkdtempSync(join(tmpdir(), "plan-update-catalog-"));
+    const cgit = (...args: readonly string[]): string => execFileSync("git", args, { cwd: catalog, encoding: "utf8" }).trim();
+    try {
+      cgit("init", "-q", "-b", "main");
+      cgit("config", "user.email", "test@example.com");
+      cgit("config", "user.name", "Test");
+      cgit("commit", "-q", "--allow-empty", "-m", "the catalog");
+      const start = () => startTask(root, { plan, taskId: "D1-S1-T1", checkpoint: null, ...noIdentity });
+      await expect(start()).rejects.toThrow("repository catalog has no checkout on this machine; run: git config code-production.repository.catalog <path>");
+      git("config", "code-production.repository.catalog", catalog);
+      const toplevel = cgit("rev-parse", "--show-toplevel");
+      await expect(start()).rejects.toThrow(`checkout ${toplevel} is on main; Delivery D1 is ${delivery().branch}`);
+      cgit("checkout", "-qb", delivery().branch);
+      const brief = await start();
+      expect(brief.taskId).toBe("D1-S1-T1");
+      const record = decodeTaskRun(JSON.parse(readFileSync(taskRunPath(root, plan, "D1-S1-T1"), "utf8")));
+      expect(record.version).toBe(3);
+      if (record.version === 3) {
+        expect(record.worktree).toBe(toplevel);
+        expect(record.baseHead).toBe(cgit("rev-parse", "HEAD"));
+        expect(record.branch).toBe(delivery().branch);
+      }
+      // A repeated start finds its own record although its worktree is the catalog.
+      expect((await start()).startedAt).toBe(brief.startedAt);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(catalog, { recursive: true, force: true });
+    }
+  });
 
   // @test-id: tst_scripts_planupdate_027
   // @scenario: scn_plan_control_task_loop_001

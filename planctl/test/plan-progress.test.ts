@@ -13,7 +13,8 @@ import { decodeTaskRun } from "../src/core/task-run";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { renderProgressView } from "../src/cli/render";
 
 import type { StageInput, TaskInput } from "../src/core/plan-update";
 
@@ -111,7 +112,7 @@ describe("plan progress", () => {
 });
 
 describe("where am I", () => {
-  function twoDeliveries(): string {
+  function twoDeliveries(secondRepository: string | null): string {
     let body = createDraftPlan("Progress fixture");
     body = lockPlanSpec(body, "owner").body;
     body = putDelivery(body, {
@@ -121,6 +122,7 @@ describe("where am I", () => {
     body = putDelivery(body, {
       id: "D2", title: "Second delivery", branch: "feat/progress-2", depends: ["D1"], gate: ["scripts"], active: false,
       stageGraph: "D2-S1 -> D2-S2", predictedExternalWaitMinutes: 0, description: "What changed for people. Progress fixture.",
+      ...(secondRepository === null ? {} : { repository: secondRepository }),
     }).body;
     body = putStage(body, stage("D1-S1", [task("PROG_001", 20, 2), task("PROG_002", 40, 4)], [], [])).body;
     body = putStage(body, { ...stage("D2-S1", [task("PROG_003", 30, 3), task("PROG_004", 10, 1), task("PROG_005", 10, 1)], [], []), deliveryId: "D2" }).body;
@@ -151,7 +153,7 @@ describe("where am I", () => {
    * @invariant: whole-plan and Delivery counts are separate; missing parts are marked unavailable and nothing throws; the plan is found by branch.
    */
   it("tst_unit_planctl_progress_002 shows 2 of 8 beside 2 of 2, the observed PR, the runtime and the note", async () => {
-    const root = repository(twoDeliveries(), "feat/progress");
+    const root = repository(twoDeliveries(null), "feat/progress");
     try {
       const plan = "docs/plans/2026-09-25-progress.md";
       const runPath = taskRunPath(root, plan, "PROG_003");
@@ -161,13 +163,17 @@ describe("where am I", () => {
       mkdirSync(join(root, ".agents/code-production"), { recursive: true });
       writeFileSync(join(root, ".agents/code-production/manifest.json"), JSON.stringify({ version: 1, commit: "a".repeat(40), files: [] }));
 
-      const view = await planProgress(root, { plan: null, publication: green, sourceCommit: "b".repeat(40), decodeRun: decodeTaskRun });
+      const view = await planProgress(root, { plan: null, publication: (_checkout, branch) => green(branch), sourceCommit: "b".repeat(40), decodeRun: decodeTaskRun });
       if (view === null) throw new Error("plan not found by branch");
       expect(view.plan).toBe(plan);
       expect(view.state).toBe("APPROVED");
       expect(view.wholePlan).toEqual({ completedTasks: 2, totalTasks: 8, deliveries: [{ id: "D1", state: "published" }, { id: "D2", state: "not_started" }] });
-      expect(view.delivery).toEqual({ id: "D1", completedTasks: 2, totalTasks: 2, closedStages: [], openStages: ["D1-S1"] });
+      expect(view.delivery).toEqual({ id: "D1", repository: null, completedTasks: 2, totalTasks: 2, closedStages: [], openStages: ["D1-S1"] });
       expect(view.publication).toEqual(green("feat/progress"));
+      expect(view.publications).toEqual([
+        { deliveryId: "D1", repository: null, publication: green("feat/progress") },
+        { deliveryId: "D2", repository: null, publication: green("feat/progress-2") },
+      ]);
       expect(view.runtime).toEqual({ installed: "a".repeat(40), source: "b".repeat(40), stale: true });
       expect(view.currentTask).toEqual({ id: "PROG_003", startedAt, checkpoint: null });
       expect(view.next).toEqual({ taskId: null, blockedBy: null });
@@ -202,6 +208,9 @@ describe("where am I", () => {
       expect(progressNote(draft)).toBeNull();
       execFileSync("git", ["checkout", "-qb", "feat/elsewhere"], { cwd: root });
       expect(await planProgress(root, { plan: null, publication: () => null, sourceCommit: null, decodeRun: decodeTaskRun })).toBeNull();
+      // a plan named before the date prefix existed is found by its bare slug
+      writeFileSync(join(root, "docs/plans/elsewhere.md"), createDraftPlan("Older fixture"));
+      expect((await planProgress(root, { plan: null, publication: () => null, sourceCommit: null, decodeRun: decodeTaskRun }))?.plan).toBe("docs/plans/elsewhere.md");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -213,5 +222,41 @@ describe("where am I", () => {
     expect(projected.completionPercent).toBe(0);
     expect(projected.activeMinutes).toEqual({ completed: 0, remaining: 0, total: 0 });
     expect(projected.wholePlan).toEqual({ completed: 0, total: 1 });
+  });
+  /**
+   * @test-id: tst_unit_planctl_progress_004
+   * @scenario: scn_planctl_progress_screen_003
+   * @covers: planctl/src/core/plan-progress.ts::planProgress, planctl/src/cli/render.ts::renderProgressView
+   * @deterministic: yes
+   * @invariant: every Delivery is observed in its own checkout; a repository without a checkout is marked unavailable; the screen shows one Publish line per Delivery.
+   */
+  it("tst_unit_planctl_progress_004 observes every Delivery in its own checkout and renders one Publish line per Delivery", async () => {
+    const root = repository(twoDeliveries("catalog"), "feat/progress");
+    const catalog = mkdtempSync(join(tmpdir(), "plan-progress-catalog-"));
+    try {
+      execFileSync("git", ["init", "-q", "-b", "feat/progress-2"], { cwd: catalog });
+      const byCheckout = (checkout: string, branch: string) => ({ prUrl: `https://example.test/${basename(checkout)}/${branch}`, ci: "green" as const, headSha: "c".repeat(40), runId: "9", attempt: 1, merged: false });
+      const unconfigured = await planProgress(root, { plan: null, publication: byCheckout, sourceCommit: null, decodeRun: decodeTaskRun });
+      expect(unconfigured?.publications).toEqual([
+        { deliveryId: "D1", repository: null, publication: byCheckout(root, "feat/progress") },
+        { deliveryId: "D2", repository: "catalog", publication: { error: "repository catalog has no checkout on this machine; run: git config code-production.repository.catalog <path>" } },
+      ]);
+      execFileSync("git", ["config", "code-production.repository.catalog", catalog], { cwd: root });
+      const view = await planProgress(root, { plan: null, publication: byCheckout, sourceCommit: null, decodeRun: decodeTaskRun });
+      if (view === null) throw new Error("plan not found by branch");
+      expect(view.publications).toEqual([
+        { deliveryId: "D1", repository: null, publication: byCheckout(root, "feat/progress") },
+        { deliveryId: "D2", repository: "catalog", publication: byCheckout(catalog, "feat/progress-2") },
+      ]);
+      expect(view.publication).toEqual(byCheckout(root, "feat/progress"));
+      expect(view.delivery?.repository).toBeNull();
+      expect(renderProgressView(view).split("\n").filter((line) => line.startsWith("Publish"))).toEqual([
+        `Publish   D1 · https://example.test/${basename(root)}/feat/progress · CI on ccccccc green (run 9 attempt 1) · merge: not yet`,
+        `Publish   D2 in catalog · https://example.test/${basename(catalog)}/feat/progress-2 · CI on ccccccc green (run 9 attempt 1) · merge: not yet`,
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(catalog, { recursive: true, force: true });
+    }
   });
 });
