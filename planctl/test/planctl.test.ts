@@ -195,6 +195,12 @@ describe("planctl", () => {
       expect(refused.status).toBe(1);
       expect(refused.stderr).toContain("mermaid block(s) do not parse");
       expect(refused.stderr).toMatch(/line \d+: mermaid/);
+      // A plan in another language is not published either: the publisher runs the same language rule as the tools.
+      const russian = join(fixture.root, "russian-plan.md");
+      writeFileSync(russian, "# План\n\nStatus: SPEC_DRAFT  \n\n<!-- plan:spec:start -->\n## The Goal\n\nОтгрузить результат.\n<!-- plan:spec:end -->\n");
+      const unpublished = run(fixture.root, "check-markdown", russian);
+      expect(unpublished.status).toBe(1);
+      expect(unpublished.stderr).toContain("the plan is written in English");
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }

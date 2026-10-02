@@ -82,6 +82,10 @@ describe("submit_spec", () => {
       const unchanged = await submitSpec(root, { plan: PLAN, baseRevision: checked.revision, ownerRequest: "Reject empty names before saving", spec });
       expect(unchanged.checkStatus).toBe("no_change");
       expect(unchanged.revision).toBe(checked.revision);
+      // A SPEC in another language is refused before anything is written: nothing to save, nothing to publish.
+      const before = readFileSync(join(root, PLAN), "utf8");
+      await expect(submitSpec(root, { plan: PLAN, baseRevision: checked.revision, ownerRequest: "x", spec: spec.replace("Ship one observable result.", "Отгрузить один наблюдаемый результат.") })).rejects.toThrow("the plan is written in English");
+      expect(readFileSync(join(root, PLAN), "utf8")).toBe(before);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

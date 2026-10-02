@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { authoringContract, lint } from "./plan-gate";
+import { authoringContract, lint, protocolLanguageViolations } from "./plan-gate";
 import type { GateViolation } from "./plan-gate";
 import { mutatePlanFile, planState, protocolSpecHash, replaceDraftSpec, replaceDraftTitle } from "./plan-update";
 import type { PlanState } from "./plan-update";
@@ -81,10 +81,14 @@ export async function submitSpec(root: string, input: SubmitSpecInput): Promise<
     const report = await lint(body, root);
     return { revision: current, state, corrections: corrected.corrections, findings: report.violations, checkStatus: "no_change" };
   }
-  mutatePlanFile(root, plan, "set-spec", (draft) => {
+  const candidate = (draft: string): { body: string } => {
     const withSpec = replaceDraftSpec(draft, corrected.text).body;
     return input.title === undefined ? { body: withSpec } : replaceDraftTitle(withSpec, input.title);
-  });
+  };
+  // Another language is refused before anything is written: nothing to save, nothing to publish.
+  const language = protocolLanguageViolations(candidate(body).body);
+  if (language.length > 0) throw new Error(language.join("\n"));
+  mutatePlanFile(root, plan, "set-spec", candidate);
   const saved = readFileSync(resolve(root, plan), "utf8");
   const report = await lint(saved, root);
   return {
