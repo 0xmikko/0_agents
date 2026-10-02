@@ -9,6 +9,13 @@ The approved plan defines scope; the planctl tools own its state; the
 package.json scripts named agent:* own every project command. The plan file
 is never edited by hand.
 
+In Codex, run each `agent:*` entrypoint as a separate direct command, without
+shell wrappers, redirections, substitutions or inline environment assignments.
+Choose the checkout with `workdir`; use the tool's output limit and session
+handle for long output. If sandbox restrictions require escalation, retry the
+same direct command with its reusable `prefix_rule`. Adding
+`> /tmp/<task>.log 2>&1` prevents an existing command rule from matching.
+
 ## Start
 
 1. Work in the plan's existing feature worktree. Call `progress` with the
