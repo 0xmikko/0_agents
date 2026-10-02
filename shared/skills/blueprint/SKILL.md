@@ -1,94 +1,34 @@
 ---
 name: blueprint
-description: Author one plan through the planctl tools and get the owner's approval of the SPEC and then the implementation contract. Use when work needs a plan.
+description: Author an executable plan through planctl MCP, with owner approval of SPEC and then implementation. Use before non-trivial implementation.
 ---
 
 # Blueprint
 
-Produce one plan through the planctl tools. The plan file is never edited by
-hand. Every write returns the plan URL. Show it with the findings or decisions
-the owner needs to assess.
+Work in the existing task checkout. Use planctl MCP for plan state and the
+tool schemas for arguments. Project package.json agent:* scripts define checks.
 
-## SPEC
+1. Call `progress` with the root. Continue its plan when one exists;
+   otherwise call `init`. Create a feature worktree only when isolation is
+   needed. Commit a draft when useful; it remains SPEC_DRAFT until approved.
+2. Inspect the existing implementation and canonical types. Write the Goal,
+   behavior, evidence, reuse, constraints and acceptance cases in English.
+   Declare changed types in Interfaces and justify proposed new names.
+3. Send the complete SPEC through `submit_spec` with the returned revision
+   and the owner's request. Preserve concrete findings and discussion.
+   Fix blocking errors; assess advice against the task.
+4. Show the published SPEC and ask for its approval. After the owner's yes,
+   call `approve_spec` with their actual approval.
+5. Use `put_delivery` for each PR and `put_stage` for each useful commit.
+   Tasks name concrete changes, their writes, How and a scoped RED command.
+   Include the files that own changed contracts. Derive estimates from the work.
+   A Delivery in another repository names that repository; its checkout is
+   configured with `code-production.repository.<name>`. Keep one shared plan.
+6. Check that the implementation covers the Goal and acceptance cases.
+   Show the complete contract and ask for approval. After the owner's yes,
+   call `approve_plan` and commit the plan.
 
-1. Call `progress` with `root`, the worktree you are in. When the branch
-   already has a plan, it names it: continue on that plan and never call
-   `init` again. Otherwise call `init` with the same `root` and a `title`:
-   it names the plan after the branch, `docs/plans/<date>-<slug>.md`, stages
-   and journals it, and returns the required sections, the vocabulary and
-   the Goal rule. Only when `init` refuses because the root is on the base
-   branch, create `feat/<slug>` from that branch in its own worktree and
-   call `init` there. Never create a branch or a worktree otherwise. Do not
-   commit: the plan stays staged under one journal until the owner approves
-   it, and every write publishes it for review.
-2. Explore existing code before proposing new mechanisms. Trace the requested
-   behavior through real callers and tests. Discuss discovered contradictions
-   and tradeoffs with the owner; keep the evidence and accepted decisions in
-   the SPEC. Questions and research can continue without restarting the plan.
-3. Send `submit_spec` the plan, its last `baseRevision`, the owner's request,
-   the whole SPEC, and a `title` when it changes. The SPEC is in English,
-   title included; the owner's words may be quoted in «…». Keep The Goal and
-   The target headings so progress can show them. Use the returned sections
-   and example where they help explain the solution. Show changed interfaces
-   in typed TypeScript, with camelCase names, and preserve concrete scenarios,
-   file changes and unresolved decisions when revising the text.
-4. The tool saves the submitted words and reports errors and advice separately.
-   Fix blocking errors. Assess advice against the task; do not rewrite the
-   SPEC merely to clear advice or lose evidence to fit the example. Use the
-   returned revision for the next submission; unchanged text changes nothing.
-5. Once the SPEC is ready, show the link and ask the owner to approve it.
-   This is the first planning approval. After an explicit yes, call
-   `approve_spec` with the approval itself as `ownerWord`, one short line.
-
-Bad Goal: "Make development faster."
-
-Good Goal: "Deliver one ready PR while measuring predicted versus actual
-active time, elapsed time and credits; run the complete product gate once
-locally and once on the published CI SHA."
-
-## Implementation contract
-
-1. One Delivery is one PR: `put_delivery` with its branch, dependencies,
-   gate commands, description, and `repository` when the Delivery lives in
-   another repository: the name, never a path; the checkout is one config
-   line on the machine, `git config code-production.repository.<name>
-   <path>`. Each Stage is one delegable result and one
-   work commit: `put_stage` with its owner, profile, dependencies, parallel
-   set, folders as writes, temp root, Tasks and criteria. Do not parallelize
-   Deliveries by default.
-2. A Stage description is the future commit message of the finished Stage:
-   the subject line, then what was done for which Goal outcome and why this
-   way, then how it is proven. Its title names the result, never branch
-   history.
-3. A Task story names one concrete change with enough detail to execute it. Its
-   writes are the files the change needs; a test may live anywhere. Never
-   point to "the new files", "the rename map", "as discussed", chat history
-   or a colleague's branch. Each Task carries one RED command in the form
-   `bun run agent:test:<backend|frontend|e2e> -- <exact-target>` and its How.
-4. A put refuses with every error of the submitted part at once, like a
-   compiler, and returns the whole-plan findings: duplicate Task IDs, unknown
-   dependencies, cycles. Fix and put again with the returned revision. The
-   Stage forecast is the Task sum plus an explicit verification share.
-5. Trace each acceptance story through public calls before approval. A
-   public type the work will change belongs in the SPEC Interfaces; completion
-   refuses an exported type the SPEC does not name.
-6. Show the owner the last reply and stop. This is the second planning approval: ask
-   whether they approve the complete plan.
-7. After an explicit yes, call `approve_plan` with the owner's word. Approval
-   runs the same checks as authoring; editorial advice does not block it. Then commit the
-   plan once, `docs(plan): <title>`: the plan's only commit before the work
-   starts.
-
-Bad Stage: "Finish the colleague's branch: build fixes and Verify rewire."
-
-Good Stage: "Restore the preview build after the Verify rename."
-
-Bad Task: "Apply the rename map in the named files."
-
-Good Task story: Restore `creditOperationMarket` in
-`src/onchain/market/credit/index.ts`.
-
-After approval, the plan changes only through the tools: `amend` under the
-owner's word for scope and for the title (section `title`), and
-`start_task`, `complete_task`, `add_deviation` and `close_stage` for
-execution. Nothing imports the engine directly.
+These are the two planning approvals. Approval is never inferred from a request
+to investigate or revise a draft. Reviews run when the owner requests them.
+Use `amend` under the owner's word for changes to an approved contract.
+Existing approvals and task limits continue across interruptions and compaction.
