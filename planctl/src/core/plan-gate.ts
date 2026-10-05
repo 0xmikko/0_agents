@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { execSync, spawnSync } from "node:child_process";
 import { basename, resolve } from "node:path";
 import type { Content, Root } from "mdast";
-import { stageInputs, stageResultCommitPaths, MACHINABLE, protocolSpecHash, protocolImplementationHash, SPEC_SECTIONS } from "./plan-update";
+import { stageInputs, stageResultCommitPaths, deliveryMetas, deliveryRoot, deliveryStart, deliveryEnd, repositoryEnvironment, MACHINABLE, protocolSpecHash, protocolImplementationHash, SPEC_SECTIONS } from "./plan-update";
 export { MACHINABLE, protocolSpecHash, protocolImplementationHash } from "./plan-update";
 
 /** Which lint rule a finding comes from; gate findings (receipts, boxes) carry none. */
@@ -112,9 +112,10 @@ export function protocolLockViolations(body: string): readonly string[] {
 }
 
 export function shaKnownAndAncestor(root: string, sha: string): boolean {
-  const probe = spawnSync("git", ["-C", root, "cat-file", "-e", `${sha}^{commit}`]);
+  const env = repositoryEnvironment();
+  const probe = spawnSync("git", ["-C", root, "cat-file", "-e", `${sha}^{commit}`], { env });
   if (probe.status !== 0) return false;
-  const ancestor = spawnSync("git", ["-C", root, "merge-base", "--is-ancestor", sha, "HEAD"]);
+  const ancestor = spawnSync("git", ["-C", root, "merge-base", "--is-ancestor", sha, "HEAD"], { env });
   return ancestor.status === 0;
 }
 
@@ -652,6 +653,12 @@ export function gatePlan(
   // not outstanding work — counting them made --closure unreachable for any
   // reworked plan (PR #160: 16 of 47 open-box violations were dead text).
   const superseded = new Set<number>();
+  const deliveries = deliveryMetas(body).map((delivery) => ({
+    delivery,
+    start: lines.indexOf(deliveryStart(delivery.id)),
+    end: lines.indexOf(deliveryEnd(delivery.id)),
+  }));
+  const roots = new Map<string, string>();
   let inSuperseded = false;
   lines.forEach((line, index) => {
     if (/^#{1,6}\s/.test(line)) inSuperseded = /superseded/i.test(line);
@@ -671,9 +678,17 @@ export function gatePlan(
     }
     report.closedBoxes += 1;
 
+    // @tested-by: tst_core_planctl_repository_001, tst_core_planctl_repository_002
+    const owning = deliveries.find((entry) => item.line > entry.start && item.line < entry.end);
+    let root = options.root;
+    if (owning !== undefined) {
+      root = roots.get(owning.delivery.id) ?? deliveryRoot(options.root, owning.delivery);
+      roots.set(owning.delivery.id, root);
+    }
+
     if (item.receipt === undefined) {
       report.violations.push(refusal("missing-receipt", number, sourceLine.trim()));
-    } else if (!shaKnownAndAncestor(options.root, item.receipt)) {
+    } else if (!shaKnownAndAncestor(root, item.receipt)) {
       report.violations.push(refusal("unknown-receipt", number, sourceLine.trim()));
     }
 
@@ -690,9 +705,9 @@ export function gatePlan(
     if (criterion?.[1] !== undefined && criterion[2] !== undefined && !options.noExec && !nested) {
       report.checkedCriteria += 1;
       const run = spawnSync("bash", ["-c", criterion[1]], {
-        cwd: options.root,
+        cwd: root,
         timeout: options.criterionTimeoutMs ?? DEFAULT_CRITERION_TIMEOUT_MS,
-        env: { ...process.env, PLAN_GATE_NESTED: "1" },
+        env: { ...repositoryEnvironment(), PLAN_GATE_NESTED: "1" },
       });
       if ((run.status ?? 1) !== Number(criterion[2])) {
         report.violations.push(refusal("criterion-failed", number, sourceLine.trim()));

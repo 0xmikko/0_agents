@@ -483,6 +483,92 @@ describe("plan-gate", () => {
     expect(kinds).toEqual(["criterion-failed", "missing-receipt", "unknown-receipt"]);
   });
 
+  // @test-id: tst_core_planctl_repository_001
+  // @scenario: scn_planctl_repository_001
+  // @covers: planctl/src/core/plan-gate.ts::gatePlan
+  // @deterministic: yes
+  // @fixtures: two temporary Git repositories with distinct commits and files
+  it("tst_core_planctl_repository_001 checks receipts and criteria in their owning repository", () => {
+    const local = makeRepo();
+    const remote = makeRepo();
+    try {
+      writeFileSync(join(remote.root, "remote.txt"), "remote delivery\n");
+      git(remote.root, "add remote.txt");
+      git(remote.root, "commit -qm remote");
+      const remoteSha = git(remote.root, "rev-parse HEAD");
+      const plan = join(local.root, "plan.md");
+      const body = planWith([
+        "<!-- plan:delivery:D1:start -->",
+        '<!-- plan:delivery-meta:{"active":false,"repository":"app"} -->',
+        "### PR Delivery D1 — App",
+        "Branch: `feat/fixture`;",
+        "#### Stage D1-S1 — App receipts",
+        `- [x] App work — ${remoteSha}`,
+        `- [x] \`test -f remote.txt\` exits 0 — ${remoteSha}`,
+        "<!-- plan:delivery:D1:end -->",
+        "<!-- plan:delivery:D2:start -->",
+        '<!-- plan:delivery-meta:{"active":true} -->',
+        "### PR Delivery D2 — Catalog",
+        "Branch: `feat/fixture`;",
+        "#### Stage D2-S1 — Local receipts",
+        `- [x] \`test ! -f remote.txt\` exits 0 — ${local.sha}`,
+        "<!-- plan:delivery:D2:end -->",
+      ].join("\n"));
+      writeFileSync(plan, body);
+      git(local.root, `config code-production.repository.app ${remote.root}`);
+      const report = gatePlan(plan, { root: local.root, nested: false });
+      expect(report.violations).toEqual([]);
+      expect(report.checkedCriteria).toBe(2);
+
+      writeFileSync(plan, body.replace(`exits 0 — ${local.sha}`, `exits 0 — ${remoteSha}`));
+      expect(gatePlan(plan, { root: local.root, noExec: true }).violations.map((v) => v.kind)).toEqual(["unknown-receipt"]);
+      git(local.root, "config --unset code-production.repository.app");
+      expect(() => gatePlan(plan, { root: local.root, noExec: true })).toThrow("repository app has no checkout");
+    } finally {
+      rmSync(local.root, { recursive: true, force: true });
+      rmSync(remote.root, { recursive: true, force: true });
+    }
+  });
+
+  // @test-id: tst_core_planctl_repository_002
+  // @scenario: scn_planctl_repository_002
+  // @covers: planctl/src/core/plan-update.ts::repositoryEnvironment, planctl/src/core/plan-gate.ts::gatePlan
+  // @deterministic: yes
+  // @fixtures: two temporary Git repositories; a gate process with the caller's Git environment
+  it("tst_core_planctl_repository_002 isolates repository lookup and criteria from a calling hook", () => {
+    const local = makeRepo();
+    const remote = makeRepo();
+    try {
+      writeFileSync(join(remote.root, "remote.txt"), "remote delivery\n");
+      git(remote.root, "add remote.txt");
+      git(remote.root, "commit -qm remote");
+      const remoteSha = git(remote.root, "rev-parse HEAD");
+      git(local.root, `config code-production.repository.app ${remote.root}`);
+      const plan = join(local.root, "plan.md");
+      writeFileSync(plan, planWith([
+        "<!-- plan:delivery:D1:start -->",
+        '<!-- plan:delivery-meta:{"active":true,"repository":"app"} -->',
+        "### PR Delivery D1 — App",
+        "Branch: `feat/fixture`;",
+        `- [x] App work — ${remoteSha}`,
+        `- [x] \`test -f remote.txt && test "$(git rev-parse --show-toplevel)" = "$PWD"\` exits 0 — ${remoteSha}`,
+        "<!-- plan:delivery:D1:end -->",
+      ].join("\n")));
+
+      const hook = spawnSync(process.execPath, [join(import.meta.dir, "../src/core/plan-gate.ts"), plan, "--root", local.root], {
+        cwd: local.root,
+        env: { ...CLEAN_GIT_ENV, GIT_DIR: join(local.root, ".git"), GIT_WORK_TREE: local.root, GIT_INDEX_FILE: join(local.root, ".git/index") },
+        encoding: "utf8",
+        timeout: 10_000,
+      });
+      expect(hook.stderr).toBe("");
+      expect(hook.status).toBe(0);
+    } finally {
+      rmSync(local.root, { recursive: true, force: true });
+      rmSync(remote.root, { recursive: true, force: true });
+    }
+  });
+
   it("tst_scripts_plangate_003 a multi-line box carries its receipt on the last continuation line", () => {
     const { root, sha } = makeRepo();
     const plan = join(root, "plan.md");
