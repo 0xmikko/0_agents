@@ -279,6 +279,8 @@ Checks that staged plan bytes are exactly the script-produced journal head.
   "clear-transaction": `Usage: planctl clear-transaction <plan.md> --commit <sha>
 
 Internal post-commit cleanup for a spent mutation journal.
+MCP callers do not run this command: the next plan write automatically
+reconciles a journal whose candidate is already committed at HEAD.
 `,
   config: `Usage: planctl config <init|check> --role <machine|server> [--path <absolute.toml>]
 

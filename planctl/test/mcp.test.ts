@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { dispatchTool, toolNames } from "../src/mcp/server";
-import { deliveryMetas, planJournalPath, taskRunPath } from "../src/core/plan-update";
+import { deliveryMetas, planJournalPath, taskRunPath, verifyStagedPlan } from "../src/core/plan-update";
 import { decodeTaskRun } from "../src/core/task-run";
 import { protocolSpecHash } from "../src/core/plan-update";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -75,6 +75,67 @@ describe("planctl mcp", () => {
     for (const { root } of repositories) rmSync(root, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
   });
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_010
+   * @scenario: scn_planctl_mcp_journal_001
+   * @covers: planctl/src/mcp/server.ts::createPlanctlServer,planctl/src/core/plan-update.ts::mutatePlanFile
+   * @deterministic: yes
+   * @invariant: the MCP client is told that journal cleanup is automatic; later writes reconcile committed journals without a shell cleanup, while raw plan edits remain refused.
+   */
+  it("tst_unit_planctl_mcp_010 continues after commits without manual journal cleanup", async () => {
+    const { root, git } = fixture("journal-continuation");
+    try {
+      const started = await client.callTool({ name: "init", arguments: { root, title: "Journal continuation" } });
+      expect(started.isError ?? false, text(started)).toBe(false);
+      const { plan } = started.structuredContent as { plan: string };
+      const absolute = join(root, plan);
+      const journal = planJournalPath(root, plan);
+      git("commit", "-qm", "create the draft");
+      // No post-commit cleanup: an older hook also leaves the per-plan journal in place.
+      expect(existsSync(journal)).toBe(true);
+
+      const progress = await client.callTool({ name: "progress", arguments: { root } });
+      expect(progress.isError ?? false, text(progress)).toBe(false);
+      const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8");
+      const submitted = await client.callTool({ name: "submit_spec", arguments: {
+        plan: absolute, baseRevision: (progress.structuredContent as { revision: string }).revision,
+        ownerRequest: "Reject empty names", spec,
+      } });
+      expect(submitted.isError ?? false, text(submitted)).toBe(false);
+      verifyStagedPlan(root, plan);
+      git("commit", "-qm", "write the specification");
+      writeFileSync(join(root, "notes.md"), "Research continues.\n");
+      git("add", "notes.md");
+      git("commit", "-qm", "save research notes");
+      const head = git("rev-parse", "HEAD");
+
+      const updated = await client.callTool({ name: "submit_spec", arguments: {
+        plan: absolute, baseRevision: (submitted.structuredContent as { revision: string }).revision,
+        ownerRequest: "Use the measured baseline", spec: spec.replace("three per release", "five per release"),
+      } });
+      expect(updated.isError ?? false, text(updated)).toBe(false);
+      verifyStagedPlan(root, plan);
+      expect(JSON.parse(readFileSync(journal, "utf8"))).toMatchObject({
+        baseHead: head, events: [expect.objectContaining({ operation: "set-spec" })],
+      });
+      git("commit", "-qm", "record the measured baseline");
+
+      const raw = `${readFileSync(absolute, "utf8")}\nUnjournaled edit.\n`;
+      writeFileSync(absolute, raw);
+      const refused = await client.callTool({ name: "submit_spec", arguments: {
+        plan: absolute, baseRevision: protocolSpecHash(raw), ownerRequest: "Reject empty names", spec,
+      } });
+      expect(refused.isError).toBe(true);
+      expect(text(refused)).toContain("dirty preimage");
+      expect(readFileSync(absolute, "utf8")).toBe(raw);
+
+      expect(client.getInstructions()).toMatch(/journal cleanup is automatic/i);
+      expect(client.getInstructions()).toContain("clear-transaction");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
 
   /**
    * @test-id: tst_unit_planctl_mcp_001

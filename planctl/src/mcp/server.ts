@@ -503,9 +503,15 @@ export function toolNames(): readonly string[] {
   return Object.keys(TOOLS);
 }
 
-/** The planctl tools over stdio. @tested-by: tst_unit_planctl_mcp_001 */
+/** The planctl tools over stdio. @tested-by: tst_unit_planctl_mcp_001, tst_unit_planctl_mcp_010 */
 export function createPlanctlServer(deps: ServerDependencies): Server {
-  const server = new Server({ name: "planctl", version: "0.1.0" }, { capabilities: { tools: {} } });
+  const server = new Server({ name: "planctl", version: "0.1.0" }, {
+    capabilities: { tools: {} },
+    instructions: "Use the planctl MCP tools to change plans. Commit authorized changes with normal Git hooks enabled. "
+      + "Journal cleanup is automatic: the post-commit hook clears a committed journal, or the next MCP write reconciles it against HEAD. "
+      + "Continue with the next authorized action after a successful commit; no separate clear-transaction command or owner confirmation is needed. "
+      + "If a tool reports a journal mismatch, inspect that error; do not delete the journal or bypass the checks.",
+  });
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: Object.entries(TOOLS).map(([name, definition]) => ({
       name,
