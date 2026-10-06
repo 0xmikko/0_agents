@@ -410,6 +410,7 @@ describe("planctl mcp", () => {
     const spec = original.replace(map, "").replace("### Reject an empty name\n\n", "").replace("## Why now", "## Observed behavior");
     try {
       const started = await dispatchTool(deps, "init", { root, title: "Evidence" });
+      expect(text(started)).not.toContain("Why now");
       const plan = join(root, (started.structuredContent as { plan: string }).plan);
       const submitted = await dispatchTool(deps, "submit_spec", { plan, baseRevision: protocolSpecHash(readFileSync(plan, "utf8")), ownerRequest: "Preserve the findings", spec });
       expect(submitted.isError ?? false, text(submitted)).toBe(false);
@@ -417,6 +418,7 @@ describe("planctl mcp", () => {
       expect(findings.length).toBeGreaterThan(0);
       expect(findings.every((finding) => !finding.blocking)).toBe(true);
       expect(text(submitted)).toContain("Advice");
+      expect(text(submitted)).not.toContain("Why now");
       expect(readFileSync(plan, "utf8")).toContain(spec.trim());
       const approved = await dispatchTool(deps, "approve_spec", { plan, ownerWord: "spec" });
       expect(approved.isError ?? false, text(approved)).toBe(false);

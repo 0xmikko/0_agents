@@ -188,7 +188,7 @@ describe("plan form", () => {
     try {
       const plan = join(root, "plan.md");
       const cases = [
-        [spec.replace("## Why now", "## Background"), "Why now"],
+        [spec.replace("### Reuse", "### Existing code"), "Reuse"],
         [spec.replace("### Target tree", "### Files"), "Target tree"],
         [spec.replace("export interface Change {\n  readonly name: string;\n  readonly accepted: boolean;\n}", "const value = 1;"), "Interfaces"],
         [spec.replace("  readonly name: string;\n  readonly accepted: boolean;", "  readonly name: string; readonly accepted: boolean;"), "field"],

@@ -86,7 +86,7 @@ export interface StageInput {
    * must equal tasks + verification, so estimates stay derived. */
   readonly verifyActiveMinutes: number;
   readonly verifyCredits: number;
-  /** What this Stage solves and why now, what is built and where, how it is
+  /** What this Stage delivers, what is built and where, how it is
    * proven, and the commit message (subject, then body). Paragraphs separated
    * by one blank line; rendered between the forecast and the Tasks. */
   readonly description: string;
@@ -327,7 +327,7 @@ export const DELIVERY_DESCRIPTION_HINT =
 export const DELIVERY_WAIT_HINT =
   "the external wait forecast — minutes the Delivery expects to wait on others (owner review rounds, CI runs, external services), kept apart from active work; the active-work total and the longest dependency path are derived from the Stages";
 export const STAGE_DESCRIPTION_HINT =
-  "what this Stage solves and why now, what is built and where, how it is proven, and the commit message (subject, then body); paragraphs separated by one blank line";
+  "what this Stage delivers, what is built and where, how it is proven, and the commit message (subject, then body); paragraphs separated by one blank line";
 
 /** Prose that renders inside a protocol region: paragraphs, never anything
  * the parsers would read as structure. A heading would end a section, a
@@ -400,7 +400,7 @@ function assertPlanTitle(title: string): void {
 }
 
 /** The SPEC sections every plan carries, in the order the owner reads them. */
-export const SPEC_SECTIONS = ["The Goal", "Why now", "The target", "Target tree", "Invariants", "Reuse", "New names", "Not verified"] as const;
+export const SPEC_SECTIONS = ["The Goal", "The target", "Target tree", "Invariants", "Reuse", "New names", "Not verified"] as const;
 
 /** The plan's title: its first line. */
 function planTitle(body: string): string {
