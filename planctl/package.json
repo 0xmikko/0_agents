@@ -10,7 +10,7 @@
     "agent:test:e2e": "bun test",
     "agent:verify:commit": "bun run typecheck && bun test",
     "agent:verify:pr": "bun run typecheck && bun run lint && bun test && bun run build",
-    "agent:verify:docs": "bun test test/package-boundary.test.ts test/instruction-audit.test.ts && bun ../shared/code-production/instruction-audit.ts ..",
+    "agent:verify:docs": "bun test test/package-boundary.test.ts test/instruction-audit.test.ts && bun ../shared/code-production/instruction-audit.ts .. --strict",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src test bench",
     "build": "bun build src/cli/main.ts src/core/plan-gate.ts src/core/plan-update.ts src/machine/main.ts src/server/main.ts --outdir dist --target bun --external @nestjs/platform-socket.io --external nats --external ioredis --external mqtt --external kafkajs --external amqplib --external amqp-connection-manager --external @grpc/grpc-js --external @grpc/proto-loader"

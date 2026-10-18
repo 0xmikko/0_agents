@@ -111,7 +111,7 @@ describe("plan form", () => {
   it("tst_gate_lint_002 refuses to lock malformed SPEC without changing the draft, then locks a valid SPEC", () => {
     const { root } = makeRepo();
     const plan = "docs/plans/fixture.md";
-    const run = (...args: string[]) => spawnSync("bun", [cli, ...args], { cwd: root, encoding: "utf8", env: CLEAN_GIT_ENV, timeout: 15_000 });
+    const run = (...args: string[]) => spawnSync("bun", [cli, ...args], { cwd: root, encoding: "utf8", env: { ...CLEAN_GIT_ENV, PATH: `${join(import.meta.dir, "fixtures/bin")}:${process.env.PATH}` }, timeout: 15_000 });
     try {
       expect(run("init", plan, "--title", "Fixture").status).toBe(0);
       git(root, 'commit -qm "draft"');

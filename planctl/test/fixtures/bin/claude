@@ -1,0 +1,16 @@
+#!/usr/bin/env bun
+import { appendFileSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+const input = await Bun.stdin.text();
+if (process.env.PLAN_JUDGE_TEST_LOG) appendFileSync(process.env.PLAN_JUDGE_TEST_LOG, JSON.stringify({ input, args: process.argv.slice(2) }) + "\n");
+if (process.env.PLAN_JUDGE_TEST_REPLY) {
+  process.stdout.write(readFileSync(process.env.PLAN_JUDGE_TEST_REPLY, "utf8"));
+  if (process.env.PLAN_JUDGE_TEST_ERROR) console.error(process.env.PLAN_JUDGE_TEST_ERROR);
+  process.exit(process.env.PLAN_JUDGE_TEST_ERROR ? 1 : 0);
+}
+if (process.env.PLAN_JUDGE_TEST_MUTATE) {
+  const changed = spawnSync(process.execPath, JSON.parse(process.env.PLAN_JUDGE_TEST_MUTATE), { encoding: "utf8" });
+  if (changed.status !== 0) throw new Error(changed.stderr);
+}
+const answers = Object.fromEntries(["Goal", "Stages", "Names", "Prose"].map(rule => [rule, { verdict: "PASS", quote: "## The Goal", fix: "" }]));
+console.log(JSON.stringify({ is_error: false, structured_output: answers }));

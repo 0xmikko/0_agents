@@ -15,6 +15,35 @@ Configs and tooling for our coding agents — **Claude Code** and **Codex** — 
 
 Three top-level entry points; every other installer is a helper inside `lib/`.
 
+## Agent instructions
+
+Claude and Codex share one screen (`claude/CLAUDE.md`, linked from
+`codex/AGENTS.md`), two laws in `shared/code-production/laws`, and three
+reviewers: coherence, coverage and simplicity. Language guides load by file
+extension. Nothing selects a Task at session startup.
+
+Nine shared skills remain: `blueprint`, `blueprint-start`, `end-work`, `bug`,
+`rename`, `review-implementation`, `cleanup-worktrees`, `mdurl` and `dictate`.
+Claude also has `nvim`; personal business skills stay separate.
+
+- `bun run --cwd planctl agent:verify:docs` enforces the instruction audit:
+  no dead references, vocabulary synonyms, language-routing mistakes or
+  counted instruction set over 900 lines.
+- `bun planctl/src/core/plan-gate.ts <plan.md> --lint` checks plan form.
+- `bun planctl/src/core/plan-gate.ts <plan.md> --judge` reviews Goal, Stages,
+  Names and Prose through `claude -p --model haiku` on the Claude subscription.
+  The rubric lives in `shared/code-production/plan-judge.md` and is installed
+  with each consumer gate. Claude receives only the SPEC, Stage descriptions
+  and project vocabulary, with customizations and tools disabled.
+
+The judge prints PASS or FAIL with a quote and correction for each rule.
+Git-local verdicts are cached by SPEC and judged input, including the rubric;
+changed Stages or vocabulary also invalidate them. There are no automatic
+retries. A call has a 45-second limit. `approve-spec` runs lint and judge before
+writing a lock: FAIL, malformed output, a missing CLI or a subscription limit
+leaves the plan unchanged and returns an error. The owner still approves the
+SPEC and Stages; the judge cannot grant that approval.
+
 ---
 
 ## Features on Mac (`install-client-mac.sh`)

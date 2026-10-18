@@ -190,8 +190,8 @@ export function audit(root: string): Finding[] {
 }
 
 /** Exit status: findings fail the run only under `--strict` (or
- * INSTRUCTION_AUDIT_STRICT=1); until the diet is complete the audit reports
- * and lets the gate pass, so every Stage of the diet can publish. */
+ * INSTRUCTION_AUDIT_STRICT=1). agent:verify:docs always enables strict mode;
+ * a direct invocation without it remains a read-only report. */
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const strict = args.includes("--strict") || process.env["INSTRUCTION_AUDIT_STRICT"] === "1";
