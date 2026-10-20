@@ -6,7 +6,7 @@ import { execSync, spawnSync } from "node:child_process";
 
 import { lockPlanSpec, putDelivery, putStage, stageInputs, type StageInput } from "../src/core/plan-update";
 
-import { checkPlanFreeze, gatePlan, lint, planItems, protocolLanguageViolations } from "../src/core/plan-gate";
+import { checkPlanFreeze, gatePlan, lint, planItems, protocolLanguageViolations, undeclaredExportedTypes } from "../src/core/plan-gate";
 
 // This file used to `delete process.env.PLAN_GATE_NESTED` here, so that the
 // suite could still exercise criterion execution when it ran AS a criterion
@@ -60,6 +60,51 @@ function makeRepo(): { root: string; sha: string } {
 function planWith(body: string): string {
   return `# A plan\n\n## Stages\n\n${body}\n`;
 }
+
+// @test-id: tst_core_planctl_subtree_types_001
+// @scenario: scn_planctl_subtree_import_001
+// @covers: planctl/src/core/plan-gate.ts::undeclaredExportedTypes
+// @deterministic: yes
+// @fixtures: two temporary Git repositories joined by a subtree merge
+// @invariant: an imported parent supplies existing types, but new or changed types still need declaration.
+it("tst_core_planctl_subtree_types_001 distinguishes inherited catalog types from authored changes", async () => {
+  const app = makeRepo();
+  const catalog = makeRepo();
+  const body = "# Import catalog\n\n## Interfaces\n\nNo type changes.\n";
+  try {
+    writeFileSync(join(catalog.root, "src/api.ts"), "export interface Existing { id: string; }\n");
+    git(catalog.root, "add src/api.ts");
+    git(catalog.root, "commit -qm catalog");
+    const split = git(catalog.root, "rev-parse HEAD");
+    git(app.root, `fetch -q ${catalog.root} ${split}`);
+    git(app.root, `merge -q -s ours --no-commit --no-ff --allow-unrelated-histories ${split}`);
+    git(app.root, `read-tree --prefix=plugins/ -u ${split}`);
+    const message = `-m import --trailer 'git-subtree-dir: plugins' --trailer 'git-subtree-split: ${split}'`;
+    git(app.root, `commit -q ${message}`);
+    expect(await undeclaredExportedTypes(app.root, "HEAD", body)).toEqual([]);
+
+    writeFileSync(join(app.root, "plugins/src/api.ts"),
+      "export interface Existing { id: number; }\nexport type Added = boolean;\n");
+    git(app.root, "add plugins/src/api.ts");
+    // Rebuild only this disposable fixture's merge to test edits made during import.
+    git(app.root, `commit --amend -q ${message}`);
+    expect(await undeclaredExportedTypes(app.root, "HEAD", body)).toEqual([
+      { path: "plugins/src/api.ts", name: "Existing" },
+      { path: "plugins/src/api.ts", name: "Added" },
+    ]);
+
+    writeFileSync(join(app.root, "plugins/src/api.ts"), "export interface Existing { id: string; }\n");
+    git(app.root, "add plugins/src/api.ts");
+    // A trailer referring to a commit outside the merge parents grants no exemption.
+    git(app.root, "commit --amend -qm import --trailer 'git-subtree-dir: plugins' --trailer 'git-subtree-split: 0000000000000000000000000000000000000000'");
+    expect(await undeclaredExportedTypes(app.root, "HEAD", body)).toEqual([
+      { path: "plugins/src/api.ts", name: "Existing" },
+    ]);
+  } finally {
+    rmSync(app.root, { recursive: true, force: true });
+    rmSync(catalog.root, { recursive: true, force: true });
+  }
+});
 
 describe("findings an agent can act on", () => {
   const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8");

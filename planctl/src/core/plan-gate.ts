@@ -351,10 +351,27 @@ function exportedTypes(text: string, path: string, ts: typeof import("typescript
 /** Exported types the commit adds or changes that the SPEC Interfaces do not name. */
 function undeclaredTypesOf(root: string, commit: string, types: ReadonlySet<string>, ts: typeof import("typescript")): readonly { path: string; name: string }[] {
   const found: { path: string; name: string }[] = [];
+  // @tested-by: tst_core_planctl_subtree_types_001
+  // A subtree merge carries existing declarations at a new prefix. Compare
+  // them with the actual imported parent; trailers alone prove nothing.
+  const metadata = spawnSync("git", ["-C", root, "show", "-s",
+    "--format=%P%x00%(trailers:key=git-subtree-dir,valueonly,separator=%x00)%x00%(trailers:key=git-subtree-split,valueonly,separator=%x00)",
+    commit], { encoding: "utf8" });
+  if (metadata.status !== 0) throw new Error(`cannot inspect type ancestry of ${commit}`);
+  const fields = metadata.stdout.trimEnd().split("\0");
+  const [parents, directory, split] = fields;
+  const subtree = fields.length === 3 && directory !== undefined && split !== undefined
+    && directory.split("/").every((part) => part !== "" && part !== "." && part !== "..")
+    && parents?.split(" ").slice(1).includes(split)
+    ? { prefix: `${directory}/`, parent: split }
+    : null;
   for (const path of stageResultCommitPaths(commit, root).filter((path) => /\.tsx?$/.test(path))) {
     const current = spawnSync("git", ["-C", root, "show", `${commit}:${path}`], { encoding: "utf8" });
     if (current.status !== 0) continue; // deleted files introduce no types
-    const previous = spawnSync("git", ["-C", root, "show", `${commit}^1:${path}`], { encoding: "utf8" });
+    let previous = spawnSync("git", ["-C", root, "show", `${commit}^1:${path}`], { encoding: "utf8" });
+    if (previous.status !== 0 && subtree !== null && path.startsWith(subtree.prefix)) {
+      previous = spawnSync("git", ["-C", root, "show", `${subtree.parent}:${path.slice(subtree.prefix.length)}`], { encoding: "utf8" });
+    }
     const before = exportedTypes(previous.status === 0 ? previous.stdout : "", path, ts);
     for (const [name, text] of exportedTypes(current.stdout, path, ts)) {
       if (before.get(name) !== text && !types.has(name)) found.push({ path, name });
