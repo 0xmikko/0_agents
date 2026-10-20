@@ -6,6 +6,7 @@ Outline lock: unlocked
 Implementation lock: sha256:7ac87778ad9b08519b334bf737b6221d57f875231cc932a519995e07ca3ebf34 owner:Я тебе даю полный карт-бланш.  
 Active Delivery: D1  
 Unattended decisions: allowed  
+Ledger: implemented  
 
 <!-- plan:spec:start -->
 ## The Goal
@@ -330,7 +331,7 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 
 ##### Acceptance criteria
 
-- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete publication gate passes
+- [x] `cd planctl && bun run agent:verify:pr` exits 0 — the complete publication gate passes — d21b03997e3d4f2e2e20a86f210f4f6ac1ddc999
 - [x] Commit — 026c5c17656d2b4dca712b5ab2de07b68465be94
 
 ##### Results
@@ -403,4 +404,6 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 - amend implementation owner:Я тебе даю полный карт-бланш. sha256:7ac87778ad9b08519b334bf737b6221d57f875231cc932a519995e07ca3ebf34
 
 - deviation D1-S1: The full local gate exposed obsolete editorial assertions and eager browser loading in built entrypoints. Scoped regressions now prove lazy loading, preserved failure output, unchanged contract copies and explicit renames, optional requested review, and matching observer/executor eligibility. Private historical examples stay local because the source repository is public; only synthetic fixtures and aggregate historical measurements are published.
+
+- close D1-S1 closed commit:d21b03997e3d4f2e2e20a86f210f4f6ac1ddc999
 <!-- plan:execution:end -->
