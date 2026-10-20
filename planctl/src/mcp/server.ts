@@ -154,7 +154,7 @@ function specGoal(body: string): string {
 }
 
 const deliverySchema = z.object({
-  id: z.string().regex(/^D[1-9]\d*$/), title: z.string(), branch: z.string(),
+  id: z.string().regex(/^D[1-9]\d*$/), review: z.enum(["required", "none"]).optional(), title: z.string(), branch: z.string(),
   depends: z.array(z.string()), gate: z.array(z.string()), active: z.boolean(),
   stageGraph: z.string().describe("One line, for example D1-S1 -> D1-S2."),
   predictedExternalWaitMinutes: z.number().nonnegative(), repository: z.string().optional(), description: z.string(),
@@ -396,10 +396,12 @@ const TOOLS = {
       const before = readFileSync(resolve(root, relative), "utf8");
       let status: "CLOSED" | "PARTIAL" = "PARTIAL";
       let closed = 0;
+      let verificationLogs: readonly string[] = [];
       mutatePlanFile(root, relative, "close", (body) => {
         const result = closePlanStage(body, stage, { root: at.root, head });
         status = result.status;
         closed = result.closed;
+        verificationLogs = result.verificationLogs ?? [];
         return { body: result.body };
       });
       const saved = readFileSync(resolve(root, relative), "utf8");
@@ -412,7 +414,7 @@ const TOOLS = {
             && saved.includes(`- [x] ${criterion} — ${head}`)) recordCompleteGate(at.root, relative, command, saved);
         }
       }
-      return reply({ plan: relative, stage, status, closed, head }, `Stage ${stage} ${status}: ${closed} criteria closed at ${head.slice(0, 7)}`);
+      return reply({ plan: relative, stage, status, closed, head, verificationLogs }, `Stage ${stage} ${status}: ${closed} criteria closed.\n${verificationLogs.map(path => `Verification output: ${path}`).join("\n")}`);
     },
   }),
   needs_owner: tool({

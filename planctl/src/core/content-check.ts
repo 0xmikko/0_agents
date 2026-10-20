@@ -5,7 +5,7 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import type { Content, Root } from "mdast";
 import ts from "typescript";
 import { z } from "zod";
-import { chromium } from "playwright-core";
+import type { Browser } from "playwright-core";
 import type { GateViolation } from "./plan-gate";
 import type { SubmitSpecResult } from "./spec-submission";
 import { cacheDirectory, contentHash, readVocabulary } from "./vocabulary";
@@ -116,8 +116,9 @@ async function renderDiagrams(root: string, blocks: readonly { readonly content:
   if (!executablePath) return { findings, diagramChecks: blocks.map(b => ({ line: b.line, status: "unavailable", artifact: null })) };
   const directory = cacheDirectory(root, "diagrams");
   mkdirSync(directory, { recursive: true });
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let browser: Browser | undefined;
   try {
+    const { chromium } = await import("playwright-core");
     browser = await chromium.launch({ executablePath, headless: true, timeout: 5000 });
     for (const block of blocks) {
       const artifact = join(directory, `${contentHash(JSON.stringify({

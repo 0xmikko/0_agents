@@ -584,7 +584,7 @@ export async function lint(body: string, root: string, commit?: string): Promise
   if ((specStart >= 0 || specEnd >= 0) && (specStart < 0 || specEnd <= specStart)) {
     return { violations: [refusal("protocol-shape", 1, "missing ordered SPEC markers")], metrics: [] };
   }
-  const required = ["The Goal", "The target"];
+  const required = REQUIRED_SECTIONS;
   for (const name of required) {
     if (!headings.some((node) => proseText(node).toLowerCase() === name.toLowerCase())) add(specStart + 2, `missing SPEC section: ${name}`, "structure", name, null, name === "The Goal" || name === "The target");
   }

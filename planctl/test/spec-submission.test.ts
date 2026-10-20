@@ -51,7 +51,7 @@ describe("submit_spec", () => {
       expect(saved).not.toContain("\r");
       expect(saved.split("<!-- plan:spec:start -->")[1]?.split("<!-- plan:spec:end -->")[0]?.trim()).toBe(draft.replace(/\r\n/g, "\n").trim());
       expect(result.revision).toBe(protocolSpecHash(saved));
-      expect(result.findings.map((finding) => finding.rule)).toEqual(["vocabulary", "sentence"]);
+      expect(result.findings.map((finding) => finding.rule)).toEqual(["vocabulary"]);
       expect(result.findings.every((finding) => !finding.blocking)).toBe(true);
       const approval = await lint(saved, root);
       expect(approval.violations.map((finding) => `${finding.line}:${finding.text}`)).toEqual(result.findings.map((finding) => `${finding.line}:${finding.text}`));
@@ -72,7 +72,7 @@ describe("submit_spec", () => {
    * @deterministic: yes
    * @invariant: a submission is judged by the deterministic lint alone: no model is called, its findings are the lint's, and unchanged text reports no_change without writing.
    */
-  it("tst_unit_planctl_spec_submission_002 judges by the lint alone and reports no_change for unchanged text", async () => {
+  it("tst_unit_planctl_spec_submission_002 checks complete content and reports no_change for unchanged text", async () => {
     const root = repository();
     try {
       const base = protocolSpecHash(readFileSync(join(root, PLAN), "utf8"));

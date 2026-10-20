@@ -14,7 +14,7 @@ import { publishDelivery, recordCompleteGate } from "../src/core/publication";
  * @invariant: local verification and review precede the real Git push; repeated publication
  * does not push again; protected branches and a direct push without intent are refused.
  */
-it("tst_unit_planctl_publication_001 publishes once through normal hooks after local review", async () => {
+it.each(["required", "none"] as const)("tst_unit_planctl_publication_001 publishes once with review=%s", async (review) => {
   const directory = mkdtempSync(join(tmpdir(), "planctl-publication-"));
   const root = join(directory, "work"); const remote = join(directory, "remote");
   mkdirSync(root); mkdirSync(remote);
@@ -30,7 +30,7 @@ it("tst_unit_planctl_publication_001 publishes once through normal hooks after l
     mkdirSync(join(root, "docs/plans"), { recursive: true });
     let body = replaceDraftSpec(createDraftPlan("One publication"), "## The Goal\nDeliver one tested behavior.\n\n## The target\nNo contracts change.").body;
     body = lockPlanSpec(body, "spec").body;
-    body = putDelivery(body, { id: "D1", title: "One publication", branch: "feat/publication", depends: [], gate: ["bun run agent:verify:pr"],
+    body = putDelivery(body, { id: "D1", review, title: "One publication", branch: "feat/publication", depends: [], gate: ["bun run agent:verify:pr"],
       active: true, stageGraph: "D1-S1", predictedExternalWaitMinutes: 0, description: "Deliver one tested change." }).body;
     body = putStage(body, { id: "D1-S1", deliveryId: "D1", title: "One complete change", owner: "agent", profile: "fast", depends: [], parallelWith: [],
       writes: ["src/"], tempRoot: ".tmp/code-production/fixture/D1-S1", predictedActiveMinutes: 2, predictedCredits: 0, verifyActiveMinutes: 1, verifyCredits: 0,
@@ -55,13 +55,16 @@ it("tst_unit_planctl_publication_001 publishes once through normal hooks after l
       if (args[1] === "create") { if (!interrupted) { interrupted = true; throw new Error("Simulated interruption after push"); } created = true; return "https://example.test/pull/1"; }
       throw new Error("Unexpected GitHub operation");
     };
-    const input = { plan: join(root, plan), delivery: "D1", expectedHead: head, phase: "implementation" as const, reviewPath: "review.md" };
+    const input = { plan: join(root, plan), delivery: "D1", expectedHead: head, phase: "implementation" as const,
+      ...(review === "required" ? { reviewPath: "review.md" } : {}) };
     await expect(publishDelivery(input, { github })).rejects.toThrow(/local gate/);
     expect(calls).toBe(0);
     recordCompleteGate(root, plan, "bun run agent:verify:pr");
-    await expect(publishDelivery(input, { github })).rejects.toThrow(/review is missing/);
-    expect(calls).toBe(0);
-    writeFileSync(join(root, "review.md"), `Reviewed-Head: ${head}\nREVIEW VERDICT: APPROVED\n\nNo blocking findings.\n`);
+    if (review === "required") {
+      await expect(publishDelivery(input, { github })).rejects.toThrow(/review is missing/);
+      expect(calls).toBe(0);
+      writeFileSync(join(root, "review.md"), `Reviewed-Head: ${head}\nREVIEW VERDICT: APPROVED\n\nNo blocking findings.\n`);
+    }
     await expect(publishDelivery(input, { github })).rejects.toThrow(/Simulated interruption/);
     const first = await publishDelivery(input, { github });
     expect(first).toMatchObject({ pushed: false, url: "https://example.test/pull/1" });

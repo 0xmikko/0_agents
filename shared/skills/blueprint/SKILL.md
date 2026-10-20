@@ -39,6 +39,8 @@ tool schemas for arguments. Project package.json agent:* scripts define checks.
    Include the files that own changed contracts. Derive estimates from the work.
    A Delivery in another repository names that repository; its checkout is
    configured with `code-production.repository.<name>`. Keep one shared plan.
+   Set the Delivery's `review` to `required` when the owner requests final review;
+   otherwise leave it unset. Do not invent a new approval step.
 6. Check that the implementation covers the Goal and acceptance cases.
    Show the complete contract and ask for approval. After the owner's yes,
    call `approve_plan` with its displayed `expectedRevision` and commit the plan.

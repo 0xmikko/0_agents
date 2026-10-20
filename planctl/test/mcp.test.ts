@@ -412,6 +412,8 @@ describe("planctl mcp", () => {
         .replace(/^Active Delivery: D2/m, "Active Delivery: D1")
         .replace(/(<!-- plan:stage:D1-S1:start -->)([\s\S]*?)(<!-- plan:stage:D1-S1:end -->)/,
           (_whole, start: string, block: string, end: string) => start + block.replace(/^- \[ \] (.*)$/gm, `- [x] $1 — ${head}`) + end) }));
+      const ready = await dispatchTool({ ...deps, publication: () => null }, "progress", { plan: absolute });
+      expect(ready.structuredContent?.next).toMatchObject({ taskId: "MCP_FIX_002", blockedBy: null });
       const local = await dispatchTool({ ...deps, publication: () => null }, "start_task", { plan: absolute, task: "MCP_FIX_002" });
       expect(local.isError ?? false, text(local)).toBe(false);
       expect(local.structuredContent?.taskId).toBe("MCP_FIX_002");

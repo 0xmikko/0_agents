@@ -33,3 +33,31 @@ it("tst_unit_planctl_contract_001 compares actual fields with every flow's contr
     expect((await checkContractChanges(root, git("rev-parse", "HEAD"), spec)).some(f => f.text.includes("count"))).toBe(true);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+/**
+ * @test-id: tst_unit_planctl_contract_002
+ * @scenario: scn_planctl_contract_reuse_001
+ * @covers: planctl/src/core/contract-check.ts::checkContractChanges
+ * @deterministic: yes
+ * @invariant: copying an unchanged declaration and an explicitly approved rename
+ * do not invent a new contract; omitting the rename still produces a finding.
+ */
+it("tst_unit_planctl_contract_002 recognizes copied contracts and approved aliases", async () => {
+  const root = mkdtempSync(join(tmpdir(), "contract-reuse-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  try {
+    git("init", "-q", "-b", "feat/contracts"); git("config", "user.email", "test@example.com"); git("config", "user.name", "Test");
+    const original = "export type Envelope = { value: string };\n";
+    writeFileSync(join(root, "model.ts"), original);
+    git("add", "."); git("commit", "-qm", "original contract");
+    writeFileSync(join(root, "generated.ts"), original);
+    git("add", "."); git("commit", "-qm", "unchanged generated copy");
+    expect(await checkContractChanges(root, git("rev-parse", "HEAD"), "No contracts change.")).toEqual([]);
+    writeFileSync(join(root, "model.ts"), "export type Message = { value: string };\nexport type Mode = 'open' | 'closed';\n");
+    git("add", "."); git("commit", "-qm", "renamed contract and union");
+    const spec = "Rename `Envelope` to `Message`.\n```typescript\ntype Message = { value: string };\ntype Mode = 'open' | 'closed';\n```";
+    expect(await checkContractChanges(root, git("rev-parse", "HEAD"), spec)).toEqual([]);
+    expect((await checkContractChanges(root, git("rev-parse", "HEAD"), spec.replace("Rename `Envelope` to `Message`.", "")))
+      .some(f => f.text.includes("removed without"))).toBe(true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

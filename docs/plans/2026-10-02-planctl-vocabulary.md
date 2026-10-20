@@ -1,9 +1,9 @@
 # Fast autonomous development with clear plans and a shared vocabulary
 
 Status: APPROVED  
-Spec lock: sha256:2fbc9b4ec257967deb9fcb2eace424cb19775a679c1563f225d91ee142589e61 owner:Я тебе даю полный карт-бланш.  
+Spec lock: sha256:44799b2b4573f4962670cba14e4ec89310f7cdefa30861bacc269ee403083ae1 owner:Я тебе даю полный карт-бланш.  
 Outline lock: unlocked  
-Implementation lock: sha256:48b0ac551a9aca332054a4575e73e141007af8a0e7a17e69bd2e7b82e138430a owner:Я тебе даю полный карт-бланш.  
+Implementation lock: sha256:7ac87778ad9b08519b334bf737b6221d57f875231cc932a519995e07ca3ebf34 owner:Я тебе даю полный карт-бланш.  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -181,7 +181,21 @@ The agent maps approved flows to Tasks and groups them into Stages. **One Stage 
 
 #### Interfaces
 
-Reuse `DeliveryInput`, `StageInput` and `TaskInput` from `planctl/src/core/plan-update.ts`. Their relevant fields travel together:
+Reuse `DeliveryInput`, `StageInput` and `TaskInput` from `planctl/src/core/plan-update.ts`. An optional review field records whether final review is part of this Delivery; absence adds no new review requirement. `DeliveryMeta` exposes the same field to publication. The added members are:
+
+```typescript
+export interface DeliveryInput {
+  readonly review?: "required" | "none";
+}
+export interface DeliveryMeta {
+  readonly review?: "required" | "none";
+}
+export interface StageCloseResult {
+  readonly verificationLogs?: readonly string[];
+}
+```
+
+Stage closure retains command output in worktree Git storage and returns its paths. Their relevant fields travel together:
 
 | MCP operation | Input and result |
 |---|---|
@@ -281,7 +295,7 @@ Keep useful existing instructions and examples. Apply only the agreed changes af
 ## Implementation contract
 
 <!-- plan:delivery:D1:start -->
-<!-- plan:delivery-meta:{"active":true,"depends":[],"predictedExternalWaitMinutes":10} -->
+<!-- plan:delivery-meta:{"active":true,"depends":[],"predictedExternalWaitMinutes":10,"review":"required"} -->
 ### PR Delivery D1 — Working vocabulary and focused semantic feedback in planctl
 
 Branch: `feat/planctl-vocabulary`; Depends: none; Gate: cd planctl && bun run agent:verify:pr.
@@ -317,7 +331,7 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 ##### Acceptance criteria
 
 - [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete publication gate passes
-- [ ] Commit
+- [x] Commit — 026c5c17656d2b4dca712b5ab2de07b68465be94
 
 ##### Results
 
@@ -381,4 +395,12 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 - deviation D1-S1: Historical source labels remain provisional and private. Public examples are synthetic regression cases. Jev remains advisory; unresolved inferred and re-exported contracts remain incomplete evidence.
 
 - deviation D1-S1: Reproduced and fixed diagnostic event-log failure masking a completed MCP mutation; isolated sessions can select a writable event log.
+
+- close D1-S1 partial commit:026c5c17656d2b4dca712b5ab2de07b68465be94
+
+- amend spec owner:Я тебе даю полный карт-бланш. sha256:44799b2b4573f4962670cba14e4ec89310f7cdefa30861bacc269ee403083ae1
+
+- amend implementation owner:Я тебе даю полный карт-бланш. sha256:7ac87778ad9b08519b334bf737b6221d57f875231cc932a519995e07ca3ebf34
+
+- deviation D1-S1: The full local gate exposed obsolete editorial assertions and eager browser loading in built entrypoints. Scoped regressions now prove lazy loading, preserved failure output, unchanged contract copies and explicit renames, optional requested review, and matching observer/executor eligibility. Private historical examples stay local because the source repository is public; only synthetic fixtures and aggregate historical measurements are published.
 <!-- plan:execution:end -->

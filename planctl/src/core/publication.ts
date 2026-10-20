@@ -3,9 +3,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
-import { deliveryMetas, deliveryRoot, planState, protocolImplementationHash, protocolSpecHash, repositoryEnvironment, stageInputs, stageStart, stageEnd, deliveryStart, deliveryEnd, taskRunPath } from "./plan-update";
+import { deliveryMetas, deliveryRoot, planState, protocolImplementationHash, protocolSpecHash, repositoryEnvironment, stageInputs, stageStart, stageEnd, deliveryStart, deliveryEnd } from "./plan-update";
 import { protocolLockViolations } from "./plan-gate";
-import { decodeTaskRun } from "./task-run";
 import { checkContractChanges } from "./contract-check";
 import { contentHash, evidencePath } from "./vocabulary";
 
@@ -139,10 +138,12 @@ export async function publishDelivery(input: {
   } else if (!existsSync(legacy) || readFileSync(legacy, "utf8").trim() !== head) {
     throw new Error("Run the complete local gate before review and publication.");
   }
-  const reviewPath = input.reviewPath === undefined ? recordPath(checkout, "review.md") : evidencePath(checkout, input.reviewPath);
-  if (!existsSync(reviewPath)) throw new Error("The requested final review is missing. Save the actual review report in the task checkout and pass its relative reviewPath.");
-  review = readFileSync(reviewPath, "utf8");
-  if (!review.includes(`Reviewed-Head: ${head}`) || !/^REVIEW VERDICT:\s*APPROVED\s*$/m.test(review)) throw new Error("The final review report does not approve this implementation.");
+  if (delivery.review === "required" || input.reviewPath !== undefined) {
+    const reviewPath = input.reviewPath === undefined ? recordPath(checkout, "review.md") : evidencePath(checkout, input.reviewPath);
+    if (!existsSync(reviewPath)) throw new Error("The requested final review is missing. Save the actual review report in the task checkout and pass its relative reviewPath.");
+    review = readFileSync(reviewPath, "utf8");
+    if (!review.includes(`Reviewed-Head: ${head}`) || !/^REVIEW VERDICT:\s*APPROVED\s*$/m.test(review)) throw new Error("The final review report does not approve this implementation.");
+  }
   // The full tracked input set is unchanged; only plan bookkeeping may have advanced.
   writeFileSync(legacy, `${head}\n`);
   }
@@ -152,23 +153,11 @@ export async function publishDelivery(input: {
   if (list.length > 1) throw new Error("More than one PR uses this branch.");
   let pr = list[0];
   if (input.phase === "implementation") {
-    // Existing Task starts bind the implementation to its actual starting code.
-    // The PR can also contain an already-reviewed parent branch; do not reinterpret
-    // that parent's types as newly invented by this plan.
+    // Check the complete PR diff, including changes before the last Task commit.
+    // A stacked PR uses its actual parent, not the repository's default base.
     const baseBranch = pr?.baseRefName ?? configuredBase;
     const baseRef = spawnSync("git", ["-C", checkout, "rev-parse", "--verify", `refs/remotes/origin/${baseBranch}`], { encoding: "utf8" }).status === 0 ? `origin/${baseBranch}` : baseBranch;
-    const starts = stageInputs(body).filter(s => s.deliveryId === delivery.id).flatMap(s => s.tasks.flatMap(t => {
-      const path = taskRunPath(root, plan, t.id);
-      if (!existsSync(path)) return [];
-      return [decodeTaskRun(JSON.parse(readFileSync(path, "utf8"))).baseHead];
-    }));
-    let base = starts[0] ?? git(checkout, "merge-base", baseRef, head);
-    for (const start of starts) {
-      if (spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", start, head], { env: repositoryEnvironment() }).status !== 0) {
-        throw new Error("A Task's starting code is not an ancestor of the implementation.");
-      }
-      if (spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", start, base], { env: repositoryEnvironment() }).status === 0) base = start;
-    }
+    const base = git(checkout, "merge-base", baseRef, head);
     const contracts = await checkContractChanges(checkout, head, body, base);
     if (contracts.length) throw new Error(`The implementation differs from its approved contracts:\n${contracts.map(c => c.text).join("\n")}`);
   }
@@ -206,7 +195,7 @@ export async function publishDelivery(input: {
     const title = body.split("\n")[0]?.replace(/^# /, "") ?? branch;
     const bodyFile = recordPath(checkout, "pr-body.md");
     writeFileSync(bodyFile, input.phase === "plan" ? `Approved plan: ${title}.\n\nImplementation is pending.\n` :
-      `Implements ${title}.\n\nLocal verification and the final review passed before publication.\n\nThe owner merges this PR.\n`);
+      `Implements ${title}.\n\nLocal verification passed before publication. ${review ? "The requested final review passed." : "This Delivery did not require a final review."}\n\nThe owner merges this PR.\n`);
     const url = github(checkout, ["pr", "create", "--base", configuredBase, "--head", branch, "--title", title, "--body-file", bodyFile,
       ...(input.phase === "plan" ? ["--draft"] : [])]).trim();
     if (!/^https?:\/\//.test(url)) throw new Error("GitHub did not return a PR URL; retry to reconcile the already-pushed head.");

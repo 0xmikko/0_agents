@@ -42,7 +42,7 @@ function declarations(text: string, path: string, exportedOnly: boolean) {
       ts.forEachChild(node, visit);
     };
     visit(statement);
-    result.set(statement.name.text, { text: normalized(statement) + dependencies.join("\n"), members: fields, inferred });
+    result.set(statement.name.text, { text: normalized(statement).replace(/^export (?:default )?/, "") + dependencies.join("\n"), members: fields, inferred });
   }
   return result;
 }
@@ -58,7 +58,7 @@ export async function checkContractChanges(root: string, commit: string, body: s
     const r = run("show", `${ref}:${path}`);
     return r.status === 0 ? r.stdout : "";
   };
-  const diff = run("diff", "--name-status", "-z", "--find-renames", base, commit, "--", "*.ts", "*.tsx");
+  const diff = run("diff", "--name-status", "-z", "--find-renames", "--find-copies-harder", base, commit, "--", "*.ts", "*.tsx");
   if (diff.status !== 0) throw new Error("Cannot establish the contract diff base");
   const approved = new Map<string, ReturnType<typeof declarations> extends Map<string, infer T> ? T : never>();
   const spec = body.includes("<!-- plan:spec:start -->")
@@ -93,6 +93,8 @@ export async function checkContractChanges(root: string, commit: string, body: s
       if (was?.text === now?.text) continue;
       const contract = approved.get(name);
       if (now === undefined) {
+        const rename = new RegExp(`\\brename[sd]?\\s+\`?${name}\`?\\s+to\\s+\`?([A-Za-z][A-Za-z0-9]*)`, "i").exec(spec)?.[1];
+        if (rename && approved.has(rename) && after.has(rename)) continue;
         if (!new RegExp(`\\b(?:remove|delete|retire)[sd]?\\s+(?:the\\s+)?\`?${name}\\b`, "i").test(spec)) add(path, name, "was removed without an approved removal", was?.text ?? name);
         continue;
       }

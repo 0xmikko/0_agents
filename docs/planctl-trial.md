@@ -47,7 +47,7 @@ Existing tools keep their names. These additions operate alongside them:
 | `approve_spec`, `approve_plan` | displayed revision and actual owner word → recorded approval; stale input changes nothing |
 | `publish_delivery` | plan, Delivery, checked head, publication phase, optional relative `reviewPath` → PR URL and whether a push happened |
 
-Save the actual requested review as a normal local artifact, for example `.tmp/planctl-review.md`, with `Reviewed-Head: <actual head>` and `REVIEW VERDICT: APPROVED`. Pass `reviewPath` rather than asking the owner to write inside Git metadata. The report must describe the review actually performed. The complete gate is the command declared by the Delivery; `close_stage` records its successful execution.
+When final review is requested, set `put_delivery.review` to `required`. Save the actual review as a normal local artifact, for example `.tmp/planctl-review.md`, with `Reviewed-Head: <actual head>` and `REVIEW VERDICT: APPROVED`. Pass `reviewPath` rather than asking the owner to write inside Git metadata. The report must describe the review actually performed. Other deliveries do not acquire a review requirement automatically. The complete gate is the command declared by the Delivery; `close_stage` records its successful execution and preserves failed command logs for diagnosis.
 
 ## Evidence and calibration
 

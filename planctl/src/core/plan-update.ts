@@ -40,6 +40,7 @@ export type UsageReceipt =
   | { readonly kind: "unavailable"; readonly reason: string };
 
 export interface DeliveryInput {
+  readonly review?: "required" | "none";
   readonly id: string;
   readonly title: string;
   readonly branch: string;
@@ -121,6 +122,7 @@ export interface ParsedStageInput {
 }
 
 export interface DeliveryMeta {
+  readonly review?: "required" | "none";
   readonly id: string;
   readonly active: boolean;
   readonly depends: readonly string[];
@@ -215,6 +217,7 @@ export interface MutationResult {
 }
 
 export interface StageCloseResult extends MutationResult {
+  readonly verificationLogs?: readonly string[];
   readonly closed: number;
   readonly status: "CLOSED" | "PARTIAL";
 }
@@ -403,7 +406,7 @@ function assertPlanTitle(title: string): void {
 }
 
 /** The SPEC sections every plan carries, in the order the owner reads them. */
-export const SPEC_SECTIONS = ["The Goal", "The target", "Target tree", "Invariants", "Reuse", "New names", "Not verified"] as const;
+export const SPEC_SECTIONS = ["The Goal", "The target"] as const;
 
 /** The plan's title: its first line. */
 function planTitle(body: string): string {
@@ -665,7 +668,7 @@ function renderDelivery(input: DeliveryInput, stages: readonly ForecastStage[]):
   assertSafeProse(input.description, "Delivery description", DELIVERY_DESCRIPTION_HINT);
   const waitMinutes = assertExternalWait(input.predictedExternalWaitMinutes);
   assertUnique(input.depends, "Delivery dependencies");
-  const meta = JSON.stringify({ active: input.active, depends: input.depends, predictedExternalWaitMinutes: waitMinutes, ...(input.repository === undefined ? {} : { repository: input.repository }) });
+  const meta = JSON.stringify({ active: input.active, depends: input.depends, predictedExternalWaitMinutes: waitMinutes, ...(input.review === undefined ? {} : { review: input.review }), ...(input.repository === undefined ? {} : { repository: input.repository }) });
   return [
     deliveryStart(input.id),
     `<!-- plan:delivery-meta:${meta} -->`,
@@ -975,7 +978,8 @@ export function deliveryMetas(body: string): readonly DeliveryMeta[] {
     if (branch === null) throw new Error(`Delivery ${id} lacks a Branch line`);
     // The header says which Delivery is active: execution moves it without
     // touching the frozen contract, whose metadata keeps the authored flag.
-    values.push({ id, active: activeDeliveryId(body) === id, depends, branch: capture(branch, 1, `Delivery ${id} branch`), predictedExternalWaitMinutes: wait, repository: typeof meta.repository === "string" ? meta.repository : null });
+    if (meta.review !== undefined && meta.review !== "required" && meta.review !== "none") throw new Error("Invalid Delivery review requirement");
+    values.push({ ...(meta.review === undefined ? {} : { review: meta.review }), id, active: activeDeliveryId(body) === id, depends, branch: capture(branch, 1, `Delivery ${id} branch`), predictedExternalWaitMinutes: wait, repository: typeof meta.repository === "string" ? meta.repository : null });
   }
   return values;
 }
@@ -1483,8 +1487,16 @@ export function closePlanStage(
   const taskText = capture(taskSection, 1, `Stage ${stageId} Tasks`);
   const criteriaText = capture(criteriaSection, 1, `Stage ${stageId} criteria`);
   if (/^- \[ \] /m.test(taskText)) throw new Error(`Stage ${stageId} still has open Tasks; import its result first`);
+  const verificationLogs: string[] = [];
   const run = options.run ?? ((command: string): number | null => {
-    const result = spawnSync("bash", ["-c", command], { cwd: options.root, timeout: 600_000 });
+    const result = spawnSync("bash", ["-c", command], { cwd: options.root, timeout: 600_000, maxBuffer: 16 * 1024 * 1024 });
+    try {
+      const directory = resolve(options.root, git(options.root, ["rev-parse", "--git-path", "code-production/verification"]));
+      mkdirSync(directory, { recursive: true });
+      const path = join(directory, `${stageId}-${Date.now()}-${digest(command).slice(0, 12)}.log`);
+      writeFileSync(path, `Command: ${command}\nExit: ${result.status}; signal: ${result.signal}\n${result.stdout ?? ""}\n${result.stderr ?? ""}\n${result.error?.message ?? ""}`, { mode: 0o600 });
+      verificationLogs.push(path);
+    } catch { /* Diagnostic storage cannot change the actual check result. */ }
     return result.error === undefined && result.signal === null ? result.status : null;
   });
   let closed = 0;
@@ -1514,7 +1526,7 @@ export function closePlanStage(
       && /^- \[ \] /m.test(region(next, stageStart(entry.id), stageEnd(entry.id)).text));
     if (!open) next = markLedgerImplemented(next);
   }
-  return { body: next, closed, status };
+  return { body: next, closed, status, ...(verificationLogs.length === 0 ? {} : { verificationLogs }) };
 }
 
 function gitRaw(root: string, args: readonly string[]): string {
@@ -1829,6 +1841,19 @@ function parentRefusal(root: string, deliveries: readonly DeliveryMeta[], delive
   return null;
 }
 
+/** Local prerequisite completion is sufficient before publication; observer and executor agree. */
+export function nextEligibleTask(root: string, body: string, publication: StartTaskInput["publication"]): ReturnType<typeof nextOpenTask> {
+  const current = nextOpenTask(body);
+  if (current.taskId !== null) return current;
+  const deliveries = deliveryMetas(body);
+  for (const delivery of deliveries) {
+    if (delivery.active || parentRefusal(root, deliveries, delivery, publication, body) !== null) continue;
+    const candidate = nextOpenTask(replaceHeader(body, "Active Delivery", delivery.id));
+    if (candidate.taskId !== null) return candidate;
+  }
+  return current;
+}
+
 function taskRunOf(run: TaskRun): string | null {
   return run.version === 1 ? null : run.worktree;
 }
@@ -1853,17 +1878,9 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
     const running = mine[0];
     if (running !== undefined) taskId = running.taskId;
     else {
-      const next = nextOpenTask(body);
-      if (next.taskId !== null) taskId = next.taskId;
-      else {
-        const deliveries = deliveryMetas(body);
-        const child = deliveries.find((delivery) => !delivery.active
-          && stageInputs(body).some((stage) => stage.deliveryId === delivery.id && stage.tasks.some((task) => !task.completed))
-          && parentRefusal(root, deliveries, delivery, input.publication, body) === null);
-        const firstOpen = child === undefined ? undefined : stageInputs(body).filter((stage) => stage.deliveryId === child.id).flatMap((stage) => stage.tasks).find((task) => !task.completed);
-        if (firstOpen === undefined) throw new Error(`nothing to start: ${next.blockedBy ?? "every Task of the active Delivery is complete and no child Delivery is eligible"}`);
-        taskId = firstOpen.id;
-      }
+      const next = nextEligibleTask(root, body, input.publication);
+      if (next.taskId === null) throw new Error(`nothing to start: ${next.blockedBy ?? "no eligible Task remains"}`);
+      taskId = next.taskId;
     }
   }
   const elsewhere = runs.find((run) => run.taskId === taskId && !ownRoot(run));
@@ -2253,8 +2270,11 @@ function requiredNumber(record: Readonly<Record<string, unknown>>, key: string):
 
 export function deliveryFrom(value: unknown): DeliveryInput {
   const record = object(value, "Delivery");
+  const review = record.review;
+  if (review !== undefined && review !== "required" && review !== "none") throw new Error("Delivery review must be required or none");
   if (typeof record.active !== "boolean") throw new Error("active must be boolean");
   return {
+    ...(review === undefined ? {} : { review }),
     id: requiredString(record, "id"), title: requiredString(record, "title"), branch: requiredString(record, "branch"),
     depends: stringArray(record.depends, "depends"), gate: stringArray(record.gate, "gate"), active: record.active,
     stageGraph: requiredString(record, "stageGraph"),
