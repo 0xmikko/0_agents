@@ -81,9 +81,39 @@ it("tst_unit_planctl_contract_003 detects changed public arguments and local dep
     writeFileSync(join(root, "model.ts"), before.replace("Value = string", "Value = number").replace("save(value: string)", "save(value: number)"));
     git("add", "."); git("commit", "-qm", "after");
     const findings = await checkContractChanges(root, git("rev-parse", "HEAD"), "No contracts change.");
-    expect(findings.some(f => f.text.includes("Result"))).toBe(true);
+    expect(findings.some(f => f.text.includes("Value") && f.quote.includes("number"))).toBe(true);
     expect(findings.some(f => f.text.includes("save"))).toBe(true);
     const spec = "```typescript\ntype Value = number;\ninterface Result { value: Value }\ndeclare function save(value: number): void;\n```";
     expect(await checkContractChanges(root, git("rev-parse", "HEAD"), spec)).toEqual([]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+/** @test-id: tst_unit_planctl_contract_004
+ * @scenario: scn_planctl_indirect_contract_002
+ * @covers: planctl/src/core/contract-check.ts::checkContractChanges
+ * @deterministic: yes
+ * @invariant: a partial approved member change also covers its callers; local
+ * parameter spelling does not change a positional function's public contract.
+ */
+it("tst_unit_planctl_contract_004 accepts approved partial dependencies without repeating unchanged fields", async () => {
+  const root = mkdtempSync(join(tmpdir(), "contract-partial-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  try {
+    git("init", "-q"); git("config", "user.email", "test@example.com"); git("config", "user.name", "Test");
+    const before = "interface Result { value: string; count: number }\nexport function save(value: Result): void { void value; }\n";
+    writeFileSync(join(root, "model.ts"), before);
+    git("add", "."); git("commit", "-qm", "before");
+    const base = git("rev-parse", "HEAD");
+    const after = before.replace("value: string", "value: string | null").replace("save(value:", "save(_value:").replace("void value", "void _value");
+    writeFileSync(join(root, "model.ts"), after);
+    git("add", "."); git("commit", "-qm", "approved field and local parameter spelling");
+    const spec = "```typescript\ninterface Result { value: string | null }\n```";
+    expect(await checkContractChanges(root, git("rev-parse", "HEAD"), spec, base)).toEqual([]);
+    const absent = await checkContractChanges(root, git("rev-parse", "HEAD"), "No contracts change.", base);
+    expect(absent.some(f => f.text.includes("Result"))).toBe(true);
+    writeFileSync(join(root, "model.ts"), after.replace("count: number", "count: number | null"));
+    git("add", "."); git("commit", "-qm", "unapproved dependent field");
+    const wrong = await checkContractChanges(root, git("rev-parse", "HEAD"), spec, base);
+    expect(wrong.some(f => f.text.includes("count"))).toBe(true);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

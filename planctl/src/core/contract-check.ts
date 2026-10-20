@@ -94,6 +94,7 @@ export async function checkContractChanges(root: string, commit: string, body: s
   }
   const findings: GateViolation[] = [];
   const add = (path: string, name: string, detail: string, quote: string): void => {
+    if (findings.some(f => f.text.startsWith(`${path}: ${name} ${detail}.`))) return;
     findings.push({ kind: "protocol-shape", rule: "typescript", blocking: true, line: 1, quote,
       text: `${path}: ${name} ${detail}. Compare the actual declaration with the approved flow; correct an accidental mismatch autonomously.`, replacement: null });
   };
@@ -101,26 +102,17 @@ export async function checkContractChanges(root: string, commit: string, body: s
     const before = declarations(read(base, oldPath), oldPath, true);
     const previousDeclarations = declarations(read(base, oldPath), oldPath, false);
     const after = declarations(read(commit, path), path, true);
-    for (const name of new Set([...before.keys(), ...after.keys()])) {
-      const was = before.get(name);
-      const now = after.get(name);
-      if (was?.text === now?.text && JSON.stringify([...(was?.dependencies ?? [])]) === JSON.stringify([...(now?.dependencies ?? [])])) continue;
+    const currentDeclarations = declarations(read(commit, path), path, false);
+    const compare = (name: string, was: ReturnType<typeof declarations> extends Map<string, infer T> ? T | undefined : never,
+      now: ReturnType<typeof declarations> extends Map<string, infer T> ? T : never): void => {
+      if (was?.text === now.text) return;
+      // Positional argument names are implementation details; their types,
+      // optionality and order remain part of the compared signature.
+      if (now.callable && was?.members && now.members
+        && JSON.stringify([...was.members]) === JSON.stringify([...now.members])) return;
+      if (now.callable && was === undefined) return;
       const contract = approved.get(name);
-      if (now === undefined) {
-        const rename = new RegExp(`\\brename[sd]?\\s+\`?${name}\`?\\s+to\\s+\`?([A-Za-z][A-Za-z0-9]*)`, "i").exec(spec)?.[1];
-        if (rename && approved.has(rename) && after.has(rename)) continue;
-        if (!new RegExp(`\\b(?:remove|delete|retire)[sd]?\\s+(?:the\\s+)?\`?${name}\\b`, "i").test(spec)) add(path, name, "was removed without an approved removal", was?.text ?? name);
-        continue;
-      }
-      for (const [dependency, actual] of now.dependencies) {
-        if (was?.dependencies.get(dependency) === actual || previousDeclarations.get(dependency)?.text === actual) continue;
-        if (approved.get(dependency)?.text !== actual) add(path, name, `depends on changed ${dependency} without its approved definition`, actual);
-      }
-      if (was?.text === now.text) continue;
-      // New internal exported helpers belong to the declared implementation scope.
-      // Existing public call signatures must not change silently.
-      if (now.callable && was === undefined) continue;
-      if (contract === undefined) { add(path, name, "has no approved contract", now.text); continue; }
+      if (contract === undefined) { add(path, name, "has no approved contract", now.text); return; }
       if (now.members !== null && contract.members !== null) {
         for (const key of new Set([...(was?.members?.keys() ?? []), ...now.members.keys()])) {
           if (was?.members?.get(key) === now.members.get(key)) continue;
@@ -134,6 +126,24 @@ export async function checkContractChanges(root: string, commit: string, body: s
       } else if (now.text !== contract.text) {
         add(path, name, now.inferred ? "needs resolved schema evidence for its inferred contract" : "differs from its approved alias or variants", now.text);
       }
+    };
+    for (const name of new Set([...before.keys(), ...after.keys()])) {
+      const was = before.get(name);
+      const now = after.get(name);
+      if (was?.text === now?.text && JSON.stringify([...(was?.dependencies ?? [])]) === JSON.stringify([...(now?.dependencies ?? [])])) continue;
+      if (now === undefined) {
+        const rename = new RegExp(`\\brename[sd]?\\s+\`?${name}\`?\\s+to\\s+\`?([A-Za-z][A-Za-z0-9]*)`, "i").exec(spec)?.[1];
+        if (rename && approved.has(rename) && after.has(rename)) continue;
+        if (!new RegExp(`\\b(?:remove|delete|retire)[sd]?\\s+(?:the\\s+)?\`?${name}\\b`, "i").test(spec)) add(path, name, "was removed without an approved removal", was?.text ?? name);
+        continue;
+      }
+      for (const [dependency, actual] of now.dependencies) {
+        if (was?.dependencies.get(dependency) === actual || previousDeclarations.get(dependency)?.text === actual) continue;
+        const declaration = currentDeclarations.get(dependency);
+        if (declaration) compare(dependency, previousDeclarations.get(dependency), declaration);
+        else if (approved.get(dependency)?.text !== actual) add(path, name, `depends on changed ${dependency} without its approved definition`, actual);
+      }
+      compare(name, was, now);
     }
     // Changed re-exports require their canonical declarations; never silently treat them as checked.
     const exports = (text: string) => ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true).statements

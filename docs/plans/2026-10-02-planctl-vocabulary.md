@@ -420,4 +420,6 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 - close D1-S1 closed commit:b7a1f6ad13b75e9d873e980521c6013b1b304a4b
 
 - amend implementation owner:Я тебе даю полный карт-бланш. sha256:7ac87778ad9b08519b334bf737b6221d57f875231cc932a519995e07ca3ebf34
+
+- deviation D1-S1: Final cumulative publication check exposed false refusals for an approved partial change to a local dependency and a positional parameter spelling change. Added a failing behavioral regression, reused member comparison for dependencies, and verified the new positive case plus unapproved-field rejection. Focused contract and publication tests pass; the actual cumulative PR contract diff now has zero findings. Private historical evidence was archived locally and removed from unpublished Git objects; implementation source bytes were preserved during sanitation.
 <!-- plan:execution:end -->
