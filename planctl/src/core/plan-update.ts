@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 
-import { createHash, randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, realpathSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { dlopen, FFIType } from "bun:ffi";
 import { basename, dirname, join, resolve, relative } from "node:path";
 import type { OwnerWaitReceipt, TaskRun, TaskRunIdentity } from "./task-run";
 import type { ProgressView } from "./plan-progress";
@@ -138,6 +139,22 @@ export interface DeliveryMeta {
 export function repositoryEnvironment(): NodeJS.ProcessEnv {
   const local = execFileSync("git", ["rev-parse", "--local-env-vars"], { encoding: "utf8" }).trim().split("\n");
   return Object.fromEntries(Object.entries(process.env).filter(([name]) => !local.includes(name)));
+}
+
+/** Shared copy/rename provenance for the existing inventory and shape comparison. */
+export function contractChangePaths(root: string, base: string, commit: string): readonly { readonly path: string; readonly previousPath: string }[] {
+  const diff = spawnSync("git", ["-C", root, "diff", "--name-status", "-z", "--find-renames", "--find-copies-harder", base, commit, "--", "*.ts", "*.tsx"],
+    { encoding: "utf8", env: repositoryEnvironment() });
+  if (diff.status !== 0) throw new Error("Cannot establish the contract diff base");
+  const fields = diff.stdout.split("\0").filter(Boolean);
+  const result: { path: string; previousPath: string }[] = [];
+  for (let i = 0; i < fields.length;) {
+    const status = fields[i++]; const previousPath = fields[i++];
+    const path = status?.startsWith("R") || status?.startsWith("C") ? fields[i++] : previousPath;
+    if (!status || !path || !previousPath) throw new Error("Incomplete Git contract diff");
+    result.push({ path, previousPath });
+  }
+  return result;
 }
 
 /** The checkout a Delivery's operations run in: the plan's root, or the configured checkout of its named repository. */
@@ -2046,30 +2063,28 @@ function writeJournal(path: string, journal: MutationJournal): void {
 
 /** Worktree-wide serialization covers competing plans changing the same vocabulary. */
 function withPlanWriter<T>(root: string, operation: () => T): T {
-  const lock = resolve(root, git(root, ["rev-parse", "--git-path", "planctl-writer.lock"]));
-  const prepared = `${lock}.${process.pid}.${randomUUID()}`;
-  writeFileSync(prepared, String(process.pid), { mode: 0o600, flag: "wx" });
+  if (process.platform !== "linux" && process.platform !== "darwin") throw new Error("Plan writes require POSIX file locking.");
+  const native = dlopen(process.platform === "linux" ? "libc.so.6" : "/usr/lib/libSystem.B.dylib", {
+    flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+  });
+  // Kernel-owned locks survive PID namespaces and release on process death.
+  // Never unlink the lock inode: waiting writers must contend on the same file.
+  const lock = resolve(root, git(root, ["rev-parse", "--git-path", "planctl-writer.flock"]));
+  const fd = openSync(lock, "a", 0o600);
   try {
-    try { linkSync(prepared, lock); }
-    catch (error: unknown) {
-      if (!(typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST")) throw error;
-      const pid = Number(readFileSync(lock, "utf8"));
-      if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error("Cannot establish the plan writer's owner; inspect its lock.");
-      try { process.kill(pid, 0); }
-      catch (probe: unknown) {
-        if (typeof probe === "object" && probe !== null && "code" in probe && probe.code === "ESRCH") {
-          unlinkSync(lock);
-          return withPlanWriter(root, operation);
-        }
-      }
-      throw new Error("Another planctl write is active; retry this operation.");
+    if (native.symbols.flock(fd, 2 | 4) !== 0) throw new Error("Another planctl write is active; retry this operation.");
+    for (const journal of worktreeJournals(root)) {
+      if (journal.pending !== undefined) recoverPending(root, journal.plan);
     }
-    try { return operation(); }
-    finally { unlinkSync(lock); }
-  } finally { unlinkSync(prepared); }
-
+    return operation();
+  } finally { closeSync(fd); native.close(); }
 }
 
+function worktreeJournals(root: string): readonly MutationJournal[] {
+  const directory = dirname(planJournalPath(root, "docs/plans/inspection.md"));
+  return readdirSync(directory).filter(name => /^plan-update-journal(?:-[a-f0-9]+)?\.json$/.test(name))
+    .flatMap(name => { const journal = readJournal(join(directory, name)); return journal?.root === root ? [journal] : []; });
+}
 function repositoryFile(root: string, path: string): string {
   const absolute = resolve(root, path);
   if (!absolute.startsWith(`${root}/`)) throw new Error("Plan transaction path must stay inside its repository");
@@ -2155,6 +2170,13 @@ function mutatePlanFileLocked(root: string, planArg: string, operation: string, 
   if (afterHash === currentHash) throw new Error(`${operation} produced no change`);
   const vocabularyFile = result.vocabularyFile ?? existing?.vocabularyFile;
   if (result.vocabularyFile !== undefined) {
+    for (const other of worktreeJournals(root)) {
+      if (other.plan === plan || other.vocabularyFile === undefined) continue;
+      const committed = spawnSync("git", ["-C", root, "show", `HEAD:${other.plan}`], { encoding: "utf8" });
+      if (committed.status !== 0 || digest(committed.stdout) !== other.candidateHash) {
+        throw new Error(`Commit the prepared vocabulary transaction for ${other.plan}, then retry this operation.`);
+      }
+    }
     const file = result.vocabularyFile;
     const target = repositoryFile(root, file.path);
     const actual = existsSync(target) ? readFileSync(target, "utf8") : null;

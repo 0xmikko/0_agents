@@ -6,7 +6,8 @@ import { parse as parseYaml } from "yaml";
 import { deliveryMetas, deliveryRoot, planState, protocolImplementationHash, protocolSpecHash, repositoryEnvironment, stageInputs, stageStart, stageEnd, deliveryStart, deliveryEnd } from "./plan-update";
 import { protocolLockViolations } from "./plan-gate";
 import { checkContractChanges } from "./contract-check";
-import { contentHash, evidencePath } from "./vocabulary";
+import { contentHash, evidencePath, readVocabulary } from "./vocabulary";
+import type { ProgressView } from "./plan-progress";
 
 function git(root: string, ...args: string[]): string {
   return execFileSync("git", ["-C", root, ...args], { encoding: "utf8", env: repositoryEnvironment() }).trim();
@@ -104,6 +105,7 @@ export async function publishDelivery(input: {
   readonly reviewPath?: string;
 }, options: {
   readonly github?: (root: string, args: readonly string[]) => string;
+  readonly publication?: (root: string, branch: string) => ProgressView["publication"];
 } = {}): Promise<{ readonly url: string; readonly head: string; readonly pushed: boolean }> {
   const absolute = resolve(input.plan);
   const root = git(dirname(absolute), "rev-parse", "--show-toplevel");
@@ -120,11 +122,10 @@ export async function publishDelivery(input: {
   const head = git(checkout, "rev-parse", "HEAD");
   if (head !== input.expectedHead) throw new Error("The checked publication head changed.");
   if (git(checkout, "status", "--porcelain", "--untracked-files=no")) throw new Error("Commit the prepared changes before publication.");
-  if (input.phase === "plan" && !planOnlyCiIsExcluded(checkout, branch, configuredBase)) {
-    throw new Error("The repository's workflows do not exclude plan-only publication from CI. Keep the readable SPEC URL until implementation is ready.");
-  }
   let review = "";
   if (input.phase === "implementation") {
+  const dictionaryErrors = readVocabulary(root).findings.filter(f => f.blocking);
+  if (dictionaryErrors.length) throw new Error(dictionaryErrors.map(f => f.text).join("\n"));
   const stages = stageInputs(body).filter(s => s.deliveryId === delivery.id);
   if (!stages.length || stages.some(s => s.tasks.some(t => !t.completed)
     || /^- \[ \] /m.test(body.split(stageStart(s.id))[1]?.split(stageEnd(s.id))[0] ?? ""))) throw new Error("Complete the approved work before implementation publication.");
@@ -152,6 +153,9 @@ export async function publishDelivery(input: {
   if (list.some(p => p.state === "MERGED" || p.state === "CLOSED")) throw new Error("This feature branch already has a closed PR; do not republish it.");
   if (list.length > 1) throw new Error("More than one PR uses this branch.");
   let pr = list[0];
+  if (input.phase === "plan" && !planOnlyCiIsExcluded(checkout, branch, pr?.baseRefName ?? configuredBase)) {
+    throw new Error("The repository's workflows do not exclude plan-only publication from CI. Keep the readable SPEC URL until implementation is ready.");
+  }
   if (input.phase === "implementation") {
     // Check the complete PR diff, including changes before the last Task commit.
     // A stacked PR uses its actual parent, not the repository's default base.
@@ -163,21 +167,27 @@ export async function publishDelivery(input: {
   }
   const remote = git(checkout, "ls-remote", "--heads", "origin", `refs/heads/${branch}`).split(/\s/)[0] ?? "";
   const publicationPath = recordPath(checkout, "publication.json");
+  const revision = protocolImplementationHash(body);
+  const diagnosis = contentHash(body.split("\n").filter(line => line.includes(`deviation ${delivery.id}-`)).join("\n"));
+  const previous = existsSync(publicationPath) ? z.object({
+    state: z.string(), phase: z.string(), head: z.string(), revision: z.string(),
+    retries: z.number().int().min(0).max(1).optional(), diagnosis: z.string().optional(),
+  }).parse(JSON.parse(readFileSync(publicationPath, "utf8"))) : null;
+  let retries = previous?.revision === revision && previous.phase === input.phase ? previous.retries ?? 0 : 0;
   if (remote === head && pr?.headRefOid === head && (input.phase === "plan" || !pr.isDraft)) {
     // Recover a lost response after the PR effect, not only a lost push response.
-    save(publicationPath, { plan, delivery: delivery.id, revision: protocolImplementationHash(body), branch, head,
+    save(publicationPath, { plan, delivery: delivery.id, revision, branch, head, retries, diagnosis,
       remote: "origin", phase: input.phase, state: "published", url: pr.url });
     return { url: pr.url, head, pushed: false };
   }
-  if (existsSync(publicationPath)) {
-    const previous = z.object({ state: z.string(), phase: z.string(), head: z.string(), revision: z.string() })
-      .parse(JSON.parse(readFileSync(publicationPath, "utf8")));
-    if (previous.state === "published" && previous.phase === input.phase && previous.head !== head
-      && previous.revision === protocolImplementationHash(body)) {
-      throw new Error("This publication boundary was already used. Keep intermediate changes local; a further publication needs a recorded contract amendment.");
-    }
+  if (previous?.state === "published" && previous.phase === input.phase && previous.head !== head && previous.revision === revision) {
+    const observed = options.publication?.(checkout, branch);
+    if (input.phase !== "implementation" || retries >= 1) throw new Error("The publication retry budget is exhausted; do not spend more CI without an agreed limit.");
+    if (!observed || !("headSha" in observed) || observed.headSha !== previous.head || observed.ci !== "red") throw new Error("A repair publication needs an observed CI failure on the published head.");
+    if (diagnosis === previous.diagnosis || diagnosis === contentHash("")) throw new Error("Record the diagnosed CI failure and its correction with add_deviation before retrying publication.");
+    retries += 1;
   }
-  const intent = { plan, delivery: delivery.id, revision: protocolImplementationHash(body), branch, head, remote: "origin",
+  const intent = { plan, delivery: delivery.id, revision, branch, head, remote: "origin", retries, diagnosis,
     phase: input.phase, state: "publishing", expiresAt: Date.now() + 120_000, review: contentHash(review) };
   save(publicationPath, intent);
   requireControlledPublication(checkout);

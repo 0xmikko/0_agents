@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { Browser } from "playwright-core";
 import type { GateViolation } from "./plan-gate";
 import type { SubmitSpecResult } from "./spec-submission";
-import { cacheDirectory, contentHash, readVocabulary } from "./vocabulary";
+import { cacheDirectory, contentHash, proposedVocabulary, readVocabulary } from "./vocabulary";
 import { evaluateQuestions } from "./semantic-check";
 
 function walk(node: Root | Content): (Root | Content)[] {
@@ -34,7 +34,8 @@ export async function checkContent(input: {
 }, options: { readonly apiKey?: string | null; readonly browserPath?: string | null; readonly fetcher?: typeof fetch } = {}):
 Promise<Pick<SubmitSpecResult, "findings" | "semanticChecks" | "diagramChecks">> {
   const dictionary = readVocabulary(input.root);
-  const findings: GateViolation[] = [...dictionary.findings];
+  const findings: GateViolation[] = [];
+  const declared = new Set<string>();
   const add = (line: number, quote: string, text: string, blocking = true): void => {
     findings.push({ kind: "protocol-shape", rule: "typescript", blocking, line, quote, text, replacement: null });
   };
@@ -61,6 +62,7 @@ Promise<Pick<SubmitSpecResult, "findings" | "semanticChecks" | "diagramChecks">>
       const line = block.line + source.getLineAndCharacterOfPosition(node.getStart(source)).line;
       if (node.kind === ts.SyntaxKind.AnyKeyword) add(line, node.getText(source), "Use the actual boundary type; any cannot prove the contract.");
       if (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) {
+        declared.add(node.name.text);
         if (!/^[A-Z][A-Za-z0-9]*$/.test(node.name.text)) add(line, node.name.text, "New type names use PascalCase.");
         const duplicates = dictionary.entries.filter(e => e.forbidden.includes(node.name.text));
         for (const entry of duplicates) add(line, node.name.text, `The vocabulary names this responsibility ${entry.term}: ${entry.meaning}.`, false);
@@ -74,6 +76,13 @@ Promise<Pick<SubmitSpecResult, "findings" | "semanticChecks" | "diagramChecks">>
       ts.forEachChild(node, visit);
     };
     visit(source);
+  }
+  const proposal = proposedVocabulary(input.content);
+  for (const finding of dictionary.findings) {
+    const future = proposal?.entries.some(change => change.after?.definitions.some(d =>
+      `${d.repository}:${d.path}#${d.name}` === finding.quote && declared.has(d.name)));
+    findings.push(future ? { ...finding, blocking: false,
+      text: `Proposed definition ${finding.quote} is declared in this SPEC; implementation must create its canonical source before publication.` } : finding);
   }
   const references = dictionary.evidence.filter(e => input.content.includes(e.path.split("#")[1] ?? "\0"));
   const evidence = [{ path: input.source ?? "submitted flow", quote: input.content }, ...references];

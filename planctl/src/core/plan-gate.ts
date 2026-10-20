@@ -13,7 +13,7 @@ import { execSync, spawnSync } from "node:child_process";
 import { basename, resolve } from "node:path";
 import type { Content, Root } from "mdast";
 import type { VocabularyEntry } from "./vocabulary";
-import { stageInputs, stageResultCommitPaths, deliveryMetas, deliveryRoot, deliveryStart, deliveryEnd, repositoryEnvironment, verifyStagedPlan, MACHINABLE, protocolSpecHash, protocolImplementationHash, SPEC_SECTIONS } from "./plan-update";
+import { stageInputs, stageResultCommitPaths, deliveryMetas, deliveryRoot, deliveryStart, deliveryEnd, repositoryEnvironment, verifyStagedPlan, MACHINABLE, protocolSpecHash, protocolImplementationHash, SPEC_SECTIONS, contractChangePaths } from "./plan-update";
 export { MACHINABLE, protocolSpecHash, protocolImplementationHash } from "./plan-update";
 
 /** Which lint rule a finding comes from; gate findings (receipts, boxes) carry none. */
@@ -420,6 +420,7 @@ function exportedTypes(text: string, path: string, ts: typeof import("typescript
 /** Exported types the commit adds or changes that the SPEC Interfaces do not name. */
 function undeclaredTypesOf(root: string, commit: string, types: ReadonlySet<string>, ts: typeof import("typescript")): readonly { path: string; name: string }[] {
   const found: { path: string; name: string }[] = [];
+  const renamed = new Map(contractChangePaths(root, `${commit}^1`, commit).map(c => [c.path, c.previousPath]));
   // @tested-by: tst_core_planctl_subtree_types_001
   // A subtree merge carries existing declarations at a new prefix. Compare
   // them with the actual imported parent; trailers alone prove nothing.
@@ -437,7 +438,7 @@ function undeclaredTypesOf(root: string, commit: string, types: ReadonlySet<stri
   for (const path of stageResultCommitPaths(commit, root).filter((path) => /\.tsx?$/.test(path))) {
     const current = spawnSync("git", ["-C", root, "show", `${commit}:${path}`], { encoding: "utf8" });
     if (current.status !== 0) continue; // deleted files introduce no types
-    let previous = spawnSync("git", ["-C", root, "show", `${commit}^1:${path}`], { encoding: "utf8" });
+    let previous = spawnSync("git", ["-C", root, "show", `${commit}^1:${renamed.get(path) ?? path}`], { encoding: "utf8" });
     if (previous.status !== 0 && subtree !== null && path.startsWith(subtree.prefix)) {
       previous = spawnSync("git", ["-C", root, "show", `${subtree.parent}:${path.slice(subtree.prefix.length)}`], { encoding: "utf8" });
     }

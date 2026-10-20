@@ -72,7 +72,11 @@ describe("focused authoring feedback", () => {
       revisions: ["dictionary-1"], evidence: [{ path: "flow", quote: "Filter by user." }],
     };
     try {
-      const a = await evaluateQuestions(input, { apiKey: "test-fixture", fetcher });
+      const [a, simultaneous] = await Promise.all([
+        evaluateQuestions(input, { apiKey: "test-fixture", fetcher }),
+        evaluateQuestions(input, { apiKey: "test-fixture", fetcher }),
+      ]);
+      expect(simultaneous).toEqual(a);
       expect(a[0]?.probability).toBe(0.94);
       expect(await evaluateQuestions(input, { apiKey: "test-fixture", fetcher })).toEqual(a);
       expect(calls).toBe(1);
@@ -83,6 +87,10 @@ describe("focused authoring feedback", () => {
       const wrongModel = await evaluateQuestions({ ...input, revisions: ["dictionary-3"] }, { apiKey: "test-fixture", fetcher });
       expect(wrongModel[0]?.probability).toBeNull();
       expect(wrongModel[0]?.uncertainty).toContain("invalid");
+      expect((await evaluateQuestions({ ...input, state: "x".repeat(48_001) }, { apiKey: "test-fixture", fetcher }))[0]?.probability).toBeNull();
+      const tooMany = Object.fromEntries(Array.from({ length: 13 }, (_, i) => [String(i), input.questions.holds]));
+      expect((await evaluateQuestions({ ...input, questions: tooMany }, { apiKey: "test-fixture", fetcher })).every(c => c.probability === null)).toBe(true);
+      expect(calls).toBe(3);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 

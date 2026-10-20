@@ -102,14 +102,19 @@ export function withVocabularyProposal(spec: string, changes: { readonly baseRev
       + `  After: ${c.after === null ? "removed" : `${c.after.term} — ${c.after.meaning}; avoided names: ${c.after.forbidden.join(", ") || "none"}; definitions: ${c.after.definitions.map(d => `${d.repository}:${d.path}#${d.name}`).join(", ") || "not linked"}`}`).join("\n")}\n\n${PROPOSAL_START}\n\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\`\n${PROPOSAL_END}`;
 }
 
-/** Produce the dictionary bytes; the plan writer commits them together with approval. */
-export function approvedVocabularyFile(root: string, spec: string): { path: "docs/vocabulary.md"; before: string | null; after: string } | null {
+/** Read the proposal embedded in the exact SPEC bytes shown for approval. */
+export function proposedVocabulary(spec: string): { readonly baseRevision: string; readonly entries: readonly VocabularyChange[] } | null {
   const start = spec.indexOf(PROPOSAL_START);
   if (start < 0) return null;
   const end = spec.indexOf(PROPOSAL_END, start);
   if (end < 0) throw new Error("Incomplete vocabulary proposal");
   const raw = spec.slice(start + PROPOSAL_START.length, end).trim().replace(/^```json\s*\n/, "").replace(/\n```$/, "");
-  const changes = vocabularyChangesSchema.parse(JSON.parse(raw));
+  return vocabularyChangesSchema.parse(JSON.parse(raw));
+}
+
+export function approvedVocabularyFile(root: string, spec: string): { path: "docs/vocabulary.md"; before: string | null; after: string } | null {
+  const changes = proposedVocabulary(spec);
+  if (changes === null) return null;
   const dictionary = readVocabulary(root);
   if (dictionary.vocabularyRevision !== changes.baseRevision) throw new Error("The vocabulary changed after this proposal; read its current definitions and revise the proposal.");
   const path = "docs/vocabulary.md";

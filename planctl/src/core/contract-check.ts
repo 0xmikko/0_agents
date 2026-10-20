@@ -3,7 +3,7 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import type { Content, Root } from "mdast";
 import ts from "typescript";
 import type { GateViolation } from "./plan-gate";
-import { repositoryEnvironment } from "./plan-update";
+import { contractChangePaths, repositoryEnvironment } from "./plan-update";
 
 function nodes(node: Root | Content): (Root | Content)[] {
   return [node, ...("children" in node ? node.children.flatMap(nodes) : [])];
@@ -15,12 +15,19 @@ function declarations(text: string, path: string, exportedOnly: boolean) {
   const normalized = (node: ts.Node) => printer.printNode(ts.EmitHint.Unspecified, node, source).replace(/\s+/g, " ").trim();
   const localExports = new Set(source.statements.flatMap(s => ts.isExportDeclaration(s) && !s.moduleSpecifier && s.exportClause && ts.isNamedExports(s.exportClause)
     ? s.exportClause.elements.map(e => (e.propertyName ?? e.name).text) : []));
-  const result = new Map<string, { text: string; members: ReadonlyMap<string, string> | null; inferred: boolean }>();
+  const localTypes = new Map(source.statements.flatMap(s => ts.isInterfaceDeclaration(s) || ts.isTypeAliasDeclaration(s) ? [[s.name.text, s] as const] : []));
+  const result = new Map<string, { text: string; members: ReadonlyMap<string, string> | null; inferred: boolean; callable: boolean; dependencies: ReadonlyMap<string, string> }>();
   for (const statement of source.statements) {
-    if (!ts.isInterfaceDeclaration(statement) && !ts.isTypeAliasDeclaration(statement)) continue;
+    if ((!ts.isInterfaceDeclaration(statement) && !ts.isTypeAliasDeclaration(statement) && !ts.isFunctionDeclaration(statement)) || !statement.name) continue;
     if (exportedOnly && !localExports.has(statement.name.text) && !statement.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) continue;
-    const members = ts.isInterfaceDeclaration(statement) ? statement.members : ts.isTypeLiteralNode(statement.type) ? statement.type.members : null;
-    const fields = members === null ? null : new Map<string, string>();
+    const members = ts.isInterfaceDeclaration(statement) ? statement.members : ts.isTypeAliasDeclaration(statement) && ts.isTypeLiteralNode(statement.type) ? statement.type.members : null;
+    const fields = members === null && !ts.isFunctionDeclaration(statement) ? null : new Map<string, string>();
+    if (ts.isFunctionDeclaration(statement) && fields !== null) {
+      statement.parameters.forEach((p, index) => fields.set(`<argument:${index}>`,
+        `${p.dotDotDotToken ? "..." : ""}${p.questionToken || p.initializer ? "optional " : ""}${p.type ? normalized(p.type) : "inferred"}`));
+      fields.set("<return>", statement.type ? normalized(statement.type) : "inferred");
+      if (statement.typeParameters) fields.set("<parameters>", statement.typeParameters.map(normalized).join(","));
+    }
     if (members !== null && fields !== null) {
       for (const m of members) {
         const name = m.name === undefined ? normalized(m) : m.name.getText(source).replace(/^['"]|['"]$/g, "");
@@ -30,19 +37,33 @@ function declarations(text: string, path: string, exportedOnly: boolean) {
       if (statement.typeParameters) fields.set("<parameters>", statement.typeParameters.map(normalized).join(","));
     }
     let inferred = false;
-    const dependencies: string[] = [];
+    const dependencies = new Map<string, string>();
+    const strip = (s: string) => s.replace(/^(?:(?:export|default|declare)\s+)+/, "");
     const visit = (node: ts.Node): void => {
+      if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+        const name = node.typeName.text;
+        const local = localTypes.get(name);
+        if (local && name !== statement.name?.text && !dependencies.has(name)) {
+          dependencies.set(name, strip(normalized(local)));
+          visit(local);
+        }
+      }
       if (ts.isTypeQueryNode(node) && ts.isIdentifier(node.exprName)) {
         const name = node.exprName.text;
         inferred = true;
         for (const s of source.statements) if (ts.isVariableStatement(s)) {
-          for (const d of s.declarationList.declarations) if (ts.isIdentifier(d.name) && d.name.text === name && d.initializer) dependencies.push(normalized(d.initializer));
+          for (const d of s.declarationList.declarations) if (ts.isIdentifier(d.name) && d.name.text === name && d.initializer) dependencies.set(name, normalized(d.initializer));
         }
       }
       ts.forEachChild(node, visit);
     };
-    visit(statement);
-    result.set(statement.name.text, { text: normalized(statement).replace(/^export (?:default )?/, "") + dependencies.join("\n"), members: fields, inferred });
+    const signature = ts.isFunctionDeclaration(statement) ? ts.factory.updateFunctionDeclaration(statement,
+      statement.modifiers, statement.asteriskToken, statement.name, statement.typeParameters, statement.parameters, statement.type, undefined) : statement;
+    visit(signature);
+    const text = strip(normalized(signature));
+    const previous = result.get(statement.name.text);
+    result.set(statement.name.text, { text: previous && ts.isFunctionDeclaration(statement) ? `${previous.text}\n${text}` : text,
+      members: fields, inferred, callable: ts.isFunctionDeclaration(statement), dependencies });
   }
   return result;
 }
@@ -58,8 +79,6 @@ export async function checkContractChanges(root: string, commit: string, body: s
     const r = run("show", `${ref}:${path}`);
     return r.status === 0 ? r.stdout : "";
   };
-  const diff = run("diff", "--name-status", "-z", "--find-renames", "--find-copies-harder", base, commit, "--", "*.ts", "*.tsx");
-  if (diff.status !== 0) throw new Error("Cannot establish the contract diff base");
   const approved = new Map<string, ReturnType<typeof declarations> extends Map<string, infer T> ? T : never>();
   const spec = body.includes("<!-- plan:spec:start -->")
     ? body.split("<!-- plan:spec:start -->")[1]?.split("<!-- plan:spec:end -->")[0] ?? "" : body;
@@ -78,19 +97,14 @@ export async function checkContractChanges(root: string, commit: string, body: s
     findings.push({ kind: "protocol-shape", rule: "typescript", blocking: true, line: 1, quote,
       text: `${path}: ${name} ${detail}. Compare the actual declaration with the approved flow; correct an accidental mismatch autonomously.`, replacement: null });
   };
-  const fields = diff.stdout.split("\0").filter(Boolean);
-  for (let index = 0; index < fields.length;) {
-    const status = fields[index++];
-    const oldPath = fields[index++];
-    if (!status || !oldPath) break;
-    const path = status.startsWith("R") || status.startsWith("C") ? fields[index++] : oldPath;
-    if (!path) throw new Error("Incomplete Git contract diff");
+  for (const { path, previousPath: oldPath } of contractChangePaths(root, base, commit)) {
     const before = declarations(read(base, oldPath), oldPath, true);
+    const previousDeclarations = declarations(read(base, oldPath), oldPath, false);
     const after = declarations(read(commit, path), path, true);
     for (const name of new Set([...before.keys(), ...after.keys()])) {
       const was = before.get(name);
       const now = after.get(name);
-      if (was?.text === now?.text) continue;
+      if (was?.text === now?.text && JSON.stringify([...(was?.dependencies ?? [])]) === JSON.stringify([...(now?.dependencies ?? [])])) continue;
       const contract = approved.get(name);
       if (now === undefined) {
         const rename = new RegExp(`\\brename[sd]?\\s+\`?${name}\`?\\s+to\\s+\`?([A-Za-z][A-Za-z0-9]*)`, "i").exec(spec)?.[1];
@@ -98,6 +112,14 @@ export async function checkContractChanges(root: string, commit: string, body: s
         if (!new RegExp(`\\b(?:remove|delete|retire)[sd]?\\s+(?:the\\s+)?\`?${name}\\b`, "i").test(spec)) add(path, name, "was removed without an approved removal", was?.text ?? name);
         continue;
       }
+      for (const [dependency, actual] of now.dependencies) {
+        if (was?.dependencies.get(dependency) === actual || previousDeclarations.get(dependency)?.text === actual) continue;
+        if (approved.get(dependency)?.text !== actual) add(path, name, `depends on changed ${dependency} without its approved definition`, actual);
+      }
+      if (was?.text === now.text) continue;
+      // New internal exported helpers belong to the declared implementation scope.
+      // Existing public call signatures must not change silently.
+      if (now.callable && was === undefined) continue;
       if (contract === undefined) { add(path, name, "has no approved contract", now.text); continue; }
       if (now.members !== null && contract.members !== null) {
         for (const key of new Set([...(was?.members?.keys() ?? []), ...now.members.keys()])) {

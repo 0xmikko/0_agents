@@ -181,7 +181,8 @@ const TOOLS = {
     schema: z.object({ plan: z.string(), delivery: z.string(), expectedHead: z.string(), phase: z.enum(["plan", "implementation"]), reviewPath: z.string().optional() }),
     run: async (deps, args) => {
       const result = await publishDelivery({ plan: resolve(deps.cwd, args.plan), delivery: args.delivery,
-        expectedHead: args.expectedHead, phase: args.phase, ...(args.reviewPath === undefined ? {} : { reviewPath: args.reviewPath }) });
+        expectedHead: args.expectedHead, phase: args.phase, ...(args.reviewPath === undefined ? {} : { reviewPath: args.reviewPath }) },
+      { publication: deps.publication });
       return reply({ ...result }, `${result.pushed ? "Published" : "Already published"}: ${result.url}`);
     },
   }),

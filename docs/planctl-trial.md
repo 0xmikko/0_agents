@@ -10,7 +10,7 @@ Discuss a readable solution, preserve canonical names and contracts, then implem
 2. **Correct the proposal.** Factual findings cite the offending declaration. Jev answers a focused binary question with probability, evidence and uncertainty. The agent corrects ordinary problems itself. A semantic answer cannot grant approval or certify a requirement.
 3. **Approve the solution, then its breakdown.** `submit_spec` keeps an incomplete draft saveable. `approve_spec` and `approve_plan` require the displayed revision and the actual approval scope. A vocabulary proposal is written with SPEC approval through the same recoverable journal. One paragraph's approval does not approve the whole document.
 4. **Implement locally.** Existing Task operations and checks remain. Multiple work commits may belong to a Stage. New plans use one Stage per PR. A completed local dependency can unlock the next work before CI. Missing required values and real contract changes remain explicit.
-5. **Finish the PR.** Complete local gate → agreed review → fixes and affected checks → `publish_delivery` → CI. A retry reconciles an already pushed head. Intermediate commits stay local. The publisher has no merge operation.
+5. **Finish the PR.** Complete local gate → agreed review → fixes and affected checks → `publish_delivery` → CI. A retry reconciles an already pushed head. One diagnosed CI correction is allowed after the existing Actions observer confirms failure, the cause is recorded, and fresh local checks pass. Intermediate commits stay local. The publisher has no merge operation.
 
 The source changes remain on the existing feature branch. No global client configuration or installed consumer instructions were updated. The trial's current source must be selected explicitly in a separate MCP session.
 
@@ -73,10 +73,12 @@ For a separate client session, launch this checkout's `planctl/src/cli/main.ts m
 
 The historical dataset, exact source excerpts and raw conversation labels remain in the local evaluation archive. They are excluded from this public repository. The public runner accepts `--corpus <file>` for that archive.
 
+The final review found and corrected real interruption paths: unchanged type copies now pass task completion as well as the diff checker; a new dictionary definition can refer to its declared future implementation; pending dictionary transactions recover before another plan writes. Kernel file locks serialize writers and release automatically if their process dies. Existing public function signatures and their local type dependencies are compared too.
+
 ## Limits
 
 - Semantic feedback is advisory. Two independent defects were inconclusive. No threshold was tuned against those evaluation answers, and no provider fine-tuning is claimed.
-- The contract checker compares declared TypeScript members and aliases. Unresolved re-exports and inferred schema shapes remain incomplete evidence; this is not proof of arbitrary TypeScript semantic equivalence.
+- The contract checker compares declared TypeScript members, aliases, existing public function signatures and local type dependencies. It does not exhaustively resolve cross-file inferred schema impact or prove arbitrary TypeScript semantic equivalence. Typechecking and behavior tests remain necessary.
 - Local hooks enforce the publication record when this template is installed in the selected checkout. They are a cooperative workflow control, not a security boundary against an agent that can edit hooks or use another credential. Remote protected-branch rules remain necessary.
 - A plan-only push is refused unless tracked workflows prove that it will not trigger product CI. The readable SPEC URL is available without a push.
 - Sandbox and client permission policies remain host controls. No universal promise that all clients show zero permission dialogs is made. Diagnostic-log failure now reports a warning while preserving the actual operation and its transaction journal.

@@ -1,7 +1,7 @@
 # Fast autonomous development with clear plans and a shared vocabulary
 
 Status: APPROVED  
-Spec lock: sha256:44799b2b4573f4962670cba14e4ec89310f7cdefa30861bacc269ee403083ae1 owner:Я тебе даю полный карт-бланш.  
+Spec lock: sha256:42d5c83d5f6f00b6eed26325e93070f883049afbe171c62079ad638c5fdd2e64 owner:Я тебе даю полный карт-бланш.  
 Outline lock: unlocked  
 Implementation lock: sha256:7ac87778ad9b08519b334bf737b6221d57f875231cc932a519995e07ca3ebf34 owner:Я тебе даю полный карт-бланш.  
 Active Delivery: D1  
@@ -266,6 +266,9 @@ export declare function publishDelivery(input: {
   readonly expectedHead: string;
   readonly phase: "plan" | "implementation";
   readonly reviewPath?: string;
+}, options?: {
+  readonly github?: (root: string, args: readonly string[]) => string;
+  readonly publication?: (root: string, branch: string) => ProgressView["publication"];
 }): Promise<{
   readonly url: string;
   readonly head: string;
@@ -277,7 +280,7 @@ The server derives test/review evidence and the destination from records, not ag
 
 The full local gate precedes the agreed review, and review precedes implementation push and CI. Fix review findings and rerun affected checks, retaining unaffected results. Keep intermediate work local. An approved plan-only draft may be published without heavy product CI; the next push contains the completed, reviewed Stage.
 
-A failed CI run is diagnosed before a justified correction/retry within the approved cost boundary. Do not rerun paid CI to investigate an unresolved local failure. The agent finishes with the PR link, checks and any real remaining limitation. The owner merges; direct push, merge and auto-merge into protected branches require separate explicit authorization.
+One diagnosed correction may be published after the Actions observer confirms failure on the previous published head, the agent records the cause through add_deviation, and fresh local verification and any requested review pass. The existing publication record preserves this one-retry allowance through interruptions. A further paid retry needs an explicitly agreed cost limit; an ordinary first correction does not require changing the approved contract. Do not rerun paid CI to investigate an unresolved local failure. The agent finishes with the PR link, checks and any real remaining limitation. The owner merges; direct push, merge and auto-merge into protected branches require separate explicit authorization.
 
 Tooling repairs needed for authorized work are the agent's responsibility. Preserve other agents' edits. Do not require a stack reinstall solely because versions differ. Host permission enforcement still applies; local instructions cannot remove external approval prompts. Verify the actual launch permissions and branch protection in the isolated trial.
 
@@ -406,4 +409,8 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 - deviation D1-S1: The full local gate exposed obsolete editorial assertions and eager browser loading in built entrypoints. Scoped regressions now prove lazy loading, preserved failure output, unchanged contract copies and explicit renames, optional requested review, and matching observer/executor eligibility. Private historical examples stay local because the source repository is public; only synthetic fixtures and aggregate historical measurements are published.
 
 - close D1-S1 closed commit:d21b03997e3d4f2e2e20a86f210f4f6ac1ddc999
+
+- amend spec owner:Я тебе даю полный карт-бланш. sha256:1e982ed8b48ec63ef916a6707a02252b215b69247565d3a219bac04bce14a040
+
+- amend spec owner:Я тебе даю полный карт-бланш. sha256:42d5c83d5f6f00b6eed26325e93070f883049afbe171c62079ad638c5fdd2e64
 <!-- plan:execution:end -->
