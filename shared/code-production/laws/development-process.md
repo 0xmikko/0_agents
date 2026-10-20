@@ -24,9 +24,19 @@ A Deviation records a shortfall; it does not authorize extra scope.
 ## Verification
 
 Use the project's [agent:* commands](../package-contract.md). During a Stage,
-run the affected tests and typechecks. At publication, run the complete gate
-and confirm CI for the published commit. Reuse passing checks whose inputs
-have not changed. Keep Git hooks enabled. The owner merges.
+run the affected tests and typechecks. After completing the work, run the
+complete local gate, then the requested final review. Fix real findings and
+verify affected changes before the authorized implementation push; remote CI
+checks the published commit afterward. A PR and green CI are not prerequisites
+for review. Reuse passing checks whose inputs have not changed. Keep Git hooks
+enabled. The owner merges.
+
+Authorized publication includes the agent pushing the feature branch, creating
+or updating its PR, observing CI and returning the link. Use planctl `progress`
+or the Actions API for the exact published head; do not require the fine-grained
+PAT to read the Checks API. Preserve observation failures instead of reporting
+a logging command's success. Protected-branch merge, auto-merge and direct push
+require a separate explicit owner instruction.
 
 Record measured results and unavailable measurements honestly. Forecast active
 work, dependency time and external waits separately; agent count alone does
