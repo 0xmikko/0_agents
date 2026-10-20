@@ -305,13 +305,13 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 
 ##### Tasks
 
-- [ ] CORPUS — Build a traceable corpus and freeze independent evaluation by source document. (30 min)
+- [x] CORPUS — Build a traceable corpus and freeze independent evaluation by source document. (30 min) — f91f46b5f063c05e4ed2d4646592182d874cee94
 <!-- plan:task-meta:{"writes":["docs/","planctl/bench/","planctl/test/fixtures/"],"predictedActiveMinutes":30,"predictedCredits":0,"how":"Inventory available datasets, canonical flows and session feedback. Sanitize excerpts, record provenance and label confidence. Keep defective variants with their source in calibration or held-out evaluation. Report uncertainty, mistakes, latency and cost.","red":"bun run agent:test:backend -- test/content-check.test.ts"} -->
-- [ ] CHECK — Provide vocabulary, deterministic checks, focused Jev advice and diagram rendering through MCP. (60 min)
+- [x] CHECK — Provide vocabulary, deterministic checks, focused Jev advice and diagram rendering through MCP. (60 min) — f91f46b5f063c05e4ed2d4646592182d874cee94
 <!-- plan:task-meta:{"writes":["planctl/src/","planctl/test/","planctl/package.json","planctl/bun.lock","shared/code-production/vocabulary.md","shared/skills/"],"predictedActiveMinutes":60,"predictedCredits":0,"how":"Extend existing contracts and server with check_content. Preserve canonical names, entries without aliases and external wire names. Bound calls and cost, cache exact inputs, return unavailable advice on provider failure. Reuse checks in submission, amendment and exact-version approval; save incomplete drafts. Journal dictionary proposals with approval. Exercise actual MCP calls and failure recovery.","red":"bun run agent:test:backend -- test/content-check.test.ts"} -->
-- [ ] EXECUTE — Validate actual contracts and coordinate controlled feature publication. (60 min)
+- [x] EXECUTE — Validate actual contracts and coordinate controlled feature publication. (60 min) — f91f46b5f063c05e4ed2d4646592182d874cee94
 <!-- plan:task-meta:{"writes":["planctl/src/","planctl/test/","shared/code-production/templates/hooks/","docs/"],"predictedActiveMinutes":60,"predictedCredits":0,"how":"Use compiler declarations and canonical sources to compare actual changes with approved boundaries. Coordinate existing verification and review evidence with local dependencies and publication. Refuse protected destinations and repeated publication cost. Exercise interruption and retries with local remotes. Preserve fast selectors, hooks and other sessions.","red":"bun run agent:test:backend -- test/publication.test.ts"} -->
-- [ ] EVALUATE — Prove the working system on held-out examples and an isolated session, and prepare the publication evidence. (40 min)
+- [x] EVALUATE — Prove the working system on held-out examples and an isolated session, and prepare the publication evidence. (40 min) — f91f46b5f063c05e4ed2d4646592182d874cee94
 <!-- plan:task-meta:{"writes":["docs/","planctl/bench/","planctl/test/"],"predictedActiveMinutes":40,"predictedCredits":0,"how":"Evaluate frozen examples through the production checker and keep mistakes and uncertain answers. Exercise a real MCP author-check-correct-approve session. Document setup and limits. After all local Tasks, the Stage criterion runs the complete gate; review and publication follow that criterion. Never merge.","red":"bun run agent:test:backend -- test/mcp.test.ts"} -->
 
 ##### Acceptance criteria
@@ -324,6 +324,10 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 <!-- plan:results:D1-S1:start -->
 | Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
 |---|---|---|---:|---|---|
+| CORPUS | f91f46b5f063c05e4ed2d4646592182d874cee94 | 2026-10-20T19:00:29.853Z–2026-10-20T19:54:31.572Z | 54.02865 / 54.02865 min | unavailable: not measured by planctl | Implemented vocabulary proposals and focused content feedback, evaluated historical and public synthetic corpora, verified live MCP/Jev/Chromium authoring and retry behavior, and prepared publication evidence. Targeted checks pass; complete gate, final review and publication follow the Stage criterion. |
+| CHECK | f91f46b5f063c05e4ed2d4646592182d874cee94 | 2026-10-20T19:00:29.853Z–2026-10-20T19:54:31.572Z | 54.02865 / 54.02865 min | unavailable: not measured by planctl | Implemented vocabulary proposals and focused content feedback, evaluated historical and public synthetic corpora, verified live MCP/Jev/Chromium authoring and retry behavior, and prepared publication evidence. Targeted checks pass; complete gate, final review and publication follow the Stage criterion. |
+| EXECUTE | f91f46b5f063c05e4ed2d4646592182d874cee94 | 2026-10-20T19:00:29.853Z–2026-10-20T19:54:31.572Z | 54.02865 / 54.02865 min | unavailable: not measured by planctl | Implemented vocabulary proposals and focused content feedback, evaluated historical and public synthetic corpora, verified live MCP/Jev/Chromium authoring and retry behavior, and prepared publication evidence. Targeted checks pass; complete gate, final review and publication follow the Stage criterion. |
+| EVALUATE | f91f46b5f063c05e4ed2d4646592182d874cee94 | 2026-10-20T19:00:29.853Z–2026-10-20T19:54:31.572Z | 54.02865 / 54.02865 min | unavailable: not measured by planctl | Implemented vocabulary proposals and focused content feedback, evaluated historical and public synthetic corpora, verified live MCP/Jev/Chromium authoring and retry behavior, and prepared publication evidence. Targeted checks pass; complete gate, final review and publication follow the Stage criterion. |
 <!-- plan:results:D1-S1:end -->
 <!-- plan:stage:D1-S1:end -->
 <!-- plan:delivery:D1:end -->
@@ -371,4 +375,10 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 - amend implementation owner:Я тебе даю полный карт-бланш. sha256:48b0ac551a9aca332054a4575e73e141007af8a0e7a17e69bd2e7b82e138430a
 
 - amend spec owner:Я тебе даю полный карт-бланш. sha256:2fbc9b4ec257967deb9fcb2eace424cb19775a679c1563f225d91ee142589e61
+
+- record-result D1-S1 commit:f91f46b5f063c05e4ed2d4646592182d874cee94
+
+- deviation D1-S1: Historical source labels remain provisional and private. Public examples are synthetic regression cases. Jev remains advisory; unresolved inferred and re-exported contracts remain incomplete evidence.
+
+- deviation D1-S1: Reproduced and fixed diagnostic event-log failure masking a completed MCP mutation; isolated sessions can select a writable event log.
 <!-- plan:execution:end -->
