@@ -63,7 +63,9 @@ describe("submit_spec", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  // Submission now renders real diagrams: bounded browser launch and render
+  // each allow five seconds, so the test needs more than Bun's default five.
+  }, 30_000);
 
   /**
    * @test-id: tst_unit_planctl_spec_submission_002
@@ -89,5 +91,5 @@ describe("submit_spec", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });
