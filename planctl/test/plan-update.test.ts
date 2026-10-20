@@ -1123,6 +1123,32 @@ describe("the Ledger line on the last Stage", () => {
     return body.replace(`- [ ] ${stageId}-T1 —`, `- [x] ${stageId}-T1 —`);
   }
 
+  // @test-id: tst_core_planctl_close_literal_001
+  // @scenario: scn_planctl_close_literal_001
+  // @covers: planctl/src/core/plan-update.ts::closePlanStage
+  // @deterministic: yes
+  // @invariant: shell dollar sequences stay literal when criteria close; the approved implementation lock remains valid.
+  it("tst_core_planctl_close_literal_001 preserves dollar sequences and the approved lock", () => {
+    const command = "printf '%s' value | grep -q 'value$' && test '$&' = '$&' && test '$$' = '$$'";
+    const approved = approvedWithStages();
+    // Replace only the first Stage's criterion while it is explicitly amended.
+    const find = approved.slice(approved.indexOf("<!-- plan:stage:D1-S1:start -->"), approved.indexOf("<!-- plan:stage:D1-S1:end -->"));
+    const body = applyOwnerAmendment(approved, "fixture", {
+      section: "implementation",
+      find,
+      replace: find.replace("`bun test` exits 0", () => `\`${command}\` exits 0`),
+    }).body;
+    const calls: string[] = [];
+    const closed = closePlanStage(ticked(body, "D1-S1"), "D1-S1", {
+      root: tmpdir(), head: "c".repeat(40), run: (value) => { calls.push(value); return 0; },
+    });
+    expect(calls).toEqual([command]);
+    expect(closed.status).toBe("CLOSED");
+    expect(closed.body).toContain(`- [x] \`${command}\` exits 0`);
+    expect(protocolLockViolations(closed.body)).toEqual([]);
+    expect(closed.body.match(/<!-- plan:results:D1-S1:start -->/g)).toHaveLength(1);
+  });
+
   // @test-id: tst_scripts_planupdate_023
   // @scenario: scn_plan_control_ledger_001
   // @covers: planctl/src/core/plan-update.ts::closePlanStage

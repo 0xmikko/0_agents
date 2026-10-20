@@ -1497,7 +1497,9 @@ export function closePlanStage(
     closed += 1;
     return `- [x] ${criterion} — ${options.head}`;
   }).join("\n");
-  let changedStage = stage.text.replace(criteriaText, changedCriteria);
+  // @tested-by: tst_core_planctl_close_literal_001
+  // Shell commands may contain $', $& or $$; they are literal plan bytes.
+  const changedStage = stage.text.replace(criteriaText, () => changedCriteria);
   const remaining = (changedStage.match(/^- \[ \] /gm) ?? []).length;
   const status = remaining === 0 ? "CLOSED" : "PARTIAL";
   let next = `${body.slice(0, stage.from)}${changedStage}${body.slice(stage.to)}`;
