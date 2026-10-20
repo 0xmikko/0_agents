@@ -1,9 +1,13 @@
 ---
 name: blueprint-start
-description: Execute an approved plan through planctl MCP with scoped verification and one complete publication gate.
+description: Execute an approved plan when the owner explicitly selected the Blueprint/planctl workflow. Do not impose it on interactive work.
+disable-model-invocation: true
 ---
 
 # Blueprint Start
+
+The owner must have explicitly selected this workflow. Continuing an already
+authorized execution does not require selecting it or approving it again.
 
 Call `progress` in the plan's existing checkout. Continue the running Task
 from its checkpoint. The approved plan supplies scope and dependency order.
@@ -21,6 +25,18 @@ from its checkpoint. The approved plan supplies scope and dependency order.
    approved contract. State the concrete choice and consequences. Use
    `resume_task` after the answer. An ordinary repair or retry is not a new
    owner decision.
+
+Use existing checks for the changed behavior and necessary targeted typechecks;
+aim for a 20–60 second work loop. Broad checks belong at major integration or
+publication boundaries, not each work commit. After a failure, repeat only the
+failed or affected checks; reuse successful checks while their inputs are unchanged.
+Do not skip necessary verification to meet the time target.
+
+An additional caller, file, move of an unchanged type or incomplete bookkeeping
+does not by itself change the approved behavior. Repair these within the existing
+authorization. Ask only for a material change of the agreed outcome, compatibility,
+module responsibility or scope; a tool refusal is not a new approval requirement.
+Keep plan records accurate through MCP rather than fabricating owner approval.
 
 Run project agent:* commands directly in their checkout. Avoid shell wrappers
 or redirections that prevent reusable command approvals from matching.

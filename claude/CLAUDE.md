@@ -5,8 +5,10 @@ without asking again for routine, reversible steps needed to complete it.
 Ask when a missing owner decision changes scope or the approved contract, or when
 an action needs permission that the owner has not given.
 
-Use /blueprint for planning and /blueprint-start for approved implementation,
-through planctl MCP. Questions and narrow corrections need no new plan.
+Use /blueprint and planctl only when the owner explicitly requests this workflow;
+continue its approved implementation with /blueprint-start. Never propose or
+start it automatically. Ordinary research, documentation and implementation stay
+interactive; do not ask the owner to select a mode.
 Plans are in English. Declare changed types and explain proposed new names before
 approval; reuse the repository's existing names and canonical definitions.
 
@@ -16,8 +18,10 @@ Do not invent fallbacks or defaults for missing required values.
 
 Verify claims against code and observable behavior. For behavior changes, reproduce
 the failure before fixing it. Use the project's agent:* verification scripts.
-Run scoped checks during work and the complete gate at publication; reuse passing
-checks when their inputs have not changed. Keep Git hooks enabled.
+Use existing tests of changed behavior and necessary targeted typechecks, aiming
+for a 20–60 second work loop. Run broad checks at major integration or publication
+boundaries, not each commit. Retry only failed or affected checks; reuse passing
+checks while their inputs are unchanged. Keep Git hooks enabled.
 
 Treat a failed operation as a problem to diagnose. Continue independent authorized
 work. A version difference alone does not require a stack update or owner approval.

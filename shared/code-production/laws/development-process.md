@@ -6,12 +6,14 @@ Project instructions supply architecture, commands and Git destinations.
 
 ## Lifecycle
 
-Use /blueprint for planning, /blueprint-start for execution and /end-work
-after the owner merges. These skills use planctl MCP. Questions and narrow
-corrections need no new plan. Reuse the task's existing checkout; add a worktree
-only when isolation is needed. A committed draft remains a draft.
+Ordinary research, documentation and implementation are interactive. Use
+/blueprint and planctl only when the owner explicitly requests this workflow;
+never propose or start it automatically, or ask the owner to select a mode.
+For that selected workflow, use /blueprint-start for execution and /end-work
+after the owner merges. Reuse the task's existing checkout; add a worktree only
+when isolation is needed. A committed draft remains a draft.
 
-There are two planning approvals: the SPEC, then the concrete implementation
+In the explicitly selected workflow there are two planning approvals: the SPEC, then the concrete implementation
 contract. There is no outline approval. Show the owner the published plan and
 the decision to approve. Review rounds run only at the owner's request.
 
@@ -23,8 +25,11 @@ A Deviation records a shortfall; it does not authorize extra scope.
 
 ## Verification
 
-Use the project's [agent:* commands](../package-contract.md). During a Stage,
-run the affected tests and typechecks. After completing the work, run the
+Use the project's [agent:* commands](../package-contract.md). During work,
+run existing tests of changed behavior and necessary targeted typechecks.
+Aim for 20–60 seconds per work loop. Broad checks belong at major integration
+or publication boundaries, not each work commit. After a failure, retry only
+failed or affected checks. After completing the work, run the
 complete local gate, then the requested final review. Fix real findings and
 verify affected changes before the authorized implementation push; remote CI
 checks the published commit afterward. A PR and green CI are not prerequisites
@@ -49,7 +54,13 @@ difference alone proves neither incompatibility nor a need to update the stack.
 Necessary instruction and tooling repairs within the requested scope are
 authorized; inspect their actual changes and preserve other agents' work.
 
-Use `needs_owner` only when a missing owner decision blocks the approved work,
+An additional caller, file, move of an unchanged type or bookkeeping correction
+does not by itself change the approved outcome. Resolve it within the existing
+authorization and record it accurately through MCP. A refusal by tooling is not
+evidence that another owner decision is needed.
+
+Use `needs_owner` only for a material change to agreed behavior, compatibility,
+module responsibility or scope that the existing authorization does not cover,
 then `resume_task` after the answer. Routine repairs and retries do not create
 another approval. Sandbox permissions are enforced separately by the host;
 an instruction cannot grant access to a protected path.
