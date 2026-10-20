@@ -1,0 +1,26 @@
+{
+  "sources": [
+    {
+      "source": "repository-1",
+      "historicalMarkdownPaths": 274,
+      "otherHistoricalPaths": 67
+    },
+    {
+      "source": "repository-2",
+      "historicalMarkdownPaths": 10,
+      "otherHistoricalPaths": 0
+    },
+    {
+      "source": "repository-3",
+      "historicalMarkdownPaths": 11,
+      "otherHistoricalPaths": 0
+    },
+    {
+      "source": "repository-4",
+      "historicalMarkdownPaths": 7,
+      "otherHistoricalPaths": 0
+    }
+  ],
+  "scope": "Git history path inventory, not a claim that every historical version was manually reviewed. Full paths and private source snapshots are retained only in the local evaluation archive.",
+  "publicDataset": "24 synthetic regression cases; 18 calibration and 6 source-separated examples. Historical source evidence remains private."
+}

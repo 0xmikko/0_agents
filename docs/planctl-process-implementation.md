@@ -1,160 +1,151 @@
-# Implement the planctl development process
+# Repair planctl without replacing the working process
+
+Historical design and incident record. The current isolated implementation and its measured evidence are documented in [the trial guide](planctl-trial.md). Statements below about pending work describe the earlier review boundary.
 
 ## Goal
 
-Research and agree the intended behavior once, then implement, verify and review it without routine owner questions. Plans explain the goal, system behavior, flows and contracts in plain English. Publication produces an approved-plan draft without paid CI and a complete, reviewed implementation with one final CI run.
+Let the owner develop software: discuss the destination in small readable steps, approve the complete SPEC and implementation plan, then receive locally verified and reviewed work. Routine implementation and tool bookkeeping must not consume owner decisions. Preserve existing behavior, contracts and canonical names. Spend CI only at the agreed publication boundary.
 
-## How the system works
+Status: repair proposal, reviewed against the source and the October 19–20 incident. This document is not a recorded owner approval. The narrow incident repair below was explicitly requested and has been implemented locally. The remaining changes are not installed.
 
-Interactive work stays interactive: inspect code, discuss a decision, edit the requested document or code, verify the change. It does not create a plan automatically.
+## Target
 
-For planned autonomous work, extend the existing planctl MCP server. Keep its SPEC and implementation approvals and its task operations. Add three operations already discussed: `check_plan`, `execute_plan` and `publish_delivery`.
+Interactive discussion, research and document editing stay interactive. For planned autonomous work, the agent develops Goal and Target with the owner, records decisions and evidence in the same research document, then uses the existing MCP operations. Goal states the outcome; Target describes the finished behavior, flows, responsibilities and contracts. The starting code revision defines the starting state.
 
 ```mermaid
-%%{init: {"themeVariables": {"fontSize": "20px"}, "flowchart": {"rankSpacing": 30}}}%%
 flowchart TB
-  R["Research flows,<br/>contracts and reuse"] --> S["Approve the SPEC"]
-  S --> P["Check and approve<br/>the complete work plan"]
-  P --> D["Publish the plan<br/>Draft PR, no paid CI"]
-  D --> W["Implement and test<br/>locally"]
-  W --> V["Review, fix findings<br/>and verify changes"]
-  V --> C["Publish the result<br/>Ready PR, one CI run"]
+  A["Discuss and inspect one flow"] --> B["Check and approve complete SPEC"]
+  B --> C["Derive and approve implementation plan"]
+  C --> D["Publish plan as Draft: no paid CI"]
+  D --> E["Implement and verify locally"]
+  E --> F["Review, correct and verify affected changes"]
+  F --> G["Publish completed work: one PR CI run"]
+  G --> H["Owner merges"]
 ```
 
-The machine service owns continuation. The agent owns implementation inside the agreement. The publisher owns remote writes. A substantial change to agreed behavior, responsibility or ownership returns to the owner with a self-contained question.
+Keep `init`, `submit_spec`, `approve_spec`, `put_delivery`, `put_stage`, `approve_plan`, `start_task`, `complete_task`, `close_stage`, `needs_owner` and `resume_task`. Retain English, declared changed public contracts, useful Blueprint examples, TDD, meaningful acceptance tests and enabled Git hooks. A local draft commit is allowed but is not a new approval or publication.
 
-## Implementation order
+The reviewed historical Blueprint baseline is `acabd4288ede3857311dcd26915897e392327097` (`a50b18d^`). Compare focused edits against it and the consumer's current instructions. Do not reinstall the whole dirty rollout branch or treat the later wholesale shortening as approved.
 
-### 1. Make the authoring contract match the document the owner wants
+## Work and acceptance, in order
 
-**Change:** `planctl/src/core/plan-update.ts`, `planctl/src/core/plan-gate.ts`, `planctl/src/core/spec-submission.ts` and `planctl/src/mcp/server.ts`.
+### 1. Remove the reproduced approval/commit contradiction
 
-- Remove the unwanted introductory section from `SPEC_SECTIONS` and Stage guidance. Do not request it as either an error or advice.
-- Make `GOAL_RULE` ask for the observable result. Make `TARGET_RULE` ask for the mechanism: trigger, ordered operations, owning functions, changed data, failures and tests.
-- Return goal followed immediately by system behavior and readable flows. Keep full changed interfaces, canonical names, owning files and verification.
-- Return all findings together, with the relevant quotation. Do not replace the owner's terms or silently rewrite the draft.
-- Preserve existing approved documents and their hashes. The new authoring contract applies to new work; it does not rewrite history.
+**Implemented locally; source and consumer checks recorded in the incident report.** The MCP writer allows agreement before the first plan commit. The old freeze assumed that any newly committed APPROVED file had never been reviewed. These rules contradicted each other.
 
-**Proof:** initialize and submit a plan without the removed section; inspect both MCP and CLI replies; approve it without a request to add that section. Existing approved documents still verify. Render the example at a 1024-pixel viewport.
+MODIFY `planctl/src/core/plan-gate.ts`: protocol plans use their existing mutation journal and lock hashes; legacy plans keep the parent-diff freeze. Refuse a missing journal, changed staged bytes, wrong base, broken chain, changed locks and removal of protocol markers. No new permission, approval type or public API is introduced.
 
-The section-list and Stage-hint removal is already implemented locally. The remaining authoring guidance is part of this proposal.
+MODIFY `planctl/test/mcp.test.ts`: drive real stdio MCP through both approvals and the installed Git hooks. Exercise all 16 combinations of journal presence, staged-byte identity, chain integrity and base identity. A refused commit preserves approvals and HEAD. A valid retry and an authorized amendment commit successfully. Keep the existing legacy merge and raw-edit regression tests.
 
-### 2. Give MCP and installed hooks a compatible runtime
+MODIFY `planctl/test/plan-update.test.ts`: correct an independently pre-existing assertion on obsolete error wording; continue requiring a useful refusal for missing Stage description.
 
-**Change:** `shared/code-production/agent-stack.ts`, its hook templates, `planctl/src/core/plan-progress.ts`, the existing installer and MCP startup/write paths.
+MODIFY only the corresponding block in `magnis-app/.worktrees/monorepo/.agents/code-production/runtime/plan-gate.ts`. Test its exact runtime and hooks in disposable repositories before use. Preserve plan, index entries unrelated to repair, skills, permissions and workflows. Do not delete/recreate an approved plan to recover from a failed operation.
 
-- Record journal and lock format compatibility alongside the installed source revision. A different commit alone is informational.
-- Check the reader used by the actual installed hook before the first plan write in a repository, including interactive documentation work.
-- Add a runtime-only installation option to the existing installer. It selects an explicit committed source revision and updates the runtime and compatible hooks together. It does not copy skills, instruction files or CI workflows.
-- Validate the selected files before installation, preserve the previous working set for rollback, and record the installed component revisions accurately.
-- Check the running MCP instance as well as files on disk. Reconnect through the owning host's supported mechanism; never kill another session's process.
-- Exercise the write, commit and cleanup sequence in a disposable repository under the intended permissions. Check dependency and cache paths as part of this probe.
+**Step 1 → Verify:** the former first-commit failure is RED before the patch and GREEN afterward. All invalid journal combinations remain RED. Existing protection tests remain GREEN. Hash the consumer's instructions and plan before/after; require no changes.
 
-**Proof:** reproduce the old reader/new writer mismatch before a real plan is changed; repair the selected runtime; perform two journaled commits without journal copying or manual cleanup. Leave an unrelated historical journal untouched. Verify that direct plan edits still fail and that runtime-only repair preserves instruction files byte for byte.
+### 2. Remove execution deadlocks in the existing runtime
 
-The journal reader repair and cleanup regression are already implemented. Automatic compatibility checks and scoped installation remain to be implemented.
+MODIFY `planctl/src/core/plan-update.ts`, `planctl/src/core/plan-progress.ts`, `planctl/src/core/task-run.ts`, `planctl/src/core/plan-gate.ts` and `planctl/src/mcp/server.ts`. MODIFY `planctl/test/plan-update.test.ts`, `planctl/test/plan-progress.test.ts`, `planctl/test/task-run.test.ts`, `planctl/test/plan-gate.test.ts` and `planctl/test/mcp.test.ts`. No new scheduler or execution service is required for this repair.
 
-### 3. Resolve implementation boundaries before execution
+- `parentRefusal` must accept verified local completion of a prerequisite. Starting local work must not require a parent PR or green remote CI. Genuine external dependencies retain explicit evidence requirements.
+- `progress` and `start_task` must use the same eligibility calculation across repositories. An owner wait blocks its task and actual dependents; eligible independent work continues. Once none remains, report the concrete unresolved decision once. Never spin because checkboxes remain open.
+- Completion checks compare public contracts with the agreed SPEC. An unchanged declaration moved between files does not become a newly invented contract; an approved rename uses the declared name mapping. A new public contract or responsibility still needs agreement. Do not silently waive undeclared semantic changes.
+- Additional mechanical consumers within an agreed responsibility go into execution evidence with their reason. Locked meaning stays unchanged. Crossing an unapproved module boundary is a substantive decision.
+- `deliveryRoot` resolves the owning repository for commits, types and checks. Hook children clear inherited Git-local variables. Verify result commits from configured repository history, not a disposable absolute worktree path. Missing history is an actionable unavailable check, never a fabricated success.
+- Persist checkpoints and pending questions using existing task-run records. Resume a task from those records, not from an open-box count. This restores continuation while the agent session is running; restarting an exited agent is a separate host capability and is not claimed here.
+- Bind each approval to the revision the owner saw. Extend the existing approval inputs with a required `expectedRevision: string`: SPEC hash for `approve_spec`, implementation hash for `approve_plan`. Compare it inside the same serialized mutation as the lock. A stale request changes nothing. Repeating an already recorded approval for the same lock returns its current state without another mutation. Roll out the updated tool schema and reader together; never reinterpret a missing revision as the latest one.
 
-**Change:** `planctl/src/core/plan-gate.ts`, `planctl/src/core/plan-update.ts`, `planctl/src/core/spec-submission.ts` and the MCP tool definitions. Add `planctl/src/core/plan-check.ts` to own the checks shared by approval and completion.
+**Step 2 → Verify:** finish a prerequisite locally with no PR and start its dependent in the second repository; block one task on a real product decision and finish an independent task; restart the MCP process and recover the same wait once; move an unchanged type successfully but reject an unapproved contract change; delete the temporary worktree and verify receipts from a fresh checkout with configured history. Run criteria in execution, never in `--no-exec` CI receipt validation. A known required failing test remains a failure.
 
-- `check_plan` takes the plan and its current revision. Resolve every Delivery in its own checkout and inspect the proposed changed declarations, canonical definitions and callers.
-- Check dynamic consumers with named behavior tests. A reference search is evidence of coverage, not proof that every consumer was found.
-- Check compatibility decisions, dependencies, verification commands, baseline failures and runtime prerequisites. Return concrete findings in one response.
-- Reuse the same contract comparison before approval and at completion. Preserve an existing protocol field's spelling when the agreed contract preserves it.
-- Change `parentRefusal` to accept verified local completion of a prerequisite. Local implementation must not require a parent PR or remote CI. An explicitly external dependency still needs its recorded evidence.
-- Record newly discovered files when they complete agreed behavior. Require an owner decision for a new public contract, responsibility, architecture or module boundary.
+For approval concurrency: present revision A, save revision B, then send approval for A; require a refusal with no lock or journal change. Submit two approvals for the same current revision concurrently; require one recorded transition and the same successful state for the retry. An approval for one section must not lock the other section. Keep these as MCP boundary tests, not checks of explanatory strings.
 
-**Proof:** find the omitted routing-key readers and omitted type changes before approval; accept declared protocol names; continue into the next repository after local prerequisite completion without a PR. Refuse a genuinely new undeclared contract. An old failing required test remains a failed requirement, not a passed deviation.
+### 3. Align only the conflicting instructions and installed components
 
-### 4. Make vocabulary and reuse part of research
+MODIFY `shared/skills/blueprint/SKILL.md`, `shared/skills/blueprint-start/SKILL.md`, `claude/skills/review-implementation/SKILL.md`, `codex/skills/review-implementation/SKILL.md`, and the matching clauses in `shared/code-production/laws/development-process.md` and `shared/code-production/laws/plan-format.md`. Prepare exact diffs against the preserved baseline before installing them. Also correct the stale CI-before-review clause found in `magnis-app/.agents/skills/fast-precommit/SKILL.md`; do not rewrite that skill. Apply the research-entry and naming rule to the selected trial's `AGENTS.md` only after its exact diff is agreed.
 
-**Change:** extend the existing `vocabulary` MCP operation and `authoringContract`. Reuse `shared/code-production/vocabulary.md` and project dictionaries. Add `planctl/src/core/vocabulary.ts` and `planctl/src/core/jev.ts` for evidence lookup and the Jev API call.
+- Research one coherent behavior or decision at a time. Keep the complete Target current and link readable diagrams through mdurl. No mandatory introductory justification or automatic plan for ordinary dialogue.
+- Before approval, inspect actual producers, consumers, protocol names, compatibility policy, relevant baseline test failures and required permissions. Every requirement maps to work and evidence. The owner receives a short decision summary with access to the full contracts.
+- Record the owner's exact agreement and its scope. Agreement with one point does not approve the whole document. A technical retry with unchanged approved content does not require a new design decision. Never interpret a permission refusal as proof that the owner did not agree.
+- Ask a self-contained question only for a material change: feature context, quoted conflict, concrete options, consequences and recommendation. Internal task IDs cannot be the explanation.
+- Final requested review follows the complete local gate. Fix findings and rerun affected checks before implementation push. Remote CI is never an entry condition for local review.
 
-- A dictionary entry records the canonical term, meaning and definition location. Ordinary local variable names need no entry.
-- Preserve the current synonym entries while extending their reader. Migrate a project dictionary only as a visible, scoped change; do not rename existing concepts during installation.
-- A candidate request contains the proposed name, responsibility and goal it serves. It works before a plan exists.
-- Return matching definitions, relevant code, inspected revisions and search coverage. Compare inputs, outputs, effects and callers before choosing reuse or extension.
-- Ask Jev explicit binary questions about duplicate responsibility and contradiction with a cited definition. Return each probability with its evidence; there is no universal plan-quality number.
-- Cache exact questions and evidence, batch independent questions, and invalidate changed inputs. Configure the call budget and verify the current API contract before enabling live calls.
-- Keep semantic results advisory initially. Missing API access or uncertainty does not reject otherwise valid work. Deterministic contract errors remain errors.
-- Include proposed dictionary changes and new contracts in SPEC approval. A different spelling cannot authorize a duplicate responsibility.
+MODIFY `shared/code-production/agent-stack.ts`, `shared/code-production/agent-stack.test.ts`, `planctl/test/setup-code-production.test.ts` and `lib/setup-code-production.sh` to select a runtime-only installation. Stage a complete version, validate it, then activate it; an interruption retains a coherent version. Do not copy skills during a runtime repair. Verify actual capability/protocol compatibility rather than demanding an update merely because commit IDs differ.
 
-**Proof:** an existing concept is found under a proposed synonym; a justified new concept remains distinguishable; repeated unchanged checks make no new API call. Test good examples and defective variants separately, report false refusals, missed defects, latency and actual cost.
+MODIFY `planctl/src/cli/main.ts` and `planctl/test/package-boundary.test.ts` only for the already reproduced installed-runtime dependency issue. A clean consumer must run hook commands with Bun auto-install disabled. Required write locations and MCP registration are checked before execution; no mid-task temporary scripts or manual journal copies.
 
-### 5. Continue the owned execution through verification and review
+**Step 3 → Verify:** a documentation discussion creates no plan; a feature discussion retains decisions across restart and produces two explicit approvals; the exact installed MCP plus hooks completes a fixture with zero routine questions. Interrupt runtime installation, recover, and compare skills/plan/journals byte-for-byte. Verify the real host separately: unit tests cannot prove its sandbox or automatic approval behavior. Initial trial stays in the existing isolated checkout; other agents keep their current setup.
 
-**Change:** extend `MachineStore` in `planctl/src/machine/state/machine-store.ts` and register `planctl/src/machine/execution.service.ts` in the existing machine module. Extend MCP with `execute_plan`; reuse the current session identities, task records and event log.
+### 4. Control publication and CI without disabling useful checks
 
-- Starting execution binds the approved revision, worktree, provider session and process identity. Repeating the request resumes that execution instead of creating another worker.
-- Persist the next action and observed completion before starting another action. On restart, reconcile actual task, process and Git state before retrying.
-- After an idle turn, continue the same owned session when eligible work exists. Never adopt, resume or terminate an unrelated process.
-- After the last task, continue through complete local verification, final review, fixes and verification of affected changes. Task completion is not the end of execution.
-- Reuse a passing check only when its command and complete input fingerprint match. Record unavailable evidence honestly.
-- Respect owner pause and cancellation. Bound recovery attempts without verified progress; record the actual blocker and continue independent work. An open-checkbox count is not a reason to restart forever.
+Extend the existing MCP with `publish_delivery`, backed by the existing planctl server authentication and persistence. CREATE `planctl/src/server/publication.service.ts`, `planctl/src/server/publication.controller.ts` and `planctl/test/server-publication.test.ts`: one effect owner, one authenticated HTTP boundary and its fault tests. MODIFY `planctl/src/server/persistence/server-store.ts`, `planctl/src/server/app.module.ts`, `planctl/src/server/main.ts`, `planctl/src/config/config.ts`, `planctl/src/mcp/server.ts`, `planctl/src/machine/transport/server-client.ts` and `planctl/deploy/planctl-server.service`. Reuse existing machine authentication at `POST /v1/machines/:machineId/publications`; restrict it to that machine's configured repositories. Publication must not require Telegram configuration. No second server application or general command runner.
 
-**Proof:** stop a worker between tasks and after its last implementation task; resume without repeating completed changes. Restart the machine service. Verify owner pause, duplicate requests, an unrelated live session and a persistent tool failure. A routine local retry produces no owner question.
+Proposed public inputs and results, declared here before implementation. These two names describe the one new operation; they are not a new domain hierarchy:
 
-### 6. Put review before publication and enforce the publication budget
+```typescript
+interface PublishDeliveryInput {
+  readonly plan: string;
+  readonly delivery: string;
+  readonly specRevision: string;
+  readonly implementationRevision: string;
+  readonly purpose: "plan" | "implementation";
+  readonly commit: string;
+  readonly expectedRemoteHead: string | null;
+}
+type PublishDeliveryResult =
+  | { readonly status: "published"; readonly commit: string; readonly prUrl: string }
+  | { readonly status: "pending"; readonly operationId: string; readonly nextCheck: string }
+  | { readonly status: "refused"; readonly reason: string; readonly evidence: readonly string[] };
+```
 
-**Change:** MCP `publish_delivery`, `shared/code-production/templates/hooks/pre-push`, the managed workflow template, the existing server authentication/persistence path and `planctl/src/server/publication.service.ts`.
+The server resolves repository/base/branch from the registered Delivery and checks both locks. It imports the exact Git object into its own bare repository from a configured read-only local checkout using filesystem read permission; the worker never receives the publisher's token. Remote-machine upload is outside this initial same-host deployment. The publisher invokes Git only on its own configured repository and fixed destinations, never an arbitrary worker-provided command. Pin the commit before validation; later worker edits cannot change that object. Verification and review evidence identify their complete input trees and commands; unchanged inputs may reuse a passing result, otherwise they are stale. Evidence remains cooperative-agent evidence, not attestation against a malicious agent.
 
-- The approved autonomous agreement authorizes two publication purposes per Delivery: the approved planning artifacts and the verified implementation.
-- Store approvals and publication records outside the worker-writable checkout. Run the worker without GitHub write credentials. The publisher has the restricted credential and accepts only a recorded plan, destination, revision and permitted transition.
-- Bind publication authority to the owner's actual confirmation and the reviewed plan revision through the trusted host. An `ownerWord` string supplied by a worker is not sufficient to create that authority. Reuse the existing plan-approval interaction rather than requesting approval for each publication.
-- Keep the pre-push hook for immediate feedback. Verify the credential boundary by attempting direct `git push` and `gh` writes from the worker.
-- For the planning publication, push the approved artifacts and create a draft PR. For implementation publication, require complete local checks and resolved review findings, push the final result while the PR is draft, then mark it Ready.
-- Gate paid jobs before allocating a runner. Check every applicable workflow, including push-triggered workflows; an `if` on the last test step is insufficient.
-- Persist a pending action before each remote write. After a timeout, inspect remote state before retrying. Never repeat a push or Ready transition just because its response was lost.
-- Observe CI through the Actions API for the exact published commit. A failure does not authorize another push or paid rerun.
+The operation identifies the registered repository, branch, base, plan, agreed revision, purpose (`plan` or `implementation`), exact commit and expected remote head. Its durable record stores a stable operation key, request identity, pending remote effect and observed result. Same key/different request is refused; lost responses are reconciled from remote state before retry. A transaction claims each publication purpose once. Amendments/restarts do not reset the budget.
 
-**Proof:** the draft publication allocates no paid runner; intermediate publication and direct worker writes are refused; implementation publication requires local review evidence; duplicate calls and lost responses produce one remote transition and one CI run.
+- Plan publication: the approved planning artifacts, Draft PR, zero paid product CI jobs.
+- Implementation publication: clean candidate, complete required local evidence and resolved final review, exact candidate commit. Push while Draft, then mark Ready once. No merge operation is exposed.
+- Two repositories: upload all required candidate histories while Draft before making a dependent PR Ready. Retain successful uploads when another fails; never force-push a competing change.
+- Observe the final Actions result on the published commit. A failed run does not authorize another push or rerun. An additional attempt needs a specific allowance, not a reset of the original budget.
 
-This rollout is prepared locally. Before its first remote publication, inspect the existing workflow policy. If that policy would run paid jobs for a draft, its bootstrap change needs an explicit owner-approved publication; the new workflow cannot be assumed active before it is merged. Do not spend CI while developing this repair.
+A pre-push hook supplies early feedback; it is not a credential boundary. The publisher must run under a distinct OS identity holding the GitHub App credential, outside worker-readable files/environment. Agents receive no direct GitHub write token. The App may write feature branches and PRs but cannot bypass main/staging rules. Owner-only merge requires that distinct identity; the existing shared owner PAT cannot enforce it. Prepare exact deployment and repository-rule changes for the owner to apply where administrator permission is required.
 
-### 7. Install the agreed instructions and prove the complete flow
+MODIFY `shared/code-production/templates/hooks/pre-push`, `shared/code-production/templates/github/code-production.yml`, `magnis-app/.github/workflows/ci.yml`, `magnis/.github/workflows/ci.yml` and `0_agents/.github/workflows/planctl.yml`. MODIFY the existing stack, MCP, config and server-main tests; add event cases to `magnis-app/scripts/tests/ci-lane-contract.test.ts`. Preserve required check names. Every paid PR job, including classifiers/aggregators, is guarded before runner allocation. Add the Ready event where missing. Preserve post-merge release jobs and report their separate cost; one PR CI run does not mean all future release CI is free. Do not disable a repository's entire CI to resolve a planning failure.
 
-**Change:** only the instruction sources listed below, their existing installation paths, and end-to-end regression coverage. Install the reviewed versions after the runtime and workflow prerequisites pass.
+**Step 4 → Verify:** use a fake GitHub endpoint and temporary bare repositories: 10 concurrent duplicate requests, lost push response, stale candidate, changed remote head, missing review, failure of the second upload and restart between push/Ready. Count actual remote effects, not tool invocations. No protected-ref write, merge, duplicate publication or unbudgeted CI retry succeeds. Verify workflow event predicates locally. A live bootstrap that could spend CI needs the owner's specific permission; do not claim the policy active before it is installed on the remote default/base branch.
 
-- Apply the listed instruction changes to the last owner-approved content. Exclude earlier unapproved instruction rewrites and unrelated local changes from the release; a runtime update cannot approve them.
-- Run the source MCP against installed hooks in both application and catalog fixtures. Test in a fresh checkout without old absolute worktree mappings.
-- Verify completed cross-repository results against their recorded merged history after temporary worktrees and feature refs are removed.
-- Exercise research, both approvals, draft publication, autonomous execution, local verification, review, final publication and observation of CI as one flow.
-- Run the same exercise for an interactive documentation edit: no automatic plan, no publication, no request to copy or clear journals.
-- Read real tool output and necessary owner questions. A function-level green result does not prove that the user-facing flow is understandable.
+## Dictionary and Jev: retained, outside the recovery dependency chain
 
-**Proof:** no routine owner questions after execution approval; no hidden change of scope; zero intermediate publications; no paid draft CI; one final CI run. Measure elapsed time, owner-wait time, repeated checks and publication count from recorded events.
+Use current `vocabulary` and existing canonical definitions during research now. New domain names and changed public contracts belong in the SPEC; local variable names do not need approval. Compare sufficient extension, unnecessary rewrite and incomplete small patch against the whole requirement. A smaller diff cannot compensate for missing behavior.
 
-## Exact instruction changes proposed for approval
+After the core path is stable, extend `vocabulary` with a candidate name, responsibility, Goal and cited definitions. Reuse that evidence builder for optional `submit_spec` feedback. Jev answers a bounded question about duplication, requirement coverage or contradiction; it cannot approve work or mark a check passed. Missing API/budget gives unavailable advice and leaves deterministic checks running.
 
-These are targeted replacements, not a rewrite of Blueprint or project architecture documentation.
+Keep exact-input/revision/model caching, request/cost bounds and source-separated calibration examples from the previous proposal. Compare against lookup without Jev; report false warnings, missed defects, coverage, latency and actual cost before enabling advice. Do not make a new score, semantic gate or calibration project a prerequisite for working on product code.
 
-**Shared entry rule, `claude/CLAUDE.md` and its `codex/AGENTS.md` link, plus the explicitly selected project instruction copies:**
+## Proof obligations and completion
 
-> Follow the owner's requested way of working. Discussion, research, documentation and iterative edits do not require a plan. Use Blueprint and planctl when the owner requests planned autonomous implementation. Keep the naming, verification, scope and publication rules in both cases.
+Let `J` mean the journal exists, `B` that it belongs to this plan/root/base HEAD, `H` that staged bytes match its candidate, `C` that its hash chain is continuous, and `L` that approved-section locks match. For protocol commits:
 
-**Blueprint, `shared/skills/blueprint/SKILL.md`:**
+`protocol_freeze_allowed = J ∧ B ∧ H ∧ C ∧ L`, with the existing verified merge-inheritance exception. Language and project checks still apply before the whole commit can succeed.
 
-> Research the affected flows, canonical contracts and reusable implementations before submitting the SPEC. Write the observable goal, then explain system behavior and flows, changed interfaces, owning files and verification. Resolve substantive design choices before asking for approval. Check the complete work plan before its approval.
+The repair exhaustively checks the 16 combinations of the first four conditions with valid locks, plus the existing lock/legacy/merge tests. A rejection has the invariant `HEAD_after = HEAD_before` and retains approval bytes. This proves the checked finite cases and makes the implementation contract explicit; SHA hashes do not establish a human's intent.
 
-**Execution, `shared/skills/blueprint-start/SKILL.md` and the shared development-process rule:**
+For the remaining flow require:
 
-> Complete the approved behavior autonomously, including mechanical callers, scoped tests and ordinary repairs. Record actual paths and results. Ask only when a discovery changes the agreed behavior, public contract, responsibility or ownership. A rejected tool operation is diagnosed before it becomes an owner question.
+- `start(task) ⇒ approved_scope ∧ verified_local_prerequisites ∧ correct_repository`.
+- `eligible_work ≠ empty ⇒ no whole-plan owner wait` while the owned session runs.
+- `publish_implementation ⇒ complete_local_evidence ∧ resolved_review ∧ exact_candidate`.
+- `publication_count(delivery) ≤ 2`, `paid_premerge_CI_attempts(delivery) ≤ 1` without an additional allowance.
+- No worker credential can write protected refs or merge. A tool instruction alone does not prove this.
 
-**Both `review-implementation` skill copies:**
+Test each implication through the actual boundary and retain counterexamples from the old behavior. Conditional liveness needs a running/fair executor, terminating checks and answers to genuinely new product questions. Neither model helpfulness nor universal first-run CI success is mathematically provable here.
 
-> Start the final implementation review after complete applicable local verification on the reviewed revision. The approved autonomous work plan includes this review. Resolve findings and verify affected changes before implementation publication. Remote CI follows publication and is not an entry condition for review.
+The process is restored only when an isolated two-repository fixture completes through MCP, installed hooks, local checks, requested review and simulated publication, with no routine owner questions; an interactive edit stays interactive; faults preserve state; and the real host permission probe passes. Report simulation and live evidence separately. Roll back only selected files if a regression appears. No global rollout, skill rewrite, paid CI or owner merge is implied by this review proposal.
 
-**Vocabulary rule, linked from shared and project instructions:**
+## Verification commands and review record
 
-> Before introducing a domain or architectural name, check the dictionary and relevant code through planctl. Reuse or extend an existing mechanism when it meets the requirement. Declare a justified new concept and its canonical definition for approval. Semantic scores provide evidence, not permission.
+Run scoped `bun run agent:test:backend -- <the listed test files>` from `0_agents/planctl`, then `bun run typecheck` and `bun run lint`. The incident specifically runs `bun run agent:test:backend -- test/mcp.test.ts -t tst_unit_planctl_mcp_011`; legacy protection runs `test/plan-gate.test.ts` and installed hooks run `../shared/code-production/agent-stack.test.ts`. Consumer commits run their existing hooks. Run the complete `bun run agent:verify:pr` once at publication, then requested implementation review, corrections and affected verification. No paid CI is part of local repair development.
 
-**Necessary questions, one shared `/ask-user` skill:**
+Self-review round 1 found three real omissions: the equation described the whole commit instead of the protocol check; approvals lacked an explicit stale-revision guard; the publication proposal lacked its transport, exact contract and commit-transfer boundary. These are corrected above. The previous longer design is retained in the incident backup, including Jev evaluation detail. This repair proposal does not silently discard that research or install its unimplemented features.
 
-> State the feature, the discovered fact, the decision, viable options and their consequences, and a recommendation. Quote and link a relevant source. The question must make sense without reading previous messages. Internal stage identifiers, unexplained symbols and raw tool output do not explain a decision.
+Round 2 found that the new approval revision guard lacked an explicit race/retry acceptance scenario; the scenario is now in Step 2. Review distinguishes the completed incident patch, the proposed runtime/instruction repairs and the later credential/CI deployment. Local simulation cannot certify host permission behavior or remote policy.
 
-## Completion boundary
-
-The process is delivered when the source changes, compatible installed runtime, instruction copies, worker permissions and workflow behavior pass the complete exercise. A source commit or an updated document alone is not delivery.
-
-The section removal and journal repairs are local completed changes. The remaining mechanisms above are the implementation proposal. No approval, rollout, push or successful CI run is implied by this document.
+APPROVED — Codex self-review passed in round 3. This verdict reviews the repair proposal; it is neither owner approval of changes nor a claim that the remaining mechanisms are implemented.

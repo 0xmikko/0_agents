@@ -4,6 +4,9 @@ import { lint, protocolLanguageViolations } from "./plan-gate";
 import type { GateViolation } from "./plan-gate";
 import { mutatePlanFile, planState, protocolSpecHash, replaceDraftSpec, replaceDraftTitle } from "./plan-update";
 import type { PlanState } from "./plan-update";
+import { checkContent } from "./content-check";
+import { withVocabularyProposal } from "./vocabulary";
+import type { VocabularyChange } from "./vocabulary";
 
 export interface SubmitSpecInput {
   readonly plan: string;
@@ -12,6 +15,7 @@ export interface SubmitSpecInput {
   readonly spec: string;
   /** A new title for the draft; absent keeps the one init wrote. */
   readonly title?: string;
+  readonly vocabularyChanges?: { readonly baseRevision: string; readonly entries: readonly VocabularyChange[] };
 }
 
 /** What a submission returns; the server adds the published url and the reply. */
@@ -21,6 +25,17 @@ export interface SubmitSpecResult {
   readonly corrections: readonly { readonly line: number; readonly before: string; readonly after: string }[];
   readonly findings: readonly GateViolation[];
   readonly checkStatus: "checked" | "no_change";
+  readonly semanticChecks: readonly {
+    readonly question: string;
+    readonly probability: number | null;
+    readonly evidence: readonly { readonly path: string; readonly quote: string }[];
+    readonly uncertainty: string | null;
+  }[];
+  readonly diagramChecks: readonly {
+    readonly line: number;
+    readonly status: "rendered" | "failed" | "unavailable";
+    readonly artifact: string | null;
+  }[];
 }
 
 const SPEC_START = "<!-- plan:spec:start -->";
@@ -34,8 +49,7 @@ function currentSpec(body: string): string {
 }
 
 /** Replace the whole SPEC of a draft through the writer, preserving authored words
- * and reporting errors separately from editorial advice. No model reads the
- * plan. Unchanged text changes nothing; a stale revision or a locked plan
+ * and reporting factual errors separately from bounded semantic advice. Unchanged text changes nothing; a stale revision or a locked plan
  * refuses.
  * @tested-by: tst_unit_planctl_spec_submission_001, tst_unit_planctl_spec_submission_002
  */
@@ -46,12 +60,14 @@ export async function submitSpec(root: string, input: SubmitSpecInput): Promise<
   if (state !== "SPEC_DRAFT") throw new Error(`the SPEC is ${state === "SPEC_LOCKED" ? "locked" : "approved"}; correct it with amend under the owner's word`);
   const current = protocolSpecHash(body);
   if (input.baseRevision !== current) throw new Error(`stale revision ${input.baseRevision}; the plan is at ${current}`);
-  const spec = input.spec.replace(/\r\n?/g, "\n").trim();
+  const normalized = input.spec.replace(/\r\n?/g, "\n").trim();
+  const spec = input.vocabularyChanges === undefined ? normalized : withVocabularyProposal(normalized, input.vocabularyChanges);
   const before = currentSpec(body);
   const sameTitle = input.title === undefined || body.startsWith(`# ${input.title}\n`);
   if (spec === before && sameTitle) {
     const report = await lint(body, root);
-    return { revision: current, state, corrections: [], findings: report.violations, checkStatus: "no_change" };
+    const checks = await checkContent({ root, goal: input.ownerRequest, kind: "flow", content: spec, source: plan });
+    return { revision: current, state, corrections: [], ...checks, findings: [...report.violations, ...checks.findings], checkStatus: "no_change" };
   }
   const candidate = (draft: string): { body: string } => {
     const withSpec = replaceDraftSpec(draft, spec).body;
@@ -60,14 +76,19 @@ export async function submitSpec(root: string, input: SubmitSpecInput): Promise<
   // Another language is refused before anything is written: nothing to save, nothing to publish.
   const language = protocolLanguageViolations(candidate(body).body);
   if (language.length > 0) throw new Error(language.join("\n"));
-  mutatePlanFile(root, plan, "set-spec", candidate);
+  mutatePlanFile(root, plan, "set-spec", draft => {
+    if (protocolSpecHash(draft) !== input.baseRevision) throw new Error("stale SPEC revision; read the current draft before saving");
+    return candidate(draft);
+  });
   const saved = readFileSync(resolve(root, plan), "utf8");
   const report = await lint(saved, root);
+  const checks = await checkContent({ root, goal: input.ownerRequest, kind: "flow", content: spec, source: plan });
   return {
     revision: protocolSpecHash(saved),
     state: planState(saved),
     corrections: [],
-    findings: report.violations,
+    ...checks,
+    findings: [...report.violations, ...checks.findings],
     checkStatus: "checked",
   };
 }

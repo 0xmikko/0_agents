@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve, relative } from "node:path";
 import type { OwnerWaitReceipt, TaskRun, TaskRunIdentity } from "./task-run";
 import type { ProgressView } from "./plan-progress";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -211,6 +211,7 @@ export interface MutationResult {
   readonly body: string;
   readonly specHash?: string;
   readonly implementationHash?: string;
+  readonly vocabularyFile?: { readonly path: "docs/vocabulary.md"; readonly before: string | null; readonly after: string };
 }
 
 export interface StageCloseResult extends MutationResult {
@@ -288,6 +289,8 @@ interface MutationJournal {
   readonly initialHash: string;
   readonly candidateHash: string;
   readonly events: readonly JournalEvent[];
+  readonly vocabularyFile?: MutationResult["vocabularyFile"];
+  readonly pending?: { readonly before: string; readonly after: string };
 }
 
 const SPEC_START = "<!-- plan:spec:start -->";
@@ -1545,6 +1548,20 @@ function parseJournal(value: unknown): MutationJournal {
     }
     return { operation: event.operation, beforeHash: event.beforeHash, afterHash: event.afterHash };
   });
+  let vocabularyFile: MutationResult["vocabularyFile"];
+  if (record.vocabularyFile !== undefined) {
+    const file = object(record.vocabularyFile, "journal vocabulary file");
+    if (file.path !== "docs/vocabulary.md" || (file.before !== null && typeof file.before !== "string") || typeof file.after !== "string") {
+      throw new Error("invalid journal vocabulary file");
+    }
+    vocabularyFile = { path: "docs/vocabulary.md", before: file.before, after: file.after };
+  }
+  let pending: MutationJournal["pending"];
+  if (record.pending !== undefined) {
+    const p = object(record.pending, "pending journal");
+    if (typeof p.before !== "string" || typeof p.after !== "string" || digest(p.after) !== record.candidateHash) throw new Error("invalid pending journal");
+    pending = { before: p.before, after: p.after };
+  }
   return {
     version: 1,
     root: record.root,
@@ -1553,6 +1570,8 @@ function parseJournal(value: unknown): MutationJournal {
     initialHash: record.initialHash,
     candidateHash: record.candidateHash,
     events,
+    ...(vocabularyFile === undefined ? {} : { vocabularyFile }),
+    ...(pending === undefined ? {} : { pending }),
   };
 }
 
@@ -1624,6 +1643,12 @@ export async function completeTask(
     const names = undeclared.map((type) => `${type.name} in ${type.path}`).join(", ");
     throw new Error(`exported type ${names} is missing from SPEC Interfaces; declare it there under the owner's word`);
   }
+  const { checkContractChanges } = await import("./contract-check");
+  const changedContracts = await checkContractChanges(checkout, input.commit, body);
+  // Legacy plans may cite unchanged contracts without spelling their whole shape.
+  // The existing inventory checks new names; enforce positively established shape conflicts.
+  const conflicts = changedContracts.filter(f => !f.text.includes("has no approved contract") && !f.text.includes("needs canonical source verification"));
+  if (conflicts.length) throw new Error(conflicts.map(f => `${f.text}\nEvidence: ${f.quote}`).join("\n"));
   const receipt: StageResultReceipt = {
     version: 1,
     plan,
@@ -1776,11 +1801,20 @@ function observed(publication: StartTaskInput["publication"], root: string, bran
 /** Why a Delivery cannot start yet: a parent without a green PR on its current head. Null when every parent is green or merged.
  * @tested-by: tst_unit_planctl_mcp_009
  */
-function parentRefusal(root: string, deliveries: readonly DeliveryMeta[], delivery: DeliveryMeta, publication: StartTaskInput["publication"]): string | null {
+function parentRefusal(root: string, deliveries: readonly DeliveryMeta[], delivery: DeliveryMeta, publication: StartTaskInput["publication"], body: string): string | null {
   for (const parentId of delivery.depends) {
     const parent = deliveries.find((entry) => entry.id === parentId);
     if (parent === undefined) return `Delivery ${delivery.id} depends on unknown Delivery ${parentId}`;
     const checkout = deliveryRoot(root, parent);
+    const localStages = stageInputs(body).filter(s => s.deliveryId === parent.id);
+    const locallyComplete = localStages.length > 0 && localStages.every(s => {
+      const text = region(body, stageStart(s.id), stageEnd(s.id)).text;
+      if (/^- \[ \] /m.test(text)) return false;
+      const commits = [...text.matchAll(/^- \[x\].* — ([a-f0-9]{7,40})\s*$/gm)].map(m => m[1]!);
+      return commits.length > 0 && commits.every(commit =>
+        spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", commit, "HEAD"], { env: repositoryEnvironment() }).status === 0);
+    });
+    if (locallyComplete) continue;
     const state = observed(publication, checkout, parent.branch);
     if (state === null) return `Delivery ${parent.id} has no PR yet`;
     if ("error" in state) return `Delivery ${parent.id}: ${state.error}`;
@@ -1825,7 +1859,7 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
         const deliveries = deliveryMetas(body);
         const child = deliveries.find((delivery) => !delivery.active
           && stageInputs(body).some((stage) => stage.deliveryId === delivery.id && stage.tasks.some((task) => !task.completed))
-          && parentRefusal(root, deliveries, delivery, input.publication) === null);
+          && parentRefusal(root, deliveries, delivery, input.publication, body) === null);
         const firstOpen = child === undefined ? undefined : stageInputs(body).filter((stage) => stage.deliveryId === child.id).flatMap((stage) => stage.tasks).find((task) => !task.completed);
         if (firstOpen === undefined) throw new Error(`nothing to start: ${next.blockedBy ?? "every Task of the active Delivery is complete and no child Delivery is eligible"}`);
         taskId = firstOpen.id;
@@ -1849,7 +1883,7 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
     if (onBranch !== delivery.branch) throw new Error(`checkout ${checkout} is on ${onBranch}; Delivery ${delivery.id} is ${delivery.branch}`);
   }
   if (!delivery.active) {
-    const refusal = parentRefusal(root, deliveries, delivery, input.publication);
+    const refusal = parentRefusal(root, deliveries, delivery, input.publication, body);
     if (refusal !== null) throw new Error(`Task ${taskId} cannot start: ${refusal}`);
     mutatePlanFile(root, plan, "activate-delivery", (current) => ({ body: replaceHeader(current, "Active Delivery", delivery.id) }));
     body = readFileSync(resolve(root, plan), "utf8");
@@ -1982,10 +2016,88 @@ export function journalCreatedPlan(root: string, planArg: string, body: string):
   writeFileSync(planJournalPath(root, plan), `${JSON.stringify(journal, null, 2)}\n`);
 }
 
+function writeAtomicFile(path: string, text: string): void {
+  const temp = `${path}.${process.pid}.tmp`;
+  const mode = existsSync(path) ? statSync(path).mode & 0o777 : 0o600;
+  writeFileSync(temp, text, { mode });
+  renameSync(temp, path);
+}
+
+function writeJournal(path: string, journal: MutationJournal): void {
+  writeAtomicFile(path, `${JSON.stringify(journal, null, 2)}\n`);
+}
+
+/** Worktree-wide serialization covers competing plans changing the same vocabulary. */
+function withPlanWriter<T>(root: string, operation: () => T): T {
+  const lock = resolve(root, git(root, ["rev-parse", "--git-path", "planctl-writer.lock"]));
+  const prepared = `${lock}.${process.pid}.${randomUUID()}`;
+  writeFileSync(prepared, String(process.pid), { mode: 0o600, flag: "wx" });
+  try {
+    try { linkSync(prepared, lock); }
+    catch (error: unknown) {
+      if (!(typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST")) throw error;
+      const pid = Number(readFileSync(lock, "utf8"));
+      if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error("Cannot establish the plan writer's owner; inspect its lock.");
+      try { process.kill(pid, 0); }
+      catch (probe: unknown) {
+        if (typeof probe === "object" && probe !== null && "code" in probe && probe.code === "ESRCH") {
+          unlinkSync(lock);
+          return withPlanWriter(root, operation);
+        }
+      }
+      throw new Error("Another planctl write is active; retry this operation.");
+    }
+    try { return operation(); }
+    finally { unlinkSync(lock); }
+  } finally { unlinkSync(prepared); }
+
+}
+
+function repositoryFile(root: string, path: string): string {
+  const absolute = resolve(root, path);
+  if (!absolute.startsWith(`${root}/`)) throw new Error("Plan transaction path must stay inside its repository");
+  let existing = absolute;
+  while (!existsSync(existing) && dirname(existing) !== existing) existing = dirname(existing);
+  if (relative(realpathSync(root), realpathSync(existing)).startsWith("..")) throw new Error("Plan transaction symlink leaves its repository");
+  return absolute;
+}
+
+function recoverPending(root: string, plan: string): void {
+  const path = planJournalPath(root, plan);
+  const journal = readJournal(path);
+  if (journal?.pending === undefined) return;
+  if (journal.root !== root || journal.plan !== plan || journal.baseHead !== git(root, ["rev-parse", "HEAD"])) throw new Error("Interrupted mutation belongs to a different checkout or HEAD");
+  const absolute = repositoryFile(root, plan);
+  const current = readFileSync(absolute, "utf8");
+  if (current !== journal.pending.before && current !== journal.pending.after) throw new Error("Interrupted plan mutation conflicts with a later edit");
+  const file = journal.vocabularyFile;
+  if (file !== undefined) {
+    const target = repositoryFile(root, file.path);
+    const before = existsSync(target) ? readFileSync(target, "utf8") : null;
+    if (before !== file.before && before !== file.after) throw new Error("Interrupted vocabulary mutation conflicts with a later edit");
+    mkdirSync(dirname(target), { recursive: true });
+    writeAtomicFile(target, file.after);
+  }
+  writeAtomicFile(absolute, journal.pending.after);
+  git(root, ["add", plan, ...(file === undefined ? [] : [file.path])]);
+  const { pending: _pending, ...complete } = journal;
+  writeJournal(path, complete);
+}
+
+/** A subsequent MCP operation finishes a durable, already-authorized write after interruption. */
+export function recoverPlanMutation(root: string, plan: string): void {
+  withPlanWriter(root, () => recoverPending(root, plan));
+}
+
 export function mutatePlanFile(root: string, planArg: string, operation: string, transform: (body: string) => MutationResult): void {
-  const absolute = resolve(root, planArg);
-  const plan = absolute.slice(root.length + 1);
-  if (absolute === root || plan.startsWith("..")) throw new Error("plan must be inside the repository");
+  withPlanWriter(root, () => mutatePlanFileLocked(root, planArg, operation, transform));
+}
+
+function mutatePlanFileLocked(root: string, planArg: string, operation: string, transform: (body: string) => MutationResult): void {
+  const absolute = repositoryFile(root, planArg);
+  const plan = relative(root, absolute);
+  if (absolute === root || plan.startsWith("..") || resolve(root, plan) !== absolute) throw new Error("plan must be inside the repository");
+  recoverPending(root, plan);
   const path = planJournalPath(root, plan);
   const body = readFileSync(absolute, "utf8");
   const head = git(root, ["rev-parse", "HEAD"]);
@@ -1997,6 +2109,9 @@ export function mutatePlanFile(root: string, planArg: string, operation: string,
   if (existing !== null && existing.root === root && existing.plan === plan && existing.baseHead !== head) {
     const committedNow = spawnSync("git", ["-C", root, "show", `HEAD:${plan}`], { encoding: "utf8" });
     if (committedNow.status === 0 && digest(committedNow.stdout) === existing.candidateHash) {
+      if (existing.vocabularyFile !== undefined && gitRaw(root, ["show", `HEAD:${existing.vocabularyFile.path}`]) !== existing.vocabularyFile.after) {
+        throw new Error("Committed plan differs from its vocabulary transaction; inspect the commit before continuing.");
+      }
       unlinkSync(path);
       existing = null;
     }
@@ -2021,8 +2136,13 @@ export function mutatePlanFile(root: string, planArg: string, operation: string,
   const result = { ...transformed, body: hardBreakHeader(transformed.body) };
   const afterHash = digest(result.body);
   if (afterHash === currentHash) throw new Error(`${operation} produced no change`);
-  writeFileSync(absolute, result.body);
-  git(root, ["add", plan]);
+  const vocabularyFile = result.vocabularyFile ?? existing?.vocabularyFile;
+  if (result.vocabularyFile !== undefined) {
+    const file = result.vocabularyFile;
+    const target = repositoryFile(root, file.path);
+    const actual = existsSync(target) ? readFileSync(target, "utf8") : null;
+    if (actual !== file.before) throw new Error("Vocabulary changed during approval; read the current proposal.");
+  }
   const journal: MutationJournal = {
     version: 1,
     root,
@@ -2031,8 +2151,12 @@ export function mutatePlanFile(root: string, planArg: string, operation: string,
     initialHash,
     candidateHash: afterHash,
     events: [...events, { operation, beforeHash: currentHash, afterHash }],
+    ...(vocabularyFile === undefined ? {} : { vocabularyFile }),
+    pending: { before: body, after: result.body },
   };
-  writeFileSync(path, `${JSON.stringify(journal, null, 2)}\n`);
+  // Write intent first. Recovery accepts only the recorded before/after bytes.
+  writeJournal(path, journal);
+  recoverPending(root, plan);
 }
 
 /** Is a merge in progress in this worktree? */
@@ -2079,6 +2203,10 @@ export function verifyStagedPlan(root: string, planArg: string): void {
   }
   const staged = gitRaw(root, ["show", `:${plan}`]);
   if (digest(staged) !== journal.candidateHash) throw new Error("staged plan differs from journal candidate");
+  if (journal.pending !== undefined) throw new Error("Interrupted plan write needs MCP recovery before commit");
+  if (journal.vocabularyFile !== undefined && gitRaw(root, ["show", `:${journal.vocabularyFile.path}`]) !== journal.vocabularyFile.after) {
+    throw new Error("Staged vocabulary differs from the approved proposal");
+  }
   let expected = journal.initialHash;
   for (const event of journal.events) {
     if (event.beforeHash !== expected) throw new Error("mutation journal chain is broken");
@@ -2096,6 +2224,9 @@ export function clearSpentJournal(planArg: string, commit: string): void {
   if (journal.plan !== plan) throw new Error("mutation journal belongs to another plan");
   const committed = gitRaw(root, ["show", `${commit}:${plan}`]);
   if (digest(committed) !== journal.candidateHash) throw new Error("commit does not contain the journal candidate");
+  if (journal.vocabularyFile !== undefined && gitRaw(root, ["show", `${commit}:${journal.vocabularyFile.path}`]) !== journal.vocabularyFile.after) {
+    throw new Error("commit does not contain the journal vocabulary candidate");
+  }
   unlinkSync(path);
 }
 

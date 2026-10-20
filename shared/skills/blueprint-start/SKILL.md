@@ -16,7 +16,7 @@ from its checkpoint. The approved plan supplies scope and dependency order.
    in another repository, use its configured checkout and declared branch.
 2. Reproduce the missing behavior with the Task's RED command, make the
    smallest fix, then run that check GREEN and affected typechecks/tests.
-3. Inspect the diff and create one work commit per Stage. Keep hooks enabled.
+3. Inspect the diff and commit useful completed work locally. Keep hooks enabled.
    Call `complete_task` with its Tasks, commit and result, then `close_stage`.
    Plan results ride the next work commit; final results use a closure commit.
 4. Continue eligible work. Use `add_deviation` for a shortfall within scope.
@@ -51,12 +51,12 @@ inspect its actual scope before using it. Do not make it a routine prerequisite.
 After completing the work, run the project's complete local gate. When final
 review is requested, run review-implementation now, before implementation push
 and remote CI. Fix real findings and verify affected changes; fixes do not
-automatically start another review. Then publish the checked head within the
+automatically start another review. Then call `publish_delivery` for the checked head within the
 existing authorization and confirm CI for that head. A PR or green CI is never
 a prerequisite for review. Return the PR and plan URLs. The owner merges.
 
 Within existing publication authorization, push the feature branch, create or
-update its PR and follow CI to its result; do not hand these steps back to the
+update its PR through `publish_delivery` and follow CI to its result; do not hand these steps back to the
 owner or ask for the same permission again. Return the PR link when it exists.
 Use `progress` for CI; for details use Actions runs selected by repository and
 exact PR head, then `gh run view` or `gh run watch --exit-status`. Do not use

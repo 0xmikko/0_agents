@@ -620,7 +620,7 @@ async function mcp(args: readonly string[]): Promise<void> {
     cwd: process.cwd(),
     publication: (checkout: string, branch: string) => readPublication(checkout, branch, z),
     sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
-    eventLog: eventLogPath(homedir()),
+    eventLog: optionalFlag(args, "--event-log") ?? eventLogPath(homedir()),
     publisher: commandPublisher(optionalFlag(args, "--publisher") ?? "mdurl"),
   });
   const transport = new StdioServerTransport();
@@ -635,7 +635,7 @@ async function stats(args: readonly string[]): Promise<void> {
   const { eventLogPath, readEvents, renderStats, stats: tablesOf } = await import("../core/event-log");
   const since = optionalFlag(args, "--since") ?? "1970-01-01T00:00:00.000Z";
   if (!Number.isFinite(Date.parse(since))) throw new Error("--since must be an ISO date");
-  console.log(renderStats(tablesOf(readEvents(eventLogPath(homedir()), since))));
+  console.log(renderStats(tablesOf(readEvents(optionalFlag(args, "--event-log") ?? eventLogPath(homedir()), since))));
 }
 
 function questionOption(value: string): { readonly label: string; readonly consequence: string } {

@@ -1,9 +1,9 @@
 # Fast autonomous development with clear plans and a shared vocabulary
 
 Status: APPROVED  
-Spec lock: sha256:6d4f3a3bce8d1616ad87b9affea4fb6fd227c508ba5875893dfd866af6088bc9 owner:Я хочу это понимать с типами и так далее.  
+Spec lock: sha256:2fbc9b4ec257967deb9fcb2eace424cb19775a679c1563f225d91ee142589e61 owner:Я тебе даю полный карт-бланш.  
 Outline lock: unlocked  
-Implementation lock: sha256:bdcac556161adc0f6a5a4e685bfbe8f7cd7a89024786c78feaf28542d090a830 owner:Я тебе даю полный карт-бланш.  
+Implementation lock: sha256:48b0ac551a9aca332054a4575e73e141007af8a0e7a17e69bd2e7b82e138430a owner:Я тебе даю полный карт-бланш.  
 Active Delivery: D1  
 Unattended decisions: allowed  
 
@@ -33,7 +33,14 @@ flowchart TB
 
 #### Interfaces
 
-Extend the existing `AuthoringContract` with `entries: readonly VocabularyEntry[]` and `vocabularyRevision: string`. Preserve its existing section guidance and synonym pairs.
+Extend the existing `AuthoringContract`; preserve its existing section guidance and synonym pairs. These are its added members:
+
+```typescript
+export interface AuthoringContract {
+  readonly entries: readonly VocabularyEntry[];
+  readonly vocabularyRevision: string;
+}
+```
 
 ```typescript
 export interface VocabularyEntry {
@@ -77,6 +84,11 @@ export declare function checkContent(input: {
   readonly kind: "flow" | "code";
   readonly content: string;
   readonly source?: string;
+  readonly questions?: Readonly<Record<string, {
+    readonly type: "noul";
+    readonly instructions: string;
+    readonly criteria: { readonly true: string; readonly false: string };
+  }>>;
 }): Promise<Pick<SubmitSpecResult,
   "findings" | "semanticChecks" | "diagramChecks">>;
 ```
@@ -147,7 +159,17 @@ export interface SubmitSpecInput {
 
 `submit_spec` returns `SubmitSpecResult` from flow 2 plus the published URL. It saves proposals without applying dictionary changes. mdurl's reading view shows the SPEC; lock metadata and execution bookkeeping stay in the source record.
 
-Extend `approve_spec({ plan, ownerWord })` with required `expectedRevision: string`. Recheck the displayed version and dictionary revision, then journal the approval and dictionary update together. Serialize competing updates; a stale revision writes nothing. Interrupted writes recover before reporting success.
+Extend `approve_spec({ plan, ownerWord })` with required `expectedRevision: string`. Recheck the displayed version and dictionary revision, then journal the approval and dictionary update together. Serialize competing updates; a stale revision writes nothing. Interrupted writes recover before reporting success. Extend the existing `MutationResult` with an optional `vocabularyFile: { path: "docs/vocabulary.md"; before: string | null; after: string }`. The existing mutation journal records the plan and dictionary before/after bytes before writing either file. The next MCP operation recovers only those bytes; conflicting edits remain refused. Serialize writers in the worktree and verify that the staged dictionary matches the approved proposal.
+
+```typescript
+export interface MutationResult {
+  readonly vocabularyFile?: {
+    readonly path: "docs/vocabulary.md";
+    readonly before: string | null;
+    readonly after: string;
+  };
+}
+```
 
 The owner approves behavior, scope, compatibility, proposed names and typed boundary contracts: fields, signatures, variants, optionality and nullability. Unchanged contracts use canonical references. Private domain duplicates also require a proposal; `export` alone does not define a boundary.
 
@@ -228,6 +250,7 @@ export declare function publishDelivery(input: {
   readonly delivery: string;
   readonly expectedHead: string;
   readonly phase: "plan" | "implementation";
+  readonly reviewPath?: string;
 }): Promise<{
   readonly url: string;
   readonly head: string;
@@ -270,11 +293,11 @@ Forecast: 200 active min / 0 credits across 1 Stages; longest dependency path 20
 One Stage and one feature PR, with multiple local work commits. The owner delegated implementation decisions and completion in the current session. Publish after local verification and review; only the owner merges. Keep the rollout isolated from other sessions.
 
 <!-- plan:stage:D1-S1:start -->
-<!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["docs/","planctl/","shared/code-production/"],"tempRoot":".tmp/code-production/2026-10-02-planctl-vocabulary/D1-S1","predictedActiveMinutes":200,"predictedCredits":0,"verifyActiveMinutes":10,"verifyCredits":0} -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["docs/","planctl/","shared/code-production/","shared/skills/"],"tempRoot":".tmp/code-production/2026-10-02-planctl-vocabulary/D1-S1","predictedActiveMinutes":200,"predictedCredits":0,"verifyActiveMinutes":10,"verifyCredits":0} -->
 #### Stage D1-S1 — Evaluated vocabulary feedback and autonomous execution
 
 - Owner: Codex; Profile: strong; Depends: none; Parallel with: none.
-- Writes: `docs/`, `planctl/`, `shared/code-production/`.
+- Writes: `docs/`, `planctl/`, `shared/code-production/`, `shared/skills/`.
 - Temp root: `.tmp/code-production/2026-10-02-planctl-vocabulary/D1-S1` (must be absent at handoff).
 - Of which verification: 10 active min / 0 credits.
 
@@ -285,11 +308,11 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 - [ ] CORPUS — Build a traceable corpus and freeze independent evaluation by source document. (30 min)
 <!-- plan:task-meta:{"writes":["docs/","planctl/bench/","planctl/test/fixtures/"],"predictedActiveMinutes":30,"predictedCredits":0,"how":"Inventory available datasets, canonical flows and session feedback. Sanitize excerpts, record provenance and label confidence. Keep defective variants with their source in calibration or held-out evaluation. Report uncertainty, mistakes, latency and cost.","red":"bun run agent:test:backend -- test/content-check.test.ts"} -->
 - [ ] CHECK — Provide vocabulary, deterministic checks, focused Jev advice and diagram rendering through MCP. (60 min)
-<!-- plan:task-meta:{"writes":["planctl/src/","planctl/test/","planctl/package.json","planctl/bun.lock","shared/code-production/vocabulary.md"],"predictedActiveMinutes":60,"predictedCredits":0,"how":"Extend existing contracts and server with check_content. Preserve canonical names, entries without aliases and external wire names. Bound calls and cost, cache exact inputs, return unavailable advice on provider failure. Reuse checks in submission, amendment and exact-version approval; save incomplete drafts. Journal dictionary proposals with approval. Exercise actual MCP calls and failure recovery.","red":"bun run agent:test:backend -- test/content-check.test.ts"} -->
+<!-- plan:task-meta:{"writes":["planctl/src/","planctl/test/","planctl/package.json","planctl/bun.lock","shared/code-production/vocabulary.md","shared/skills/"],"predictedActiveMinutes":60,"predictedCredits":0,"how":"Extend existing contracts and server with check_content. Preserve canonical names, entries without aliases and external wire names. Bound calls and cost, cache exact inputs, return unavailable advice on provider failure. Reuse checks in submission, amendment and exact-version approval; save incomplete drafts. Journal dictionary proposals with approval. Exercise actual MCP calls and failure recovery.","red":"bun run agent:test:backend -- test/content-check.test.ts"} -->
 - [ ] EXECUTE — Validate actual contracts and coordinate controlled feature publication. (60 min)
 <!-- plan:task-meta:{"writes":["planctl/src/","planctl/test/","shared/code-production/templates/hooks/","docs/"],"predictedActiveMinutes":60,"predictedCredits":0,"how":"Use compiler declarations and canonical sources to compare actual changes with approved boundaries. Coordinate existing verification and review evidence with local dependencies and publication. Refuse protected destinations and repeated publication cost. Exercise interruption and retries with local remotes. Preserve fast selectors, hooks and other sessions.","red":"bun run agent:test:backend -- test/publication.test.ts"} -->
-- [ ] EVALUATE — Prove the working system on held-out examples and an isolated session, then publish the reviewed feature PR. (40 min)
-<!-- plan:task-meta:{"writes":["docs/","planctl/bench/","planctl/test/"],"predictedActiveMinutes":40,"predictedCredits":0,"how":"Evaluate frozen examples through the production checker and keep mistakes and uncertain answers. Exercise a real MCP author-check-correct-approve session. Document setup and limits. Run the full local gate once, review and fix affected behavior, publish the feature PR and observe CI. Never merge.","red":"bun run agent:test:backend -- test/mcp.test.ts"} -->
+- [ ] EVALUATE — Prove the working system on held-out examples and an isolated session, and prepare the publication evidence. (40 min)
+<!-- plan:task-meta:{"writes":["docs/","planctl/bench/","planctl/test/"],"predictedActiveMinutes":40,"predictedCredits":0,"how":"Evaluate frozen examples through the production checker and keep mistakes and uncertain answers. Exercise a real MCP author-check-correct-approve session. Document setup and limits. After all local Tasks, the Stage criterion runs the complete gate; review and publication follow that criterion. Never merge.","red":"bun run agent:test:backend -- test/mcp.test.ts"} -->
 
 ##### Acceptance criteria
 
@@ -328,4 +351,24 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 - amend spec owner:Я хочу это понимать с типами и так далее. sha256:6d4f3a3bce8d1616ad87b9affea4fb6fd227c508ba5875893dfd866af6088bc9
 
 - approve sha256:bdcac556161adc0f6a5a4e685bfbe8f7cd7a89024786c78feaf28542d090a830 owner:Я тебе даю полный карт-бланш.
+
+- amend spec owner:Я тебе даю полный карт-бланш. sha256:c46c59061aca11c24b58be7e782967a713cb43cc3d0b8a78ccc9d8bf4c358e52
+
+- amend spec owner:Я тебе даю полный карт-бланш. sha256:d582a7c86faf6807165a1afb6bf8b1362a7483930a9a5410d3d2794a44100f03
+
+- amend spec owner:Я тебе даю полный карт-бланш. sha256:85bb200a5eb1f3390f6eb2f7f1a13d53058f83df1638a4fa369f9dc6a6ef75cc
+
+- amend spec owner:Я тебе даю полный карт-бланш. sha256:14a05d15887d2e9bd3815ec027d9ee7f74f1ce1532fbd66c6fd0d0922e8284e0
+
+- amend implementation owner:Я тебе даю полный карт-бланш. sha256:d6b934ca9f3f23b8d2155154e0053d2b0e35f95ab563c351fba62436d2dce1a3
+
+- amend implementation owner:Я тебе даю полный карт-бланш. sha256:7e3f74ac79a16e7876349105d6d0a836f3324c6618b327ac38577cb31259000c
+
+- amend implementation owner:Я тебе даю полный карт-бланш. sha256:458f88c70be873fd9bcd3e0b0a87e287cead0eee371f574d510c3a7d187c31ec
+
+- amend implementation owner:Я тебе даю полный карт-бланш. sha256:22fa4ef4996d4517ce82498bd675d98ef2747d48d317b7e1ae9602896db1ce9e
+
+- amend implementation owner:Я тебе даю полный карт-бланш. sha256:48b0ac551a9aca332054a4575e73e141007af8a0e7a17e69bd2e7b82e138430a
+
+- amend spec owner:Я тебе даю полный карт-бланш. sha256:2fbc9b4ec257967deb9fcb2eace424cb19775a679c1563f225d91ee142589e61
 <!-- plan:execution:end -->

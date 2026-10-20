@@ -17,7 +17,9 @@ tool schemas for arguments. Project package.json agent:* scripts define checks.
 1. Call `progress` with the root. Continue its plan when one exists;
    otherwise call `init`. Create a feature worktree only when isolation is
    needed. Commit a draft when useful; it remains SPEC_DRAFT until approved.
-2. Trace the behavior through existing callers, types and tests. Discuss one
+2. Read `vocabulary` and use `check_content` for one flow with its adjacent
+   interfaces and example. Jev advice is bounded and does not establish approval.
+   Trace the behavior through existing callers, types and tests. Discuss one
    coherent flow at a time and retain the decisions and evidence.
    Write the SPEC in English: The Goal states the observable outcome; The target
    describes the finished system, not the migration from today's code.
@@ -29,15 +31,17 @@ tool schemas for arguments. Project package.json agent:* scripts define checks.
    and the owner's request. Preserve concrete findings and discussion.
    Fix blocking errors; assess advice against the task.
 4. Show the published SPEC and ask for its approval. After the owner's yes,
-   call `approve_spec` with their actual approval.
-5. Use `put_delivery` for each PR and `put_stage` for each useful commit.
+   call `approve_spec` with their actual approval and the displayed `expectedRevision`.
+   Agreement with one paragraph does not approve the whole SPEC.
+5. Use `put_delivery` and `put_stage` one-to-one: one Stage ends in one PR.
+   A Stage may contain several local work commits. Keep older approved plans intact.
    Tasks name concrete changes, their writes, How and a scoped RED command.
    Include the files that own changed contracts. Derive estimates from the work.
    A Delivery in another repository names that repository; its checkout is
    configured with `code-production.repository.<name>`. Keep one shared plan.
 6. Check that the implementation covers the Goal and acceptance cases.
    Show the complete contract and ask for approval. After the owner's yes,
-   call `approve_plan` and commit the plan.
+   call `approve_plan` with its displayed `expectedRevision` and commit the plan.
 
 These are the two planning approvals. Approval is never inferred from a request
 to investigate or revise a draft. Reviews run when the owner requests them.

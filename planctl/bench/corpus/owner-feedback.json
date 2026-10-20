@@ -1,0 +1,86 @@
+[
+  {
+    "category": "interactive-default",
+    "failure": "An ordinary discussion acquired a mandatory planning workflow.",
+    "requiredBehavior": "Use Blueprint only on explicit request; check_content works without a plan.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "goal-versus-solution",
+    "failure": "A document repeated aspirations without operation contracts.",
+    "requiredBehavior": "The Goal states the outcome. Each solution flow explains inputs, ownership, operations, results and adjacent interfaces.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "approval-scope",
+    "failure": "Approval of one paragraph was treated as approval of the entire plan.",
+    "requiredBehavior": "Record actual approval scope and exact displayed revision; do not infer blanket approval.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "routine-autonomy",
+    "failure": "Mechanical test, caller and bookkeeping repairs asked for another approval.",
+    "requiredBehavior": "Complete routine repairs inside approved behavior; ask only for a material contract or scope decision.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "review-before-ci",
+    "failure": "The review required a pushed PR with passing CI.",
+    "requiredBehavior": "Complete local gate, requested review, affected fixes, then implementation publication and CI.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "publication-cost",
+    "failure": "Intermediate work commits triggered repeated CI.",
+    "requiredBehavior": "Keep intermediate work local; reconcile repeated publication and avoid duplicate pushes.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "protected-merge",
+    "failure": "A feature was merged without the owner's separate instruction.",
+    "requiredBehavior": "Publishing and green CI do not authorize protected-branch merge.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "readable-context",
+    "failure": "Questions contained unexplained Stage IDs, line numbers and dumps.",
+    "requiredBehavior": "Show the user-facing behavior, the relevant quotation and a concrete consequence; keep technical IDs in structured records.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "semantic-advice",
+    "failure": "A semantic opinion became an execution barrier.",
+    "requiredBehavior": "Return evidence and uncertainty; advice does not create permission or a passed requirement.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "editorial-noise",
+    "failure": "Word counts and required table layouts generated work without improving the solution.",
+    "requiredBehavior": "Check factual contracts and readable behavior; no arbitrary literary form requirements.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "fast-loop",
+    "failure": "Every local commit reran a complete suite.",
+    "requiredBehavior": "Run affected checks during work and the complete local gate at publication; reuse unchanged evidence.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "isolated-rollout",
+    "failure": "Process changes affected unrelated active agents.",
+    "requiredBehavior": "Trial in a selected checkout and separate MCP session; do not reinstall all agents.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "real-reuse",
+    "failure": "Reducing type count removed a necessary input/output boundary.",
+    "requiredBehavior": "Reward sufficient reuse, not the smallest number of names or lines.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  },
+  {
+    "category": "historical-examples",
+    "failure": "Only recent or poorly organized examples were used as a quality reference.",
+    "requiredBehavior": "Inventory historical sources; separate Goal, flow and interface cases; keep variants of a source in one split.",
+    "labelAuthority": "agent-curated interpretation of owner feedback; raw messages remain private"
+  }
+]
