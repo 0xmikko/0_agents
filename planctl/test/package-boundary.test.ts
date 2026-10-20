@@ -49,7 +49,7 @@ function consumerPackage(): string {
  * Test environment: dedicated planctl Bun package and temporary consumer repository
  * Clients: CLI and direct stack installer
  * Mocks: package scripts are deterministic process exits
- * Data: canonical CLI/core source bytes and seven managed consumer targets
+ * Data: canonical CLI/core source bytes and managed consumer targets; Bun auto-install disabled
  */
 it("tst_unit_planctl_package_001 launches canonical planctl and preserves consumer targets", () => {
   const cli = join(REPOSITORY_ROOT, "planctl/src/cli/main.ts");
@@ -82,11 +82,11 @@ it("tst_unit_planctl_package_001 launches canonical planctl and preserves consum
     }
     const installedHelp = spawnSync(
       "bun",
-      [join(consumer, ".agents/code-production/runtime/planctl.ts"), "--help"],
+      ["--no-install", join(consumer, ".agents/code-production/runtime/planctl.ts"), "--help"],
       { cwd: consumer, encoding: "utf8" },
     );
-    expect(installedHelp.status).toBe(0);
-    const run = (...args: string[]) => spawnSync("bun", [join(consumer, ".agents/code-production/runtime/planctl.ts"), ...args], { cwd: consumer, encoding: "utf8", timeout: 15_000 });
+    expect(installedHelp.status, `${installedHelp.stdout}\n${installedHelp.stderr}`).toBe(0);
+    const run = (...args: string[]) => spawnSync("bun", ["--no-install", join(consumer, ".agents/code-production/runtime/planctl.ts"), ...args], { cwd: consumer, encoding: "utf8", timeout: 15_000 });
     const plan = "docs/plans/lint.md";
     expect(run("init", plan, "--title", "Lint").status).toBe(0);
     git(consumer, "commit", "-qm", "open the plan");

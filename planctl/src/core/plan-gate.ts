@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { execSync, spawnSync } from "node:child_process";
 import { basename, resolve } from "node:path";
 import type { Content, Root } from "mdast";
-import { stageInputs, stageResultCommitPaths, deliveryMetas, deliveryRoot, deliveryStart, deliveryEnd, repositoryEnvironment, MACHINABLE, protocolSpecHash, protocolImplementationHash, SPEC_SECTIONS } from "./plan-update";
+import { stageInputs, stageResultCommitPaths, deliveryMetas, deliveryRoot, deliveryStart, deliveryEnd, repositoryEnvironment, verifyStagedPlan, MACHINABLE, protocolSpecHash, protocolImplementationHash, SPEC_SECTIONS } from "./plan-update";
 export { MACHINABLE, protocolSpecHash, protocolImplementationHash } from "./plan-update";
 
 /** Which lint rule a finding comes from; gate findings (receipts, boxes) carry none. */
@@ -1021,6 +1021,22 @@ if (import.meta.main && ["plan-gate.ts", "plan-gate.js"].includes(basename(impor
       if (candidate === null) continue;   // deleted: the ledger answers for purges
       const renamedFrom = renames.get(path);
       const parent = read("HEAD", renamedFrom ?? path);
+      // @tested-by: tst_unit_planctl_mcp_011
+      // MCP records approvals before the first plan commit. Its journal and
+      // locks prove that transition; the legacy parent-diff rule cannot.
+      // Keep the legacy check for plans that predate the protocol.
+      if (candidate.includes(PROTOCOL_SPEC_START) || parent?.includes(PROTOCOL_SPEC_START)) {
+        try {
+          if (!candidate.includes(PROTOCOL_SPEC_START)) throw new Error("cannot remove the plan protocol markers");
+          verifyStagedPlan(freezeRoot, path);
+          const violations = protocolLockViolations(candidate);
+          if (violations.length > 0) throw new Error(violations.join("\n"));
+        } catch (error: unknown) {
+          console.error(`plan-freeze: ${path}: ${error instanceof Error ? error.message : String(error)}`);
+          refused += 1;
+        }
+        continue;
+      }
       const autoMerged = merged !== null && !merged.conflicted.has(path)
         ? read(merged.tree, path)
         : null;

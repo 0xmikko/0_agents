@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -9,6 +9,7 @@ import { deliveryMetas, planJournalPath, taskRunPath, verifyStagedPlan } from ".
 import { decodeTaskRun } from "../src/core/task-run";
 import { protocolSpecHash } from "../src/core/plan-update";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { installStack } from "../../shared/code-production/agent-stack";
 
 interface Fixture {
   readonly root: string;
@@ -132,6 +133,101 @@ describe("planctl mcp", () => {
 
       expect(client.getInstructions()).toMatch(/journal cleanup is automatic/i);
       expect(client.getInstructions()).toContain("clear-transaction");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_011
+   * @scenario: scn_planctl_approval_commit_001
+   * @covers: planctl/src/mcp/server.ts, planctl/src/core/plan-gate.ts::freeze CLI
+   * @deterministic: yes
+   * @fixtures: temporary consumer with installed Git hooks; synthetic owner words
+   * @invariant: the documented MCP approval sequence commits once with real hooks;
+   * raw edits and a missing journal remain refused, and failed commits preserve approvals.
+   * Test environment: stdio MCP and installed runtime, no consumer dependencies.
+   * Clients: MCP Client and Git. Mocks: project verification exits, mdurl publisher.
+   */
+  it("tst_unit_planctl_mcp_011 commits MCP approvals through installed hooks without recreating the plan", async () => {
+    const { root, git } = fixture("approval-commit");
+    try {
+      const scripts = Object.fromEntries([
+        "agent:install", "agent:test:backend", "agent:test:frontend", "agent:test:e2e",
+        "agent:verify:commit", "agent:verify:pr", "agent:verify:docs",
+      ].map((name) => [name, "true"]));
+      writeFileSync(join(root, "package.json"), JSON.stringify({ name: "approval-fixture", scripts }));
+      installStack(root, { base: "main" });
+      git("add", ".");
+      git("commit", "-qm", "install the consumer hooks");
+      const before = git("rev-parse", "HEAD");
+      const started = await client.callTool({ name: "init", arguments: { root, title: "Keep the recorded approval" } });
+      expect(started.isError ?? false, text(started)).toBe(false);
+      const plan = (started.structuredContent as { plan: string }).plan;
+      const absolute = join(root, plan);
+      const seen = await client.callTool({ name: "progress", arguments: { root } });
+      const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8");
+      for (const [name, args] of [
+        ["submit_spec", { baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec }],
+        ["approve_spec", { ownerWord: "spec" }],
+        ["put_delivery", { delivery }],
+        ["put_stage", { stage }],
+        ["approve_plan", { ownerWord: "plan" }],
+      ] as const) {
+        const result = await client.callTool({ name, arguments: { plan: absolute, ...args } });
+        expect(result.isError ?? false, text(result)).toBe(false);
+      }
+      const approved = readFileSync(absolute, "utf8");
+      const journal = planJournalPath(root, plan);
+      const proof = readFileSync(journal, "utf8");
+      const commit = () => spawnSync("git", ["commit", "-qm", "record the approved plan"], { cwd: root, encoding: "utf8" });
+      const committed = commit();
+      expect(committed.status, `${committed.stdout}\n${committed.stderr}`).toBe(0);
+      expect(git("rev-list", "--count", `${before}..HEAD`)).toBe("1");
+      expect(git("show", `HEAD:${plan}`)).toBe(approved.trim());
+      expect(existsSync(journal)).toBe(false);
+
+      // Recreate the same staged state in this test-owned repository to inject faults.
+      // Never reset a user's checkout or retry a denied real approval.
+      git("reset", "--soft", before);
+      // Exhaust all 16 combinations of these four validity conditions:
+      // the intact case succeeded above; every nonzero fault mask must fail.
+      for (let faults = 1; faults < 16; faults += 1) {
+        writeFileSync(absolute, approved);
+        const changed: { baseHead: string; events: { beforeHash: string }[] } = JSON.parse(proof);
+        if (faults & 2) writeFileSync(absolute, `${approved}\nUnjournaled change.\n`);
+        if (faults & 4) {
+          const first = changed.events[0];
+          if (first === undefined) throw new Error("fixture must contain a creation event");
+          first.beforeHash = "0".repeat(64);
+        }
+        if (faults & 8) changed.baseHead = "0".repeat(40);
+        writeFileSync(journal, JSON.stringify(changed));
+        if (faults & 1) rmSync(journal);
+        git("add", plan);
+        const refused = commit();
+        expect(refused.status, `fault mask ${faults}`).not.toBe(0);
+        expect(`${refused.stdout}${refused.stderr}`).toMatch(/journal|candidate|chain/i);
+        expect(readFileSync(absolute, "utf8")).toContain("Status: APPROVED");
+        expect(git("rev-parse", "HEAD")).toBe(before);
+      }
+      writeFileSync(absolute, approved);
+      writeFileSync(journal, proof);
+      git("add", plan);
+      const retried = commit();
+      expect(retried.status, `${retried.stdout}\n${retried.stderr}`).toBe(0);
+      expect(existsSync(journal)).toBe(false);
+
+      const amended = await client.callTool({ name: "amend", arguments: {
+        plan: absolute, ownerWord: "rename the title", patch: {
+          section: "title", find: "Keep the recorded approval", replace: "Preserve the recorded agreement",
+        },
+      } });
+      expect(amended.isError ?? false, text(amended)).toBe(false);
+      const amendmentCommit = commit();
+      expect(amendmentCommit.status, `${amendmentCommit.stdout}\n${amendmentCommit.stderr}`).toBe(0);
+      expect(readFileSync(absolute, "utf8")).toContain("Preserve the recorded agreement");
+      expect(existsSync(journal)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

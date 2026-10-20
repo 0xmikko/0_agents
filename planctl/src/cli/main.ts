@@ -4,7 +4,6 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { z } from "zod";
 
 import type { AuthoringContract, GateViolation } from "../core/plan-gate";
 import type { TaskBrief } from "../core/plan-update";
@@ -493,6 +492,7 @@ async function serverProgress(args: readonly string[]): Promise<{
 
 async function progress(args: readonly string[]): Promise<void> {
   dedicatedRuntime();
+  const { z } = await import("zod");
   const render = await import("./render");
   if (args.includes("--server")) {
     try {
@@ -528,7 +528,7 @@ async function progress(args: readonly string[]): Promise<void> {
   const progressCore = await import("../core/plan-progress");
   const view = await progressCore.planProgress(rootPath, {
     plan: explicit,
-    publication: readPublication,
+    publication: (checkout: string, branch: string) => readPublication(checkout, branch, z),
     sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
     decodeRun: taskRunFrom,
   });
@@ -586,6 +586,7 @@ async function observerIdentity(args: readonly string[], rootPath: string, body:
 }
 
 async function startTask(args: readonly string[]): Promise<void> {
+  const { z } = await import("zod");
   const { rootPath, target, body } = approvedPlan(args);
   const identity = await observerIdentity(args, rootPath, body);
   const brief: TaskBrief = await startTaskOperation(rootPath, {
@@ -593,7 +594,7 @@ async function startTask(args: readonly string[]): Promise<void> {
     taskId: optionalFlag(args, "--task") ?? null,
     checkpoint: optionalFlag(args, "--checkpoint") ?? null,
     identity,
-    publication: readPublication,
+    publication: (checkout: string, branch: string) => readPublication(checkout, branch, z),
     decodeRun: taskRunFrom,
   });
   const render = await import("./render");
@@ -606,6 +607,7 @@ async function startTask(args: readonly string[]): Promise<void> {
 /** Serve the tools over stdio; diagnostics go to stderr, the protocol owns stdout. */
 async function mcp(args: readonly string[]): Promise<void> {
   dedicatedRuntime();
+  const { z } = await import("zod");
   const { createPlanctlServer, toolNames } = await import("../mcp/server");
   if (args.includes("--tools")) {
     console.log(toolNames().join("\n"));
@@ -616,7 +618,7 @@ async function mcp(args: readonly string[]): Promise<void> {
   const { eventLogPath } = await import("../core/event-log");
   const server = createPlanctlServer({
     cwd: process.cwd(),
-    publication: readPublication,
+    publication: (checkout: string, branch: string) => readPublication(checkout, branch, z),
     sourceCommit: git(dirname(import.meta.path), "rev-parse", "HEAD"),
     eventLog: eventLogPath(homedir()),
     publisher: commandPublisher(optionalFlag(args, "--publisher") ?? "mdurl"),
@@ -680,7 +682,7 @@ async function resumeTask(args: readonly string[]): Promise<void> {
 /** What gh reports for a Delivery branch: the PR, its Actions CI on the current head, the last run.
  * @tested-by: tst_scripts_planctl_014
  */
-function readPublication(rootPath: string, branch: string): import("../core/plan-progress").ProgressView["publication"] {
+function readPublication(rootPath: string, branch: string, z: typeof import("zod").z): import("../core/plan-progress").ProgressView["publication"] {
   const gh = (...ghArgs: readonly string[]): string => {
     const result = spawnSync("gh", ghArgs, { cwd: rootPath, encoding: "utf8" });
     if (result.error !== undefined) throw new Error(result.error.message);

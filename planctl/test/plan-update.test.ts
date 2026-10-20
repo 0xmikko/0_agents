@@ -652,7 +652,7 @@ describe("Delivery and Stage descriptions", () => {
   it("tst_scripts_planupdate_desc_003 a Stage without a description is refused and told what to write", () => {
     const locked = putDelivery(lockPlanSpec(draft(), "spec").body, delivery()).body;
     const { description: _omit, ...bare } = stage("D1-S1", ["scripts/base.ts"]);
-    expect(() => putStage(locked, bare as unknown as StageInput)).toThrow(/what this Stage solves/);
+    expect(() => putStage(locked, bare as unknown as StageInput)).toThrow(/Stage description is required:/);
   });
 
   // @test-id: tst_scripts_planupdate_desc_004
