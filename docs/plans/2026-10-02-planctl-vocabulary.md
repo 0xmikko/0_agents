@@ -1,73 +1,39 @@
-# Owner-approved vocabulary and type contracts through planctl MCP
+# Fast autonomous development with clear plans and a shared vocabulary
 
-Status: SPEC_DRAFT  
-Spec lock: unlocked  
+Status: APPROVED  
+Spec lock: sha256:6d4f3a3bce8d1616ad87b9affea4fb6fd227c508ba5875893dfd866af6088bc9 owner:Я хочу это понимать с типами и так далее.  
 Outline lock: unlocked  
-Implementation lock: unlocked  
-Active Delivery: none  
+Implementation lock: sha256:bdcac556161adc0f6a5a4e685bfbe8f7cd7a89024786c78feaf28542d090a830 owner:Я тебе даю полный карт-бланш.  
+Active Delivery: D1  
 Unattended decisions: allowed  
 
 <!-- plan:spec:start -->
 ## The Goal
 
-1. Give agents the approved vocabulary through planctl MCP: one English name, one precise meaning, and the canonical code definitions for each entity and type.
-2. Require the owner's approval for every addition, removal, rename or meaning/type change. Show these changes together in the SPEC approval already used by the process.
-3. Refuse an implementation that introduces an unapproved production type, changes its approved declaration or creates an unapproved alternate name for a registered entity.
-4. Use TypeSafe Jev for short semantic checks against this vocabulary. Keep the result tied to the checked text and approved definition, with measured accuracy, latency and cost.
-
-## Why now
-
-On October 2, the owner asked for a vocabulary managed by the protocol, with each change approved like a type. The owner explicitly rejected another discovery skill or an advisory Sonnet reviewer.
-
-The current `vocabulary` tool returns only synonym pairs. `synonyms` discards definitions and ignores a term when it has no forbidden synonym. Its project source is hard-coded to `docs/graph.md`; that Magnis document is historical and its table has a different shape, so it does not supply the expected entries. The type gate checks exported declaration names against the SPEC but does not establish an approved repository vocabulary or compare complete declarations.
-
-The motivating case is `Entity`: introducing `RawEntity`, repeating its fields elsewhere, or calling the same thing by another word must require a visible decision. An existing external boundary can justify a distinct type, but that distinction must be described and approved.
+Deliver the agreed software quickly, with a solution the owner can understand and execution that does not require routine intervention. Aim for 20–60 seconds of affected checks during work; run the complete local gate at the Stage's PR boundary.
 
 ## The target
 
-### Read the complete vocabulary
+**Interactive work is the default. Blueprint starts only when explicitly requested.** Discuss the intended behavior in small pieces, inspect code and try examples. Keep decisions in the same document. Once the complete solution is understood, approve the SPEC, then approve its implementation breakdown. One Stage ends in one PR.
 
-Extend the existing MCP `vocabulary` tool and the authoring contract. Return canonical terms, meanings, forbidden alternatives, code definition references, the vocabulary revision and approval provenance. Preserve terms that have no aliases.
+This is the proposed system specification. The final section distinguishes existing behavior from work still required.
 
-The process vocabulary remains `shared/code-production/vocabulary.md`. A consumer project uses one dedicated `docs/vocabulary.md`. Do not treat historical `docs/graph.md` as current authority. Seed a project's dictionary from selected current declarations and owner-approved definitions through the same proposed-change flow; discovering a name in old code does not approve it.
+### 1. Discuss a flow and find its existing names
 
-A code reference identifies its repository, file and declaration. Resolve another repository with the existing `deliveryRoot` configuration. Read the declaration at that reference; do not maintain another handwritten implementation of the type in the dictionary.
+The existing local **planctl MCP server** serves the agent's editor or terminal client. The agent researches and implements; the server reads canonical definitions, checks proposals and records approved work. Existing Git hooks call the same checks on actual code. Jev supplies bounded semantic advice; mdurl displays the document.
 
-Ordinary English words are not vocabulary entries. The dictionary controls named concepts and production type declarations. Test-only fixtures and imported third-party declarations are not proposed as new project types.
+```mermaid
+flowchart TB
+  A["Discuss one behavior"] --> B["Read vocabulary and canonical code"]
+  B --> C["Describe flow, interfaces and example"]
+  C --> D["Check and refine this proposal"]
+```
 
-### Propose and approve changes through the existing plan
+`vocabulary({ root })` returns the process terms and project definitions. The agent reads the cited declarations and their callers before introducing a name. Matching field shapes alone do not establish reuse.
 
-`submit_spec` carries a Vocabulary changes section with exact before/after entries, the dictionary revision it was based on, and the reason for each change. Changed types also carry their complete proposed declarations in Interfaces. Draft proposals do not alter the approved dictionary.
+#### Interfaces
 
-The SPEC owner view shows this diff beside the intended behavior. `approve_spec` records the owner's word for those exact bytes and applies the approved dictionary changes through the existing mutation journal. Implementation decomposition still follows SPEC approval; implementation approval remains the second stop. Do not add approval of an outline or a third approval of vocabulary.
-
-`amend` is the only way to change an approved proposal. Reusing an unchanged registered term needs no question. A stale dictionary revision or conflicting meaning produces a concrete diff for the author to reconcile before approval. An ordinary dictionary update must preserve unrelated entries.
-
-Protect dictionary writes with the same approval provenance used for plans. An edit without the approved proposal is refused. Plan and dictionary updates must recover consistently after an interrupted write; an incomplete update must never appear approved. Show approval provenance separately from the canonical definition, so it cannot become a second source of meaning.
-
-### Check the code against the approved contract
-
-Extend the existing TypeScript declaration inspection and completion gate. Include new or changed named production type aliases and interfaces even when they are not exported. Compare the changed declaration with its approved Interfaces declaration and canonical location, ignoring formatting rather than ignoring fields.
-
-Reusing an approved name is insufficient if its fields or meaning changed. A schema-derived type names its canonical schema as a dependency; changing that schema is a contract change too. Do not expand into a new general-purpose TypeScript compiler: use the repository compiler and its existing AST API.
-
-Before implementation, plan lint checks proposed names and declarations against the dictionary. At completion, the existing commit inspection checks actual declarations and references. Both report the file, declaration, approved entry and mismatch. The agent can correct the implementation within the approved contract without asking the owner again.
-
-### Ask Jev bounded questions
-
-Pin `jev-1.13.0` and use the documented Noul primitive. Supply the relevant approved entries, the exact candidate text or declaration, and explicit binary criteria. Ask separately whether a candidate duplicates an existing concept, whether a term has its approved meaning, and whether authored prose is English. Quoted owner words and code are excluded from the language question.
-
-Jev returns a probability for each supplied question. It does not generate replacement names, definitions, explanations or approval. Attach the supplied excerpt and dictionary entry to a finding; never invent a quotation from the model's response.
-
-Calibrate thresholds on labelled examples before enabling semantic refusal. Use reviewed good examples and deliberate bad variants, including a real distinct boundary that must pass, a renamed duplicate that must fail, and an unchanged word used with a different meaning. Separate examples by source plan between calibration and evaluation. Record false refusals, missed defects, uncertain results, request count, elapsed time and token usage. Approved historical prose alone is not ground truth for every criterion.
-
-Batch independent questions sharing the same context. Reuse an identical result only when the text, dictionary revision, rubric and model version match. Syntax, type comparison, revisions and approvals remain deterministic checks.
-
-An uncertain answer or unavailable API is an explicit incomplete check, not success and not an owner-approval request. It must not prevent a running agent from continuing unrelated work already authorized by its approved plan. A required approval check remains incomplete until checked or explicitly resolved by the owner; do not silently bypass it or add another model as a fallback.
-
-### Interfaces
-
-Proposed dictionary and change shapes; these names are part of this SPEC approval:
+Extend the existing `AuthoringContract` with `entries: readonly VocabularyEntry[]` and `vocabularyRevision: string`. Preserve its existing section guidance and synonym pairs.
 
 ```typescript
 export interface VocabularyEntry {
@@ -88,67 +54,278 @@ export interface VocabularyChange {
 }
 ```
 
-An addition has `before: null`; a removal has `after: null`; both cannot be null. A prose-only term has an explicitly empty definitions list. Repository names resolve through the current repository/Delivery mechanism and do not embed machine paths.
+These two names describe a definition and its proposed change. Addition has no `before`; removal has no `after`; an update has both. Reject both-null changes.
 
-Replace the synonym-only elements of `AuthoringContract.vocabulary` with these complete entries and expose the dictionary revision. Keep `GateViolation` as the finding shape. Record proposed type signatures in the approved SPEC rather than copying them into `VocabularyEntry`.
+Process definitions live in `shared/code-production/vocabulary.md`; project definitions live in `docs/vocabulary.md`. Absence is reported explicitly, never replaced with guessed definitions. Entries without forbidden alternatives remain valid.
 
-## Target tree
+Reuse canonical responsibilities and names. New types use PascalCase; new members use camelCase. Preserve established external wire names. Follow the existing TypeScript rules: interfaces for object shapes, aliases for unions and projections, no `any` or suppression-based escapes. A genuinely new concept explains its distinct responsibility and why reuse fails.
 
-| Action | Path | Purpose |
-|---|---|---|
-| MODIFY | `planctl/src/mcp/server.ts` | Return complete vocabulary and connect existing submission, approval and amendment tools to it. |
-| MODIFY | `planctl/src/core/plan-gate.ts` | Check approved vocabulary and changed type declarations through the current gate. |
-| MODIFY | `planctl/src/core/plan-update.ts` | Bind vocabulary changes to the existing owner approval and mutation journal. |
-| MODIFY | `planctl/src/core/spec-submission.ts` | Save proposed dictionary changes without approving them and return their checks. |
-| CREATE | `planctl/src/core/vocabulary.ts` | Own dictionary parsing, revisions and approved changes for the MCP reader and gate. |
-| CREATE | `planctl/src/core/jev.ts` | Own the one TypeSafe request, response validation and semantic-check result cache. |
-| MODIFY | `shared/code-production/instruction-audit.ts` | Derive synonym checks from complete entries instead of dropping their meanings. |
-| MODIFY | `shared/code-production/vocabulary.md` | Use the approved entry format for the existing process vocabulary. |
-| MODIFY | `planctl/test/mcp.test.ts` | Prove proposed entries, owner approval, stale revisions and unchanged reuse. |
-| MODIFY | `planctl/test/plan-gate.test.ts` | Prove unapproved names, changed signatures and canonical declaration reuse. |
-| CREATE | `planctl/test/vocabulary.test.ts` | Prove dictionary integrity and approval-bound updates. |
-| CREATE | `planctl/test/jev.test.ts` | Prove bounded requests, decoding, cache invalidation and incomplete-check behavior. |
+**Example:** reuse an existing provider registry when it already owns registration and lookup. Keep a distinct execution interface when it owns execution. Fewer names are useful only if required behavior remains complete.
 
-This change implements the planctl mechanism. It does not rewrite application types, install another stack into consumer repositories, or turn old plans into approved dictionaries automatically. A consumer's first `docs/vocabulary.md` is created only with its reviewed seed entries.
+**Stored result:** an unapproved flow and any vocabulary changes. Notes and code experiments do not create a plan. On an explicit Blueprint request, `progress({ root })` resumes an existing plan; otherwise `init({ root, title })` creates a draft.
 
-## Invariants
+### 2. Check the flow together with its interfaces
 
-- Reading a vocabulary preserves every term and its full meaning, including terms without aliases.
-- A draft or an unapproved file edit cannot change the approved dictionary.
-- One SPEC approval covers the visible vocabulary diff; unchanged reuse never needs another approval.
-- Two repositories resolve canonical declarations in their own checkouts.
-- A changed production declaration requires an approved name, location and declaration, including a private named type.
-- A passing Jev result cannot approve a type or change a definition.
-- The same semantic input reuses its result; changed text, dictionary, rubric or model invalidates it.
-- An uncertain or failed semantic check is visible and never recorded as a pass.
+The new MCP operation `check_content` checks one discussion unit, with or without a plan. The same checker runs automatically during SPEC submission, amendment and approval.
 
-The implementation contract will name one behavior test per invariant before implementation approval. No implementation Stages are proposed before SPEC approval.
+#### Interfaces
 
-## Reuse
+```typescript
+export declare function checkContent(input: {
+  readonly root: string;
+  readonly goal: string;
+  readonly kind: "flow" | "code";
+  readonly content: string;
+  readonly source?: string;
+}): Promise<Pick<SubmitSpecResult,
+  "findings" | "semanticChecks" | "diagramChecks">>;
+```
 
-Extend `vocabulary`, `authoringContract`, `submitSpec`, `lintedApproval`, `applyOwnerAmendment`, `mutatePlanFile`, `undeclaredExportedTypes` and `deliveryRoot`. Keep the two existing owner approvals and the existing findings format. Use the TypeScript AST already loaded by the gate and the project's `agent:*` scripts. Do not add a skill, a Sonnet reviewer, an observer service or a new verification runner.
+Extend the existing `SubmitSpecResult`; retain its revision, state, corrections, `GateViolation[]` findings and check status. Add:
 
-## New names
+```typescript
+export interface SubmitSpecResult {
+  readonly semanticChecks: readonly {
+    readonly question: string;
+    readonly probability: number | null;
+    readonly evidence: readonly { readonly path: string; readonly quote: string }[];
+    readonly uncertainty: string | null;
+  }[];
+  readonly diagramChecks: readonly {
+    readonly line: number;
+    readonly status: "rendered" | "failed" | "unavailable";
+    readonly artifact: string | null;
+  }[];
+}
+```
 
-| Name | Reason |
+This declaration shows the added members, not a replacement for existing members.
+
+The server performs these checks:
+
+1. **Structure and contracts.** Each flow states its trigger/input, responsible component, operations, result and relevant failure handling. Its interfaces sit beside it. Collect declarations from every flow; resolve references to reused contracts. A flow changing no contracts says so.
+2. **Facts.** Parse TypeScript and check it against canonical declarations and naming rules. Verify cited definitions and producer/consumer evidence. Findings identify the rule, location and exact excerpt; unresolved evidence is not a pass.
+3. **Meaning.** Send Jev the relevant Goal, flow, declarations and cited dictionary/code evidence. Ask separately whether the flow covers the requirement, contradicts a definition or duplicates an existing responsibility.
+4. **Diagrams.** Parse and render Mermaid in the existing browser environment. Return the SVG and inspect it at normal reading width for tiny labels, clipping and overlap. Parsing alone is insufficient.
+
+The agent corrects findings and rechecks changed inputs. Incomplete drafts remain saveable. Proven structural/type errors block approval; Jev advice initially does not. Ordinary writing never acquires Blueprint's format.
+
+**The first quality case:** a document containing only “discuss, approve, implement, test” must not be presented as a complete MCP design. Score solution coverage separately across component/state ownership, typed operation contracts and executable operation flow. A missing solution earns zero; good wording cannot compensate.
+
+Use a versioned rubric with owner-reviewed examples. Keep source documents separate between calibration and evaluation; include necessary new concepts, real reuse, unnecessary rewrites and small but incomplete patches. Report missed defects, false warnings, uncertainty, latency and cost. Do not tune against the evaluation answers or treat a score as approval.
+
+Cache exact questions, Goal, evidence, code/dictionary revisions, rubric and model version. Batch at most 12 questions into one request, with a five-second timeout and estimated USD 0.01 ceiling. If cost cannot be bounded, do not call. Unavailable access or invalid output returns null probability with a reason; deterministic checking continues. Cache renders by source, renderer, theme/fonts and viewport.
+
+### 3. Save the solution and approve the exact SPEC
+
+```mermaid
+flowchart TB
+  A["submit_spec: save and check"] --> B["Agent fixes findings"]
+  B --> C["Owner reads complete SPEC"]
+  C --> D["approve_spec: lock shown version"]
+```
+
+The Goal states the outcome. The Target describes the finished system: each flow, its adjacent interfaces and an example. Current code supplies the starting state. Research resolves compatibility, affected callers and required behavior before approval.
+
+#### Interfaces
+
+Extend the existing submission input with the proposed dictionary change:
+
+```typescript
+export interface SubmitSpecInput {
+  readonly plan: string;
+  readonly baseRevision: string;
+  readonly ownerRequest: string;
+  readonly spec: string;
+  readonly title?: string;
+  readonly vocabularyChanges?: {
+    readonly baseRevision: string;
+    readonly entries: readonly VocabularyChange[];
+  };
+}
+```
+
+`submit_spec` returns `SubmitSpecResult` from flow 2 plus the published URL. It saves proposals without applying dictionary changes. mdurl's reading view shows the SPEC; lock metadata and execution bookkeeping stay in the source record.
+
+Extend `approve_spec({ plan, ownerWord })` with required `expectedRevision: string`. Recheck the displayed version and dictionary revision, then journal the approval and dictionary update together. Serialize competing updates; a stale revision writes nothing. Interrupted writes recover before reporting success.
+
+The owner approves behavior, scope, compatibility, proposed names and typed boundary contracts: fields, signatures, variants, optionality and nullability. Unchanged contracts use canonical references. Private domain duplicates also require a proposal; `export` alone does not define a boundary.
+
+Agreement with one paragraph does not approve the whole SPEC. Preserve the owner's actual words; clarify only genuinely ambiguous approval scope. This produces `SPEC_LOCKED`, not implementation authorization. There is no outline approval.
+
+### 4. Break the approved solution into executable work
+
+The agent maps approved flows to Tasks and groups them into Stages. **One Stage has one PR**, with multiple local work commits when useful. Reuse the existing `DeliveryInput` as that PR's record, one-to-one with the Stage; preserve older plans' structure.
+
+#### Interfaces
+
+Reuse `DeliveryInput`, `StageInput` and `TaskInput` from `planctl/src/core/plan-update.ts`. Their relevant fields travel together:
+
+| MCP operation | Input and result |
 |---|---|
-| `VocabularyEntry` | Names a complete dictionary entry; the current anonymous synonym pair has no meaning or declaration reference. |
-| `VocabularyChange` | Names the exact before/after proposal approved with a SPEC. |
-| `Jev` | TypeSafe's existing model name, explicitly requested by the owner. |
+| `put_delivery({ plan, delivery })` | `DeliveryInput`: PR title, branch, repository, dependencies and final gate → saved delivery, revision, findings. |
+| `put_stage({ plan, stage })` | `StageInput`: outcome, owner, dependencies, owned writes, Tasks and criteria → saved Stage, revision, findings. |
+| Nested `TaskInput` | `story: string`, `writes: string[]`, `how: string \| readonly string[]`, `red: string`, work/time estimates. |
+| `remove_stage({ plan, stage })` | Remove a draft Stage while checking references. |
+| `approve_plan({ plan, ownerWord, expectedRevision })` | Add `expectedRevision` to the existing approval input; lock the displayed breakdown. |
 
-## Not verified
+Tasks state what changes, how to implement it and which scoped command demonstrates the behavior. Check flow coverage, missing callers, dependencies, conflicting writes and repository selection before showing the breakdown. Keep work estimates separate from test and external wait estimates.
 
-The TypeSafe request format and model availability were read in the official documentation. No live Jev call, latency measurement or classification evaluation has been performed. On October 2, the owner clarified that the API-key prohibition applies only to Claude and explicitly allowed the TypeSafe Jev API. Live evaluation requires TypeSafe credentials configured outside chat and the plan; the Claude subscription remains the authentication method for Claude.
+The owner approves all Stages together, including checks, requested review, publication and cost limits. Execution then continues without another routine permission. The plan's existing implementation region stores this contract; no second task database is introduced.
 
-Mechanical approval and declaration checks can be tested deterministically. Jev's semantic accuracy must be measured on the labelled evaluation examples; it cannot prove the absence of every possible conceptual duplicate.
+### 5. Implement and check actual changes
 
-References: https://docs.typesafe.ai/primitives/noul and https://x.com/karpathy/status/2105819303471976479. The controlled-language principle informs explicit definitions and consistent names; this proposal does not claim full ASD-STE100 compliance.
+```mermaid
+flowchart TB
+  A["start_task: next eligible work"] --> B["Implement and run affected checks"]
+  B --> C["Commit with hooks enabled"]
+  C --> D["complete_task: record evidence"]
+  D --> A
+```
+
+#### Interfaces
+
+Keep the existing execution operations and result types:
+
+| Operation | Input → result |
+|---|---|
+| `start_task` | `{ plan, task?, checkpoint? }` → `TaskBrief`: Goal, instructions, affected folders, RED command and current timing. |
+| `complete_task` | `{ plan, taskIds, commit, result, deviations? }` → recorded completion and `StageResultReceipt` with paths, tests and timing. |
+| `close_stage` | `{ plan, stage }` → `{ status: "CLOSED" \| "PARTIAL", closed, head }` after local criteria. |
+| `progress` | `{ plan?, root?, note? }` → active work, dependencies, local/publication state and observed CI. |
+
+The server stores task runs and verification evidence through its existing records. Git hooks inspect staged content against HEAD; completion inspects the recorded commit; publication inspects the cumulative change against the work's base.
+
+Compare actual contract shapes with the approved interfaces, including additions/removals, fields, nullability, signatures, aliases, re-exports and inferred schema types. Declaring a name alone does not authorize every shape. Resolve canonical sources for generated copies and unchanged moves. Unknown resolution remains incomplete evidence. Jev receives only relevant changed declarations and context.
+
+An accidental mismatch is the agent's repair. Algorithms, local helpers, regression tests, mechanical callers and file placement within approved responsibilities are autonomous decisions. Finishing all readers of an approved rename requires no new approval.
+
+New domain meaning, changed boundary behavior, removed compatibility or expansion into another responsibility needs a concrete proposal. `needs_owner({ plan, task, context, options, recommendation, answerForm })` records that exceptional wait. Explain the approved behavior, conflicting evidence and consequence in plain language. After the decision, `amend` records an authorized contract change and `resume_task({ plan, task })` clears the wait. Independent work continues.
+
+**Verification:** documents use document checks; services and plugins use affected behavior tests and consumers; UI changes include the affected browser scenario. Preserve existing selectors and test harnesses. Reuse results only when source, tests, configuration, dependencies, command and runtime inputs match. Unknown changed paths invalidate potentially affected checks. Do not run the complete suite after each Task.
+
+Local dependencies use local completion evidence, not prerequisite PR CI. Repository-qualified work resolves its own checkout for Git, tests and receipts. MCP reconciles committed journals automatically. The existing observer reads progress and session activity, distinguishing background work from a stall; it cannot approve or edit another session.
+
+### 6. Review, publish and return a ready PR
+
+```mermaid
+flowchart TB
+  A["Stage Tasks complete"] --> B["Complete local gate"]
+  B --> C["Agreed review and fixes"]
+  C --> D["Publish feature PR and observe CI"]
+  D --> E["Return PR link; owner merges"]
+```
+
+The proposed MCP operation `publish_delivery` coordinates the existing Git/PR commands, verification records and pre-push hooks. It validates the approved publication boundary and actual checked inputs before a feature push. `progress` reads GitHub Actions for the PR's exact head; access to the Checks API is not required.
+
+#### Interfaces
+
+Publication consumes the Stage's existing `DeliveryInput` from flow 4 and successful verification records from flow 5. It introduces no new named domain type:
+
+```typescript
+export declare function publishDelivery(input: {
+  readonly plan: string;
+  readonly delivery: string;
+  readonly expectedHead: string;
+  readonly phase: "plan" | "implementation";
+}): Promise<{
+  readonly url: string;
+  readonly head: string;
+  readonly pushed: boolean;
+}>;
+```
+
+The server derives test/review evidence and the destination from records, not agent-supplied pass flags. The existing pre-push hook requires the matching authorized publication record; manual feature pushes receive an actionable MCP instruction. Protected destinations remain refused. Record publication intent before sending; after interruption, reconcile the remote head and PR before retrying. Repeating an already published head returns its URL with `pushed: false`, without another CI run.
+
+The full local gate precedes the agreed review, and review precedes implementation push and CI. Fix review findings and rerun affected checks, retaining unaffected results. Keep intermediate work local. An approved plan-only draft may be published without heavy product CI; the next push contains the completed, reviewed Stage.
+
+A failed CI run is diagnosed before a justified correction/retry within the approved cost boundary. Do not rerun paid CI to investigate an unresolved local failure. The agent finishes with the PR link, checks and any real remaining limitation. The owner merges; direct push, merge and auto-merge into protected branches require separate explicit authorization.
+
+Tooling repairs needed for authorized work are the agent's responsibility. Preserve other agents' edits. Do not require a stack reinstall solely because versions differ. Host permission enforcement still applies; local instructions cannot remove external approval prompts. Verify the actual launch permissions and branch protection in the isolated trial.
+
+### What is proved, and what still needs implementation
+
+The current MCP already saves/locks plans, manages Tasks and records results. It does **not** yet provide the proposed domain dictionary, `check_content`, `publish_delivery`, shared semantic feedback, rendered-diagram proof or complete structural contract comparison.
+
+The first rejected document is preserved as an owner-labelled negative case: **solution score 0**. Current submission checking missed the omission. A separate Jev request rejected all three solution-coverage criteria in 0.39 seconds without receiving the owner's label. This is one exploratory case, not calibrated quality control.
+
+Before rollout, demonstrate the proposed behavior in one isolated session: check a flow and its types, fix a duplicate, approve the displayed versions, execute with scoped checks, review before CI and finish with a PR link. Replay missed callers, unchanged type moves, changed nullability, stale approvals, unavailable Jev, journal recovery and cross-repository receipts. Verify unchanged inputs cause no repeat semantic call or full test run.
+
+Keep useful existing instructions and examples. Apply only the agreed changes after their implementation breakdown is approved; do not switch all sessions to an untested process.
 <!-- plan:spec:end -->
 
 <!-- plan:implementation:start -->
 ## Implementation contract
+
+<!-- plan:delivery:D1:start -->
+<!-- plan:delivery-meta:{"active":true,"depends":[],"predictedExternalWaitMinutes":10} -->
+### PR Delivery D1 — Working vocabulary and focused semantic feedback in planctl
+
+Branch: `feat/planctl-vocabulary`; Depends: none; Gate: cd planctl && bun run agent:verify:pr.
+
+Stage graph: `D1-S1`.
+
+Forecast: 200 active min / 0 credits across 1 Stages; longest dependency path 200 active min; external waits 10 min.
+
+One Stage and one feature PR, with multiple local work commits. The owner delegated implementation decisions and completion in the current session. Publish after local verification and review; only the owner merges. Keep the rollout isolated from other sessions.
+
+<!-- plan:stage:D1-S1:start -->
+<!-- plan:stage-meta:{"deliveryId":"D1","depends":[],"parallelWith":[],"writes":["docs/","planctl/","shared/code-production/"],"tempRoot":".tmp/code-production/2026-10-02-planctl-vocabulary/D1-S1","predictedActiveMinutes":200,"predictedCredits":0,"verifyActiveMinutes":10,"verifyCredits":0} -->
+#### Stage D1-S1 — Evaluated vocabulary feedback and autonomous execution
+
+- Owner: Codex; Profile: strong; Depends: none; Parallel with: none.
+- Writes: `docs/`, `planctl/`, `shared/code-production/`.
+- Temp root: `.tmp/code-production/2026-10-02-planctl-vocabulary/D1-S1` (must be absent at handoff).
+- Of which verification: 10 active min / 0 credits.
+
+Implement the six agreed flows by extending the current MCP server. Preserve fast checks, Git hooks and owner-only merge. Keep rollout isolated. The current owner's explicit carte blanche delegates stage definition and implementation; it does not claim that the owner read these task details.
+
+##### Tasks
+
+- [ ] CORPUS — Build a traceable corpus and freeze independent evaluation by source document. (30 min)
+<!-- plan:task-meta:{"writes":["docs/","planctl/bench/","planctl/test/fixtures/"],"predictedActiveMinutes":30,"predictedCredits":0,"how":"Inventory available datasets, canonical flows and session feedback. Sanitize excerpts, record provenance and label confidence. Keep defective variants with their source in calibration or held-out evaluation. Report uncertainty, mistakes, latency and cost.","red":"bun run agent:test:backend -- test/content-check.test.ts"} -->
+- [ ] CHECK — Provide vocabulary, deterministic checks, focused Jev advice and diagram rendering through MCP. (60 min)
+<!-- plan:task-meta:{"writes":["planctl/src/","planctl/test/","planctl/package.json","planctl/bun.lock","shared/code-production/vocabulary.md"],"predictedActiveMinutes":60,"predictedCredits":0,"how":"Extend existing contracts and server with check_content. Preserve canonical names, entries without aliases and external wire names. Bound calls and cost, cache exact inputs, return unavailable advice on provider failure. Reuse checks in submission, amendment and exact-version approval; save incomplete drafts. Journal dictionary proposals with approval. Exercise actual MCP calls and failure recovery.","red":"bun run agent:test:backend -- test/content-check.test.ts"} -->
+- [ ] EXECUTE — Validate actual contracts and coordinate controlled feature publication. (60 min)
+<!-- plan:task-meta:{"writes":["planctl/src/","planctl/test/","shared/code-production/templates/hooks/","docs/"],"predictedActiveMinutes":60,"predictedCredits":0,"how":"Use compiler declarations and canonical sources to compare actual changes with approved boundaries. Coordinate existing verification and review evidence with local dependencies and publication. Refuse protected destinations and repeated publication cost. Exercise interruption and retries with local remotes. Preserve fast selectors, hooks and other sessions.","red":"bun run agent:test:backend -- test/publication.test.ts"} -->
+- [ ] EVALUATE — Prove the working system on held-out examples and an isolated session, then publish the reviewed feature PR. (40 min)
+<!-- plan:task-meta:{"writes":["docs/","planctl/bench/","planctl/test/"],"predictedActiveMinutes":40,"predictedCredits":0,"how":"Evaluate frozen examples through the production checker and keep mistakes and uncertain answers. Exercise a real MCP author-check-correct-approve session. Document setup and limits. Run the full local gate once, review and fix affected behavior, publish the feature PR and observe CI. Never merge.","red":"bun run agent:test:backend -- test/mcp.test.ts"} -->
+
+##### Acceptance criteria
+
+- [ ] `cd planctl && bun run agent:verify:pr` exits 0 — the complete publication gate passes
+- [ ] Commit
+
+##### Results
+
+<!-- plan:results:D1-S1:start -->
+| Task | Commit | UTC start-end | Active / elapsed | Usage | Result / proof |
+|---|---|---|---:|---|---|
+<!-- plan:results:D1-S1:end -->
+<!-- plan:stage:D1-S1:end -->
+<!-- plan:delivery:D1:end -->
 <!-- plan:implementation:end -->
 
 <!-- plan:execution:start -->
 ## Execution log
+
+- lock-spec sha256:41e3c23dbcf321997bdb57f989af192d3d39350bc7ef8005ef53521d59612c34 owner:Да
+
+- amend spec owner:Это должно быть тоже как-то зафиксировано. sha256:c85accd02322f99743805f89af3267c60a062ea552883592d3fda66472d13f23
+
+- amend spec owner:Давай вот эту штуку аккуратненько пишем. sha256:3297fd175528ebf2e678fc2ae937fbd95748d117029b8d6993a70d5355c8c73d
+
+- amend spec owner:Давай вот эту штуку аккуратненько пишем. sha256:01387cb68006d71ff3cc9ced981d52a1ed41b59ca7a73d0d662f0174473d1813
+
+- amend spec owner:флоу и интерфейсы идут рядом. sha256:e3a49a5189fd5254bd6b6512c23dae6f0d1c11d65a9d82b91e2abdf0d1cb6d41
+
+- amend spec owner:флоу и интерфейсы идут рядом. sha256:16b606cc916ad00057229b0330fd673a08a8b14d32c0087ac72379842d55f3fc
+
+- amend spec owner:Чтобы это было не на стороне агента. sha256:650109db850caeb31320909a0e39e51a17ffb0bf99f04190c35ed982cc26447f
+
+- amend spec owner:Сократи так, чтобы там остался только смысл и ключевые решения sha256:c75f9abd8bd8189f2ee00fb5f544b57d9396cfc8ffe7593bdd5440c8da674dc6
+
+- amend spec owner:Я хочу это понимать с типами и так далее. sha256:6d4f3a3bce8d1616ad87b9affea4fb6fd227c508ba5875893dfd866af6088bc9
+
+- approve sha256:bdcac556161adc0f6a5a4e685bfbe8f7cd7a89024786c78feaf28542d090a830 owner:Я тебе даю полный карт-бланш.
 <!-- plan:execution:end -->
