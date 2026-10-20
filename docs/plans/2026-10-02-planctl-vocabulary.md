@@ -327,15 +327,15 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 <!-- plan:task-meta:{"writes":["docs/","planctl/bench/","planctl/test/fixtures/"],"predictedActiveMinutes":30,"predictedCredits":0,"how":"Inventory available datasets, canonical flows and session feedback. Sanitize excerpts, record provenance and label confidence. Keep defective variants with their source in calibration or held-out evaluation. Report uncertainty, mistakes, latency and cost.","red":"bun run agent:test:backend -- test/content-check.test.ts"} -->
 - [x] CHECK — Provide vocabulary, deterministic checks, focused Jev advice and diagram rendering through MCP. (60 min) — f91f46b5f063c05e4ed2d4646592182d874cee94
 <!-- plan:task-meta:{"writes":["planctl/src/","planctl/test/","planctl/package.json","planctl/bun.lock","shared/code-production/vocabulary.md","shared/skills/"],"predictedActiveMinutes":60,"predictedCredits":0,"how":"Extend existing contracts and server with check_content. Preserve canonical names, entries without aliases and external wire names. Bound calls and cost, cache exact inputs, return unavailable advice on provider failure. Reuse checks in submission, amendment and exact-version approval; save incomplete drafts. Journal dictionary proposals with approval. Exercise actual MCP calls and failure recovery.","red":"bun run agent:test:backend -- test/content-check.test.ts"} -->
-- [x] EXECUTE — Validate actual contracts and coordinate controlled feature publication. (60 min) — f91f46b5f063c05e4ed2d4646592182d874cee94
+- [x] EXECUTE — Validate actual contracts and coordinate controlled feature publication. (60 min) — b7a1f6ad13b75e9d873e980521c6013b1b304a4b
 <!-- plan:task-meta:{"writes":["planctl/src/","planctl/test/","shared/code-production/templates/hooks/","docs/"],"predictedActiveMinutes":60,"predictedCredits":0,"how":"Use compiler declarations and canonical sources to compare actual changes with approved boundaries. Coordinate existing verification and review evidence with local dependencies and publication. Refuse protected destinations and repeated publication cost. Exercise interruption and retries with local remotes. Preserve fast selectors, hooks and other sessions.","red":"bun run agent:test:backend -- test/publication.test.ts"} -->
 - [x] EVALUATE — Prove the working system on held-out examples and an isolated session, and prepare the publication evidence. (40 min) — f91f46b5f063c05e4ed2d4646592182d874cee94
 <!-- plan:task-meta:{"writes":["docs/","planctl/bench/","planctl/test/"],"predictedActiveMinutes":40,"predictedCredits":0,"how":"Evaluate frozen examples through the production checker and keep mistakes and uncertain answers. Exercise a real MCP author-check-correct-approve session. Document setup and limits. After all local Tasks, the Stage criterion runs the complete gate; review and publication follow that criterion. Never merge.","red":"bun run agent:test:backend -- test/mcp.test.ts"} -->
 
 ##### Acceptance criteria
 
-- [x] `cd planctl && bun run agent:verify:pr` exits 0 — the complete publication gate passes — d21b03997e3d4f2e2e20a86f210f4f6ac1ddc999
-- [x] Commit — 026c5c17656d2b4dca712b5ab2de07b68465be94
+- [x] `cd planctl && bun run agent:verify:pr` exits 0 — the complete publication gate passes — b7a1f6ad13b75e9d873e980521c6013b1b304a4b
+- [x] Commit — b7a1f6ad13b75e9d873e980521c6013b1b304a4b
 
 ##### Results
 
@@ -346,6 +346,7 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 | CHECK | f91f46b5f063c05e4ed2d4646592182d874cee94 | 2026-10-20T19:00:29.853Z–2026-10-20T19:54:31.572Z | 54.02865 / 54.02865 min | unavailable: not measured by planctl | Implemented vocabulary proposals and focused content feedback, evaluated historical and public synthetic corpora, verified live MCP/Jev/Chromium authoring and retry behavior, and prepared publication evidence. Targeted checks pass; complete gate, final review and publication follow the Stage criterion. |
 | EXECUTE | f91f46b5f063c05e4ed2d4646592182d874cee94 | 2026-10-20T19:00:29.853Z–2026-10-20T19:54:31.572Z | 54.02865 / 54.02865 min | unavailable: not measured by planctl | Implemented vocabulary proposals and focused content feedback, evaluated historical and public synthetic corpora, verified live MCP/Jev/Chromium authoring and retry behavior, and prepared publication evidence. Targeted checks pass; complete gate, final review and publication follow the Stage criterion. |
 | EVALUATE | f91f46b5f063c05e4ed2d4646592182d874cee94 | 2026-10-20T19:00:29.853Z–2026-10-20T19:54:31.572Z | 54.02865 / 54.02865 min | unavailable: not measured by planctl | Implemented vocabulary proposals and focused content feedback, evaluated historical and public synthetic corpora, verified live MCP/Jev/Chromium authoring and retry behavior, and prepared publication evidence. Targeted checks pass; complete gate, final review and publication follow the Stage criterion. |
+| EXECUTE | b7a1f6ad13b75e9d873e980521c6013b1b304a4b | 2026-10-20T20:16:16.969Z–2026-10-20T20:34:07.348Z | 17.83965 / 17.83965 min | unavailable: not measured by planctl | Resolved final-review findings: shared contract-copy provenance, existing public signatures and local dependencies, future canonical definitions, cross-plan recovery and kernel writer locks, one diagnosed CI repair, and publication acknowledgement recovery. Focused verification passed: 68 tests plus five final shared-path checks; typecheck passed. |
 <!-- plan:results:D1-S1:end -->
 <!-- plan:stage:D1-S1:end -->
 <!-- plan:delivery:D1:end -->
@@ -413,4 +414,8 @@ Implement the six agreed flows by extending the current MCP server. Preserve fas
 - amend spec owner:Я тебе даю полный карт-бланш. sha256:1e982ed8b48ec63ef916a6707a02252b215b69247565d3a219bac04bce14a040
 
 - amend spec owner:Я тебе даю полный карт-бланш. sha256:42d5c83d5f6f00b6eed26325e93070f883049afbe171c62079ad638c5fdd2e64
+
+- record-result D1-S1 commit:b7a1f6ad13b75e9d873e980521c6013b1b304a4b
+
+- close D1-S1 closed commit:b7a1f6ad13b75e9d873e980521c6013b1b304a4b
 <!-- plan:execution:end -->
