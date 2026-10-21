@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, realpathSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { dlopen, FFIType } from "bun:ffi";
+import { basename, dirname, join, resolve, relative } from "node:path";
 import type { OwnerWaitReceipt, TaskRun, TaskRunIdentity } from "./task-run";
 import type { ProgressView } from "./plan-progress";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -40,6 +41,7 @@ export type UsageReceipt =
   | { readonly kind: "unavailable"; readonly reason: string };
 
 export interface DeliveryInput {
+  readonly review?: "required" | "none";
   readonly id: string;
   readonly title: string;
   readonly branch: string;
@@ -86,7 +88,7 @@ export interface StageInput {
    * must equal tasks + verification, so estimates stay derived. */
   readonly verifyActiveMinutes: number;
   readonly verifyCredits: number;
-  /** What this Stage solves and why now, what is built and where, how it is
+  /** What this Stage delivers, what is built and where, how it is
    * proven, and the commit message (subject, then body). Paragraphs separated
    * by one blank line; rendered between the forecast and the Tasks. */
   readonly description: string;
@@ -121,6 +123,7 @@ export interface ParsedStageInput {
 }
 
 export interface DeliveryMeta {
+  readonly review?: "required" | "none";
   readonly id: string;
   readonly active: boolean;
   readonly depends: readonly string[];
@@ -130,14 +133,39 @@ export interface DeliveryMeta {
   readonly repository: string | null;
 }
 
+/** Select a repository explicitly without inheriting a calling hook's local Git paths.
+ * @tested-by: tst_core_planctl_repository_002
+ */
+export function repositoryEnvironment(): NodeJS.ProcessEnv {
+  const local = execFileSync("git", ["rev-parse", "--local-env-vars"], { encoding: "utf8" }).trim().split("\n");
+  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !local.includes(name)));
+}
+
+/** Shared copy/rename provenance for the existing inventory and shape comparison. */
+export function contractChangePaths(root: string, base: string, commit: string): readonly { readonly path: string; readonly previousPath: string }[] {
+  const diff = spawnSync("git", ["-C", root, "diff", "--name-status", "-z", "--find-renames", "--find-copies-harder", base, commit, "--", "*.ts", "*.tsx"],
+    { encoding: "utf8", env: repositoryEnvironment() });
+  if (diff.status !== 0) throw new Error("Cannot establish the contract diff base");
+  const fields = diff.stdout.split("\0").filter(Boolean);
+  const result: { path: string; previousPath: string }[] = [];
+  for (let i = 0; i < fields.length;) {
+    const status = fields[i++]; const previousPath = fields[i++];
+    const path = status?.startsWith("R") || status?.startsWith("C") ? fields[i++] : previousPath;
+    if (!status || !path || !previousPath) throw new Error("Incomplete Git contract diff");
+    result.push({ path, previousPath });
+  }
+  return result;
+}
+
 /** The checkout a Delivery's operations run in: the plan's root, or the configured checkout of its named repository. */
 export function deliveryRoot(planRoot: string, delivery: DeliveryMeta): string {
   if (delivery.repository === null) return planRoot;
   const key = `code-production.repository.${delivery.repository}`;
-  const configured = spawnSync("git", ["-C", planRoot, "config", "--get", key], { encoding: "utf8" });
+  const env = repositoryEnvironment();
+  const configured = spawnSync("git", ["-C", planRoot, "config", "--get", key], { encoding: "utf8", env });
   const path = configured.status === 0 ? configured.stdout.trim() : "";
   if (path === "") throw new Error(`repository ${delivery.repository} has no checkout on this machine; run: git config ${key} <path>`);
-  const top = spawnSync("git", ["-C", path, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
+  const top = spawnSync("git", ["-C", path, "rev-parse", "--show-toplevel"], { encoding: "utf8", env });
   const toplevel = top.status === 0 ? top.stdout.trim() : "";
   if (toplevel === "" || toplevel !== resolve(path)) throw new Error(`${key} = ${path} is not a repository checkout`);
   return toplevel;
@@ -202,9 +230,11 @@ export interface MutationResult {
   readonly body: string;
   readonly specHash?: string;
   readonly implementationHash?: string;
+  readonly vocabularyFile?: { readonly path: "docs/vocabulary.md"; readonly before: string | null; readonly after: string };
 }
 
 export interface StageCloseResult extends MutationResult {
+  readonly verificationLogs?: readonly string[];
   readonly closed: number;
   readonly status: "CLOSED" | "PARTIAL";
 }
@@ -279,6 +309,8 @@ interface MutationJournal {
   readonly initialHash: string;
   readonly candidateHash: string;
   readonly events: readonly JournalEvent[];
+  readonly vocabularyFile?: MutationResult["vocabularyFile"];
+  readonly pending?: { readonly before: string; readonly after: string };
 }
 
 const SPEC_START = "<!-- plan:spec:start -->";
@@ -318,7 +350,7 @@ export const DELIVERY_DESCRIPTION_HINT =
 export const DELIVERY_WAIT_HINT =
   "the external wait forecast — minutes the Delivery expects to wait on others (owner review rounds, CI runs, external services), kept apart from active work; the active-work total and the longest dependency path are derived from the Stages";
 export const STAGE_DESCRIPTION_HINT =
-  "what this Stage solves and why now, what is built and where, how it is proven, and the commit message (subject, then body); paragraphs separated by one blank line";
+  "what this Stage delivers, what is built and where, how it is proven, and the commit message (subject, then body); paragraphs separated by one blank line";
 
 /** Prose that renders inside a protocol region: paragraphs, never anything
  * the parsers would read as structure. A heading would end a section, a
@@ -391,7 +423,7 @@ function assertPlanTitle(title: string): void {
 }
 
 /** The SPEC sections every plan carries, in the order the owner reads them. */
-export const SPEC_SECTIONS = ["The Goal", "Why now", "The target", "Target tree", "Invariants", "Reuse", "New names", "Not verified"] as const;
+export const SPEC_SECTIONS = ["The Goal", "The target"] as const;
 
 /** The plan's title: its first line. */
 function planTitle(body: string): string {
@@ -653,7 +685,7 @@ function renderDelivery(input: DeliveryInput, stages: readonly ForecastStage[]):
   assertSafeProse(input.description, "Delivery description", DELIVERY_DESCRIPTION_HINT);
   const waitMinutes = assertExternalWait(input.predictedExternalWaitMinutes);
   assertUnique(input.depends, "Delivery dependencies");
-  const meta = JSON.stringify({ active: input.active, depends: input.depends, predictedExternalWaitMinutes: waitMinutes, ...(input.repository === undefined ? {} : { repository: input.repository }) });
+  const meta = JSON.stringify({ active: input.active, depends: input.depends, predictedExternalWaitMinutes: waitMinutes, ...(input.review === undefined ? {} : { review: input.review }), ...(input.repository === undefined ? {} : { repository: input.repository }) });
   return [
     deliveryStart(input.id),
     `<!-- plan:delivery-meta:${meta} -->`,
@@ -963,7 +995,8 @@ export function deliveryMetas(body: string): readonly DeliveryMeta[] {
     if (branch === null) throw new Error(`Delivery ${id} lacks a Branch line`);
     // The header says which Delivery is active: execution moves it without
     // touching the frozen contract, whose metadata keeps the authored flag.
-    values.push({ id, active: activeDeliveryId(body) === id, depends, branch: capture(branch, 1, `Delivery ${id} branch`), predictedExternalWaitMinutes: wait, repository: typeof meta.repository === "string" ? meta.repository : null });
+    if (meta.review !== undefined && meta.review !== "required" && meta.review !== "none") throw new Error("Invalid Delivery review requirement");
+    values.push({ ...(meta.review === undefined ? {} : { review: meta.review }), id, active: activeDeliveryId(body) === id, depends, branch: capture(branch, 1, `Delivery ${id} branch`), predictedExternalWaitMinutes: wait, repository: typeof meta.repository === "string" ? meta.repository : null });
   }
   return values;
 }
@@ -1471,8 +1504,16 @@ export function closePlanStage(
   const taskText = capture(taskSection, 1, `Stage ${stageId} Tasks`);
   const criteriaText = capture(criteriaSection, 1, `Stage ${stageId} criteria`);
   if (/^- \[ \] /m.test(taskText)) throw new Error(`Stage ${stageId} still has open Tasks; import its result first`);
+  const verificationLogs: string[] = [];
   const run = options.run ?? ((command: string): number | null => {
-    const result = spawnSync("bash", ["-c", command], { cwd: options.root, timeout: 600_000 });
+    const result = spawnSync("bash", ["-c", command], { cwd: options.root, timeout: 600_000, maxBuffer: 16 * 1024 * 1024 });
+    try {
+      const directory = resolve(options.root, git(options.root, ["rev-parse", "--git-path", "code-production/verification"]));
+      mkdirSync(directory, { recursive: true });
+      const path = join(directory, `${stageId}-${Date.now()}-${digest(command).slice(0, 12)}.log`);
+      writeFileSync(path, `Command: ${command}\nExit: ${result.status}; signal: ${result.signal}\n${result.stdout ?? ""}\n${result.stderr ?? ""}\n${result.error?.message ?? ""}`, { mode: 0o600 });
+      verificationLogs.push(path);
+    } catch { /* Diagnostic storage cannot change the actual check result. */ }
     return result.error === undefined && result.signal === null ? result.status : null;
   });
   let closed = 0;
@@ -1488,7 +1529,9 @@ export function closePlanStage(
     closed += 1;
     return `- [x] ${criterion} — ${options.head}`;
   }).join("\n");
-  let changedStage = stage.text.replace(criteriaText, changedCriteria);
+  // @tested-by: tst_core_planctl_close_literal_001
+  // Shell commands may contain $', $& or $$; they are literal plan bytes.
+  const changedStage = stage.text.replace(criteriaText, () => changedCriteria);
   const remaining = (changedStage.match(/^- \[ \] /gm) ?? []).length;
   const status = remaining === 0 ? "CLOSED" : "PARTIAL";
   let next = `${body.slice(0, stage.from)}${changedStage}${body.slice(stage.to)}`;
@@ -1500,7 +1543,7 @@ export function closePlanStage(
       && /^- \[ \] /m.test(region(next, stageStart(entry.id), stageEnd(entry.id)).text));
     if (!open) next = markLedgerImplemented(next);
   }
-  return { body: next, closed, status };
+  return { body: next, closed, status, ...(verificationLogs.length === 0 ? {} : { verificationLogs }) };
 }
 
 function gitRaw(root: string, args: readonly string[]): string {
@@ -1534,6 +1577,20 @@ function parseJournal(value: unknown): MutationJournal {
     }
     return { operation: event.operation, beforeHash: event.beforeHash, afterHash: event.afterHash };
   });
+  let vocabularyFile: MutationResult["vocabularyFile"];
+  if (record.vocabularyFile !== undefined) {
+    const file = object(record.vocabularyFile, "journal vocabulary file");
+    if (file.path !== "docs/vocabulary.md" || (file.before !== null && typeof file.before !== "string") || typeof file.after !== "string") {
+      throw new Error("invalid journal vocabulary file");
+    }
+    vocabularyFile = { path: "docs/vocabulary.md", before: file.before, after: file.after };
+  }
+  let pending: MutationJournal["pending"];
+  if (record.pending !== undefined) {
+    const p = object(record.pending, "pending journal");
+    if (typeof p.before !== "string" || typeof p.after !== "string" || digest(p.after) !== record.candidateHash) throw new Error("invalid pending journal");
+    pending = { before: p.before, after: p.after };
+  }
   return {
     version: 1,
     root: record.root,
@@ -1542,6 +1599,8 @@ function parseJournal(value: unknown): MutationJournal {
     initialHash: record.initialHash,
     candidateHash: record.candidateHash,
     events,
+    ...(vocabularyFile === undefined ? {} : { vocabularyFile }),
+    ...(pending === undefined ? {} : { pending }),
   };
 }
 
@@ -1613,6 +1672,12 @@ export async function completeTask(
     const names = undeclared.map((type) => `${type.name} in ${type.path}`).join(", ");
     throw new Error(`exported type ${names} is missing from SPEC Interfaces; declare it there under the owner's word`);
   }
+  const { checkContractChanges } = await import("./contract-check");
+  const changedContracts = await checkContractChanges(checkout, input.commit, body);
+  // Legacy plans may cite unchanged contracts without spelling their whole shape.
+  // The existing inventory checks new names; enforce positively established shape conflicts.
+  const conflicts = changedContracts.filter(f => !f.text.includes("has no approved contract") && !f.text.includes("needs canonical source verification"));
+  if (conflicts.length) throw new Error(conflicts.map(f => `${f.text}\nEvidence: ${f.quote}`).join("\n"));
   const receipt: StageResultReceipt = {
     version: 1,
     plan,
@@ -1765,11 +1830,20 @@ function observed(publication: StartTaskInput["publication"], root: string, bran
 /** Why a Delivery cannot start yet: a parent without a green PR on its current head. Null when every parent is green or merged.
  * @tested-by: tst_unit_planctl_mcp_009
  */
-function parentRefusal(root: string, deliveries: readonly DeliveryMeta[], delivery: DeliveryMeta, publication: StartTaskInput["publication"]): string | null {
+function parentRefusal(root: string, deliveries: readonly DeliveryMeta[], delivery: DeliveryMeta, publication: StartTaskInput["publication"], body: string): string | null {
   for (const parentId of delivery.depends) {
     const parent = deliveries.find((entry) => entry.id === parentId);
     if (parent === undefined) return `Delivery ${delivery.id} depends on unknown Delivery ${parentId}`;
     const checkout = deliveryRoot(root, parent);
+    const localStages = stageInputs(body).filter(s => s.deliveryId === parent.id);
+    const locallyComplete = localStages.length > 0 && localStages.every(s => {
+      const text = region(body, stageStart(s.id), stageEnd(s.id)).text;
+      if (/^- \[ \] /m.test(text)) return false;
+      const commits = [...text.matchAll(/^- \[x\].* — ([a-f0-9]{7,40})\s*$/gm)].map(m => m[1]!);
+      return commits.length > 0 && commits.every(commit =>
+        spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", commit, "HEAD"], { env: repositoryEnvironment() }).status === 0);
+    });
+    if (locallyComplete) continue;
     const state = observed(publication, checkout, parent.branch);
     if (state === null) return `Delivery ${parent.id} has no PR yet`;
     if ("error" in state) return `Delivery ${parent.id}: ${state.error}`;
@@ -1782,6 +1856,19 @@ function parentRefusal(root: string, deliveries: readonly DeliveryMeta[], delive
     }
   }
   return null;
+}
+
+/** Local prerequisite completion is sufficient before publication; observer and executor agree. */
+export function nextEligibleTask(root: string, body: string, publication: StartTaskInput["publication"]): ReturnType<typeof nextOpenTask> {
+  const current = nextOpenTask(body);
+  if (current.taskId !== null) return current;
+  const deliveries = deliveryMetas(body);
+  for (const delivery of deliveries) {
+    if (delivery.active || parentRefusal(root, deliveries, delivery, publication, body) !== null) continue;
+    const candidate = nextOpenTask(replaceHeader(body, "Active Delivery", delivery.id));
+    if (candidate.taskId !== null) return candidate;
+  }
+  return current;
 }
 
 function taskRunOf(run: TaskRun): string | null {
@@ -1808,17 +1895,9 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
     const running = mine[0];
     if (running !== undefined) taskId = running.taskId;
     else {
-      const next = nextOpenTask(body);
-      if (next.taskId !== null) taskId = next.taskId;
-      else {
-        const deliveries = deliveryMetas(body);
-        const child = deliveries.find((delivery) => !delivery.active
-          && stageInputs(body).some((stage) => stage.deliveryId === delivery.id && stage.tasks.some((task) => !task.completed))
-          && parentRefusal(root, deliveries, delivery, input.publication) === null);
-        const firstOpen = child === undefined ? undefined : stageInputs(body).filter((stage) => stage.deliveryId === child.id).flatMap((stage) => stage.tasks).find((task) => !task.completed);
-        if (firstOpen === undefined) throw new Error(`nothing to start: ${next.blockedBy ?? "every Task of the active Delivery is complete and no child Delivery is eligible"}`);
-        taskId = firstOpen.id;
-      }
+      const next = nextEligibleTask(root, body, input.publication);
+      if (next.taskId === null) throw new Error(`nothing to start: ${next.blockedBy ?? "no eligible Task remains"}`);
+      taskId = next.taskId;
     }
   }
   const elsewhere = runs.find((run) => run.taskId === taskId && !ownRoot(run));
@@ -1838,7 +1917,7 @@ export async function startTask(root: string, input: StartTaskInput): Promise<Ta
     if (onBranch !== delivery.branch) throw new Error(`checkout ${checkout} is on ${onBranch}; Delivery ${delivery.id} is ${delivery.branch}`);
   }
   if (!delivery.active) {
-    const refusal = parentRefusal(root, deliveries, delivery, input.publication);
+    const refusal = parentRefusal(root, deliveries, delivery, input.publication, body);
     if (refusal !== null) throw new Error(`Task ${taskId} cannot start: ${refusal}`);
     mutatePlanFile(root, plan, "activate-delivery", (current) => ({ body: replaceHeader(current, "Active Delivery", delivery.id) }));
     body = readFileSync(resolve(root, plan), "utf8");
@@ -1971,10 +2050,86 @@ export function journalCreatedPlan(root: string, planArg: string, body: string):
   writeFileSync(planJournalPath(root, plan), `${JSON.stringify(journal, null, 2)}\n`);
 }
 
+function writeAtomicFile(path: string, text: string): void {
+  const temp = `${path}.${process.pid}.tmp`;
+  const mode = existsSync(path) ? statSync(path).mode & 0o777 : 0o600;
+  writeFileSync(temp, text, { mode });
+  renameSync(temp, path);
+}
+
+function writeJournal(path: string, journal: MutationJournal): void {
+  writeAtomicFile(path, `${JSON.stringify(journal, null, 2)}\n`);
+}
+
+/** Worktree-wide serialization covers competing plans changing the same vocabulary. */
+function withPlanWriter<T>(root: string, operation: () => T): T {
+  if (process.platform !== "linux" && process.platform !== "darwin") throw new Error("Plan writes require POSIX file locking.");
+  const native = dlopen(process.platform === "linux" ? "libc.so.6" : "/usr/lib/libSystem.B.dylib", {
+    flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+  });
+  // Kernel-owned locks survive PID namespaces and release on process death.
+  // Never unlink the lock inode: waiting writers must contend on the same file.
+  const lock = resolve(root, git(root, ["rev-parse", "--git-path", "planctl-writer.flock"]));
+  const fd = openSync(lock, "a", 0o600);
+  try {
+    if (native.symbols.flock(fd, 2 | 4) !== 0) throw new Error("Another planctl write is active; retry this operation.");
+    for (const journal of worktreeJournals(root)) {
+      if (journal.pending !== undefined) recoverPending(root, journal.plan);
+    }
+    return operation();
+  } finally { closeSync(fd); native.close(); }
+}
+
+function worktreeJournals(root: string): readonly MutationJournal[] {
+  const directory = dirname(planJournalPath(root, "docs/plans/inspection.md"));
+  return readdirSync(directory).filter(name => /^plan-update-journal(?:-[a-f0-9]+)?\.json$/.test(name))
+    .flatMap(name => { const journal = readJournal(join(directory, name)); return journal?.root === root ? [journal] : []; });
+}
+function repositoryFile(root: string, path: string): string {
+  const absolute = resolve(root, path);
+  if (!absolute.startsWith(`${root}/`)) throw new Error("Plan transaction path must stay inside its repository");
+  let existing = absolute;
+  while (!existsSync(existing) && dirname(existing) !== existing) existing = dirname(existing);
+  if (relative(realpathSync(root), realpathSync(existing)).startsWith("..")) throw new Error("Plan transaction symlink leaves its repository");
+  return absolute;
+}
+
+function recoverPending(root: string, plan: string): void {
+  const path = planJournalPath(root, plan);
+  const journal = readJournal(path);
+  if (journal?.pending === undefined) return;
+  if (journal.root !== root || journal.plan !== plan || journal.baseHead !== git(root, ["rev-parse", "HEAD"])) throw new Error("Interrupted mutation belongs to a different checkout or HEAD");
+  const absolute = repositoryFile(root, plan);
+  const current = readFileSync(absolute, "utf8");
+  if (current !== journal.pending.before && current !== journal.pending.after) throw new Error("Interrupted plan mutation conflicts with a later edit");
+  const file = journal.vocabularyFile;
+  if (file !== undefined) {
+    const target = repositoryFile(root, file.path);
+    const before = existsSync(target) ? readFileSync(target, "utf8") : null;
+    if (before !== file.before && before !== file.after) throw new Error("Interrupted vocabulary mutation conflicts with a later edit");
+    mkdirSync(dirname(target), { recursive: true });
+    writeAtomicFile(target, file.after);
+  }
+  writeAtomicFile(absolute, journal.pending.after);
+  git(root, ["add", plan, ...(file === undefined ? [] : [file.path])]);
+  const { pending: _pending, ...complete } = journal;
+  writeJournal(path, complete);
+}
+
+/** A subsequent MCP operation finishes a durable, already-authorized write after interruption. */
+export function recoverPlanMutation(root: string, plan: string): void {
+  withPlanWriter(root, () => recoverPending(root, plan));
+}
+
 export function mutatePlanFile(root: string, planArg: string, operation: string, transform: (body: string) => MutationResult): void {
-  const absolute = resolve(root, planArg);
-  const plan = absolute.slice(root.length + 1);
-  if (absolute === root || plan.startsWith("..")) throw new Error("plan must be inside the repository");
+  withPlanWriter(root, () => mutatePlanFileLocked(root, planArg, operation, transform));
+}
+
+function mutatePlanFileLocked(root: string, planArg: string, operation: string, transform: (body: string) => MutationResult): void {
+  const absolute = repositoryFile(root, planArg);
+  const plan = relative(root, absolute);
+  if (absolute === root || plan.startsWith("..") || resolve(root, plan) !== absolute) throw new Error("plan must be inside the repository");
+  recoverPending(root, plan);
   const path = planJournalPath(root, plan);
   const body = readFileSync(absolute, "utf8");
   const head = git(root, ["rev-parse", "HEAD"]);
@@ -1986,6 +2141,9 @@ export function mutatePlanFile(root: string, planArg: string, operation: string,
   if (existing !== null && existing.root === root && existing.plan === plan && existing.baseHead !== head) {
     const committedNow = spawnSync("git", ["-C", root, "show", `HEAD:${plan}`], { encoding: "utf8" });
     if (committedNow.status === 0 && digest(committedNow.stdout) === existing.candidateHash) {
+      if (existing.vocabularyFile !== undefined && gitRaw(root, ["show", `HEAD:${existing.vocabularyFile.path}`]) !== existing.vocabularyFile.after) {
+        throw new Error("Committed plan differs from its vocabulary transaction; inspect the commit before continuing.");
+      }
       unlinkSync(path);
       existing = null;
     }
@@ -2010,8 +2168,20 @@ export function mutatePlanFile(root: string, planArg: string, operation: string,
   const result = { ...transformed, body: hardBreakHeader(transformed.body) };
   const afterHash = digest(result.body);
   if (afterHash === currentHash) throw new Error(`${operation} produced no change`);
-  writeFileSync(absolute, result.body);
-  git(root, ["add", plan]);
+  const vocabularyFile = result.vocabularyFile ?? existing?.vocabularyFile;
+  if (result.vocabularyFile !== undefined) {
+    for (const other of worktreeJournals(root)) {
+      if (other.plan === plan || other.vocabularyFile === undefined) continue;
+      const committed = spawnSync("git", ["-C", root, "show", `HEAD:${other.plan}`], { encoding: "utf8" });
+      if (committed.status !== 0 || digest(committed.stdout) !== other.candidateHash) {
+        throw new Error(`Commit the prepared vocabulary transaction for ${other.plan}, then retry this operation.`);
+      }
+    }
+    const file = result.vocabularyFile;
+    const target = repositoryFile(root, file.path);
+    const actual = existsSync(target) ? readFileSync(target, "utf8") : null;
+    if (actual !== file.before) throw new Error("Vocabulary changed during approval; read the current proposal.");
+  }
   const journal: MutationJournal = {
     version: 1,
     root,
@@ -2020,8 +2190,12 @@ export function mutatePlanFile(root: string, planArg: string, operation: string,
     initialHash,
     candidateHash: afterHash,
     events: [...events, { operation, beforeHash: currentHash, afterHash }],
+    ...(vocabularyFile === undefined ? {} : { vocabularyFile }),
+    pending: { before: body, after: result.body },
   };
-  writeFileSync(path, `${JSON.stringify(journal, null, 2)}\n`);
+  // Write intent first. Recovery accepts only the recorded before/after bytes.
+  writeJournal(path, journal);
+  recoverPending(root, plan);
 }
 
 /** Is a merge in progress in this worktree? */
@@ -2068,6 +2242,10 @@ export function verifyStagedPlan(root: string, planArg: string): void {
   }
   const staged = gitRaw(root, ["show", `:${plan}`]);
   if (digest(staged) !== journal.candidateHash) throw new Error("staged plan differs from journal candidate");
+  if (journal.pending !== undefined) throw new Error("Interrupted plan write needs MCP recovery before commit");
+  if (journal.vocabularyFile !== undefined && gitRaw(root, ["show", `:${journal.vocabularyFile.path}`]) !== journal.vocabularyFile.after) {
+    throw new Error("Staged vocabulary differs from the approved proposal");
+  }
   let expected = journal.initialHash;
   for (const event of journal.events) {
     if (event.beforeHash !== expected) throw new Error("mutation journal chain is broken");
@@ -2085,6 +2263,9 @@ export function clearSpentJournal(planArg: string, commit: string): void {
   if (journal.plan !== plan) throw new Error("mutation journal belongs to another plan");
   const committed = gitRaw(root, ["show", `${commit}:${plan}`]);
   if (digest(committed) !== journal.candidateHash) throw new Error("commit does not contain the journal candidate");
+  if (journal.vocabularyFile !== undefined && gitRaw(root, ["show", `${commit}:${journal.vocabularyFile.path}`]) !== journal.vocabularyFile.after) {
+    throw new Error("commit does not contain the journal vocabulary candidate");
+  }
   unlinkSync(path);
 }
 
@@ -2111,8 +2292,11 @@ function requiredNumber(record: Readonly<Record<string, unknown>>, key: string):
 
 export function deliveryFrom(value: unknown): DeliveryInput {
   const record = object(value, "Delivery");
+  const review = record.review;
+  if (review !== undefined && review !== "required" && review !== "none") throw new Error("Delivery review must be required or none");
   if (typeof record.active !== "boolean") throw new Error("active must be boolean");
   return {
+    ...(review === undefined ? {} : { review }),
     id: requiredString(record, "id"), title: requiredString(record, "title"), branch: requiredString(record, "branch"),
     depends: stringArray(record.depends, "depends"), gate: stringArray(record.gate, "gate"), active: record.active,
     stageGraph: requiredString(record, "stageGraph"),

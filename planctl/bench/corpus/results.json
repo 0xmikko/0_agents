@@ -1,0 +1,276 @@
+{
+  "model": "jev-1.13.0",
+  "rubric": "synthetic-regression-1",
+  "path": "checkContent with focused corpus questions",
+  "apiCalls": 24,
+  "sentBytes": 15700,
+  "estimatedInputCostUpperUsd": 0.004788168000000001,
+  "billingVerified": false,
+  "limitations": "Public synthetic regression demonstrations derived from failure categories. Not owner-reviewed gold and not a replacement for the private source-separated historical evaluation. No production code or conversation excerpts are included.",
+  "summary": [
+    {
+      "split": "calibration",
+      "cases": 18,
+      "decisive": 15,
+      "correctDecisive": 15,
+      "falsePositive": 0,
+      "falseNegative": 0,
+      "uncertain": 3,
+      "unavailable": 0,
+      "brier": 0.027911111111111116
+    },
+    {
+      "split": "evaluation",
+      "cases": 6,
+      "decisive": 4,
+      "correctDecisive": 4,
+      "falsePositive": 0,
+      "falseNegative": 0,
+      "uncertain": 2,
+      "unavailable": 0,
+      "brier": 0.03608333333333332
+    }
+  ],
+  "results": [
+    {
+      "id": "typed_io_complete",
+      "group": "message-flow",
+      "split": "calibration",
+      "expected": true,
+      "probability": 0.95,
+      "predicted": true,
+      "uncertainty": null,
+      "elapsedMs": 476
+    },
+    {
+      "id": "typed_io_defect",
+      "group": "message-flow",
+      "split": "calibration",
+      "expected": false,
+      "probability": 0.08,
+      "predicted": false,
+      "uncertainty": null,
+      "elapsedMs": 232
+    },
+    {
+      "id": "isolation_complete",
+      "group": "message-flow",
+      "split": "calibration",
+      "expected": true,
+      "probability": 0.87,
+      "predicted": true,
+      "uncertainty": null,
+      "elapsedMs": 251
+    },
+    {
+      "id": "isolation_defect",
+      "group": "message-flow",
+      "split": "calibration",
+      "expected": false,
+      "probability": 0.04,
+      "predicted": false,
+      "uncertainty": null,
+      "elapsedMs": 193
+    },
+    {
+      "id": "required_values_complete",
+      "group": "configuration",
+      "split": "calibration",
+      "expected": true,
+      "probability": 0.85,
+      "predicted": true,
+      "uncertainty": null,
+      "elapsedMs": 196
+    },
+    {
+      "id": "required_values_defect",
+      "group": "configuration",
+      "split": "calibration",
+      "expected": false,
+      "probability": 0.08,
+      "predicted": false,
+      "uncertainty": null,
+      "elapsedMs": 245
+    },
+    {
+      "id": "registry_complete",
+      "group": "reuse",
+      "split": "calibration",
+      "expected": true,
+      "probability": 0.88,
+      "predicted": true,
+      "uncertainty": null,
+      "elapsedMs": 252
+    },
+    {
+      "id": "registry_defect",
+      "group": "reuse",
+      "split": "calibration",
+      "expected": false,
+      "probability": 0.14,
+      "predicted": false,
+      "uncertainty": null,
+      "elapsedMs": 206
+    },
+    {
+      "id": "shape_complete",
+      "group": "reuse",
+      "split": "calibration",
+      "expected": true,
+      "probability": 0.9,
+      "predicted": true,
+      "uncertainty": null,
+      "elapsedMs": 223
+    },
+    {
+      "id": "shape_defect",
+      "group": "reuse",
+      "split": "calibration",
+      "expected": false,
+      "probability": 0.05,
+      "predicted": false,
+      "uncertainty": null,
+      "elapsedMs": 202
+    },
+    {
+      "id": "runtime_complete",
+      "group": "reuse",
+      "split": "calibration",
+      "expected": true,
+      "probability": 0.86,
+      "predicted": true,
+      "uncertainty": null,
+      "elapsedMs": 236
+    },
+    {
+      "id": "runtime_defect",
+      "group": "reuse",
+      "split": "calibration",
+      "expected": false,
+      "probability": 0.05,
+      "predicted": false,
+      "uncertainty": null,
+      "elapsedMs": 202
+    },
+    {
+      "id": "accounting_complete",
+      "group": "reuse",
+      "split": "calibration",
+      "expected": true,
+      "probability": 0.69,
+      "predicted": null,
+      "uncertainty": "Inconclusive on the evaluated thresholds; inspect the cited evidence.",
+      "elapsedMs": 217
+    },
+    {
+      "id": "accounting_defect",
+      "group": "reuse",
+      "split": "calibration",
+      "expected": false,
+      "probability": 0.04,
+      "predicted": false,
+      "uncertainty": null,
+      "elapsedMs": 216
+    },
+    {
+      "id": "scope_complete",
+      "group": "reuse",
+      "split": "calibration",
+      "expected": true,
+      "probability": 0.54,
+      "predicted": null,
+      "uncertainty": "Inconclusive on the evaluated thresholds; inspect the cited evidence.",
+      "elapsedMs": 218
+    },
+    {
+      "id": "scope_defect",
+      "group": "reuse",
+      "split": "calibration",
+      "expected": false,
+      "probability": 0.04,
+      "predicted": false,
+      "uncertainty": null,
+      "elapsedMs": 212
+    },
+    {
+      "id": "distinct_boundary_complete",
+      "group": "reuse",
+      "split": "calibration",
+      "expected": true,
+      "probability": 0.85,
+      "predicted": true,
+      "uncertainty": null,
+      "elapsedMs": 225
+    },
+    {
+      "id": "distinct_boundary_defect",
+      "group": "reuse",
+      "split": "calibration",
+      "expected": false,
+      "probability": 0.21,
+      "predicted": null,
+      "uncertainty": "Inconclusive on the evaluated thresholds; inspect the cited evidence.",
+      "elapsedMs": 208
+    },
+    {
+      "id": "atomicity_complete",
+      "group": "transaction",
+      "split": "evaluation",
+      "expected": true,
+      "probability": 0.88,
+      "predicted": true,
+      "uncertainty": null,
+      "elapsedMs": 239
+    },
+    {
+      "id": "atomicity_defect",
+      "group": "transaction",
+      "split": "evaluation",
+      "expected": false,
+      "probability": 0.06,
+      "predicted": false,
+      "uncertainty": null,
+      "elapsedMs": 227
+    },
+    {
+      "id": "budget_complete",
+      "group": "delegation",
+      "split": "evaluation",
+      "expected": true,
+      "probability": 0.62,
+      "predicted": null,
+      "uncertainty": "Inconclusive on the evaluated thresholds; inspect the cited evidence.",
+      "elapsedMs": 234
+    },
+    {
+      "id": "budget_defect",
+      "group": "delegation",
+      "split": "evaluation",
+      "expected": false,
+      "probability": 0.06,
+      "predicted": false,
+      "uncertainty": null,
+      "elapsedMs": 221
+    },
+    {
+      "id": "compatibility_complete",
+      "group": "transport",
+      "split": "evaluation",
+      "expected": true,
+      "probability": 0.79,
+      "predicted": null,
+      "uncertainty": "Inconclusive on the evaluated thresholds; inspect the cited evidence.",
+      "elapsedMs": 218
+    },
+    {
+      "id": "compatibility_defect",
+      "group": "transport",
+      "split": "evaluation",
+      "expected": false,
+      "probability": 0.08,
+      "predicted": false,
+      "uncertainty": null,
+      "elapsedMs": 219
+    }
+  ]
+}

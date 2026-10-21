@@ -6,7 +6,7 @@ import { execSync, spawnSync } from "node:child_process";
 
 import { lockPlanSpec, putDelivery, putStage, stageInputs, type StageInput } from "../src/core/plan-update";
 
-import { checkPlanFreeze, gatePlan, lint, planItems, protocolLanguageViolations } from "../src/core/plan-gate";
+import { checkPlanFreeze, gatePlan, lint, planItems, protocolLanguageViolations, undeclaredExportedTypes } from "../src/core/plan-gate";
 
 // This file used to `delete process.env.PLAN_GATE_NESTED` here, so that the
 // suite could still exercise criterion execution when it ran AS a criterion
@@ -61,6 +61,51 @@ function planWith(body: string): string {
   return `# A plan\n\n## Stages\n\n${body}\n`;
 }
 
+// @test-id: tst_core_planctl_subtree_types_001
+// @scenario: scn_planctl_subtree_import_001
+// @covers: planctl/src/core/plan-gate.ts::undeclaredExportedTypes
+// @deterministic: yes
+// @fixtures: two temporary Git repositories joined by a subtree merge
+// @invariant: an imported parent supplies existing types, but new or changed types still need declaration.
+it("tst_core_planctl_subtree_types_001 distinguishes inherited catalog types from authored changes", async () => {
+  const app = makeRepo();
+  const catalog = makeRepo();
+  const body = "# Import catalog\n\n## Interfaces\n\nNo type changes.\n";
+  try {
+    writeFileSync(join(catalog.root, "src/api.ts"), "export interface Existing { id: string; }\n");
+    git(catalog.root, "add src/api.ts");
+    git(catalog.root, "commit -qm catalog");
+    const split = git(catalog.root, "rev-parse HEAD");
+    git(app.root, `fetch -q ${catalog.root} ${split}`);
+    git(app.root, `merge -q -s ours --no-commit --no-ff --allow-unrelated-histories ${split}`);
+    git(app.root, `read-tree --prefix=plugins/ -u ${split}`);
+    const message = `-m import --trailer 'git-subtree-dir: plugins' --trailer 'git-subtree-split: ${split}'`;
+    git(app.root, `commit -q ${message}`);
+    expect(await undeclaredExportedTypes(app.root, "HEAD", body)).toEqual([]);
+
+    writeFileSync(join(app.root, "plugins/src/api.ts"),
+      "export interface Existing { id: number; }\nexport type Added = boolean;\n");
+    git(app.root, "add plugins/src/api.ts");
+    // Rebuild only this disposable fixture's merge to test edits made during import.
+    git(app.root, `commit --amend -q ${message}`);
+    expect(await undeclaredExportedTypes(app.root, "HEAD", body)).toEqual([
+      { path: "plugins/src/api.ts", name: "Existing" },
+      { path: "plugins/src/api.ts", name: "Added" },
+    ]);
+
+    writeFileSync(join(app.root, "plugins/src/api.ts"), "export interface Existing { id: string; }\n");
+    git(app.root, "add plugins/src/api.ts");
+    // A trailer referring to a commit outside the merge parents grants no exemption.
+    git(app.root, "commit --amend -qm import --trailer 'git-subtree-dir: plugins' --trailer 'git-subtree-split: 0000000000000000000000000000000000000000'");
+    expect(await undeclaredExportedTypes(app.root, "HEAD", body)).toEqual([
+      { path: "plugins/src/api.ts", name: "Existing" },
+    ]);
+  } finally {
+    rmSync(app.root, { recursive: true, force: true });
+    rmSync(catalog.root, { recursive: true, force: true });
+  }
+});
+
 describe("findings an agent can act on", () => {
   const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8");
 
@@ -77,14 +122,11 @@ describe("findings an agent can act on", () => {
         .replace("### What changes\n\nReject empty names before saving.\n\n", "");
       const report = await lint(body, root);
       const rules = report.violations.map((violation) => violation.rule).sort();
-      expect(rules).toEqual(["codes", "sentence", "vocabulary"]);
+      expect(rules).toEqual(["codes", "vocabulary"]);
       const vocabulary = report.violations.find((violation) => violation.rule === "vocabulary");
       expect(vocabulary).toMatchObject({ blocking: false, quote: "blueprint document", replacement: "plan" });
       expect(report.violations.every((violation) => !violation.blocking)).toBe(true);
       expect(vocabulary?.line).toBe(body.split("\n").findIndex((line) => line.includes("Continue D1-S4")) + 1);
-      const sentence = report.violations.find((violation) => violation.rule === "sentence");
-      expect(sentence?.quote).toContain("word word");
-      expect(sentence?.replacement).toBeNull();
       expect(report.violations.some((violation) => violation.text.includes("What changes"))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -110,13 +152,66 @@ describe("findings an agent can act on", () => {
       expect(await typescript(withUntyped)).toEqual([[withUntyped.split("\n").indexOf("function companyFor(domainKey, observed: string): string {") + 1, "untyped parameter `domainKey` in `companyFor`: pseudocode is TypeScript with types"]]);
       const withJavascript = spec.replace(anchor, `${anchor}\n${javascript}`);
       expect(await typescript(withJavascript)).toEqual([[withJavascript.split("\n").indexOf("```javascript") + 1, "code block in `javascript`: pseudocode is TypeScript with types, in a ```typescript block"]]);
-      // Names are camelCase, always: a snake_case field, parameter or method is refused by name; a PascalCase type is not a name in question.
+      // New snake_case fields and local parameters are refused; a PascalCase type name is valid.
       const snake = "```typescript\ninterface WireShape {\n  sync_enabled: boolean;\n  readonly isTracked: boolean;\n}\nfunction applySelection(tracked_handles: string[]): void {\n  return;\n}\n```\n\n";
       const withSnake = spec.replace(anchor, `${anchor}\n${snake}`);
       const start = withSnake.split("\n").indexOf("interface WireShape {") + 1;
-      expect(await typescript(withSnake)).toEqual([[start + 1, "`sync_enabled` is not camelCase; TypeScript names are camelCase, always"], [start + 4, "`tracked_handles` is not camelCase; TypeScript names are camelCase, always"]]);
+      expect(await typescript(withSnake)).toEqual([[start + 1, "`sync_enabled` is not camelCase and is not a committed member of this type"], [start + 4, "`tracked_handles` is not camelCase and is not a committed member of this type"]]);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // @test-id: tst_core_planctl_preserved_names_001
+  // @scenario: scn_planctl_preserved_names_001
+  // @covers: planctl/src/core/plan-gate.ts::lint
+  // @deterministic: yes
+  // @fixtures: two temporary repositories and committed Source/plugin declarations
+  // @invariant: Interfaces can describe existing protocol members without admitting invented names or borrowing another type's members.
+  it("tst_core_planctl_preserved_names_001 accepts committed protocol names in the owning Delivery repository", async () => {
+    const local = makeRepo();
+    const catalog = makeRepo();
+    try {
+      const declarations = [
+        "export interface ProfileIdentity {",
+        "  display_name: string;",
+        "  avatar_url: string;",
+        "}",
+        "export interface GraphService {",
+        "  create_entity(params: string, account_id?: string): string;",
+        "}",
+        "export interface CompanyDetailView {",
+        "  linked_entities: readonly string[];",
+        "  header_rows: readonly string[];",
+        "}",
+      ].join("\n");
+      writeFileSync(join(catalog.root, "src/wire.ts"), declarations);
+      git(catalog.root, "add src/wire.ts");
+      git(catalog.root, "commit -qm protocol");
+      git(local.root, `config code-production.repository.catalog ${catalog.root}`);
+      const delivery = [
+        "<!-- plan:delivery:D1:start -->",
+        '<!-- plan:delivery-meta:{"active":true,"repository":"catalog"} -->',
+        "### PR Delivery D1 — Catalog",
+        "Branch: `feat/fixture`;",
+        "<!-- plan:delivery:D1:end -->",
+      ].join("\n");
+      const body = spec.replace("export interface Change {", `${declarations}\nexport interface Change {`) + delivery;
+      const typeFindings = async (candidate: string) => (await lint(candidate, local.root)).violations.filter((finding) => finding.rule === "typescript");
+      expect(await typeFindings(body)).toEqual([]);
+      expect(await typeFindings(body.replace("display_name: string", '"display_name": string'))).toEqual([]);
+
+      // Uncommitted code cannot grant an exception to a newly invented name.
+      writeFileSync(join(catalog.root, "src/wire.ts"), declarations.replace("avatar_url: string;", "avatar_url: string;\n  invented_name: string;"));
+      const invented = body.replace("avatar_url: string;", 'avatar_url: string;\n  "invented_name": string;');
+      expect((await typeFindings(invented)).map((finding) => finding.quote)).toEqual(["invented_name"]);
+      const borrowed = body.replace("export interface Change {", "export interface OtherIdentity {\n  display_name: string;\n}\nexport interface Change {");
+      expect((await typeFindings(borrowed)).map((finding) => finding.quote)).toEqual(["display_name"]);
+      const borrowedParameter = body.replace("export interface GraphService {", "export interface GraphService {\n  remove(params: string, account_id?: string): void;");
+      expect((await typeFindings(borrowedParameter)).map((finding) => finding.quote)).toEqual(["account_id"]);
+    } finally {
+      rmSync(local.root, { recursive: true, force: true });
+      rmSync(catalog.root, { recursive: true, force: true });
     }
   });
 
@@ -151,22 +246,19 @@ describe("findings an agent can act on", () => {
   // @scenario: scn_plan_form_findings_001
   // @covers: planctl/src/core/plan-gate.ts::lint
   // @deterministic: yes
-  // @invariant: The target is flows: a flow without its mermaid diagram or its implementation map is refused by name at its heading, a target without flows is refused, and the model SPEC passes.
-  it("tst_gate_lint_005 refuses a flow without its diagram or its implementation map and a target without flows, by name", async () => {
+  // @invariant: The target is flows: layout preferences do not require extra tables, diagrams or headings; factual checks remain separate.
+  it("tst_gate_lint_005 allows a sufficient solution without mechanical layout requirements", async () => {
     const { root } = makeRepo();
     try {
       const diagram = "```mermaid\nflowchart LR\n  Input[\"Change (input)\"] --> Parser[\"One parser\"]\n```\n\n";
       const map = spec.slice(spec.indexOf("| Implementation map"), spec.indexOf("### Interfaces"));
       expect(spec).toContain(diagram);
       expect(map).toContain("| RED test |");
-      const lines = spec.split("\n");
-      const flowLine = lines.indexOf("### Reject an empty name") + 1;
-      const targetLine = lines.indexOf("## The target") + 1;
       const structure = async (body: string) => (await lint(body, root)).violations.filter((violation) => violation.rule === "structure").map((violation) => [violation.line, violation.text]);
       expect(await structure(spec)).toEqual([]);
-      expect(await structure(spec.replace(diagram, ""))).toEqual([[flowLine, "flow «Reject an empty name» has no mermaid diagram"]]);
-      expect(await structure(spec.replace(map, ""))).toEqual([[flowLine, "flow «Reject an empty name» has no implementation map: a table with the rows Owner, Target files, Input / wake, Output / durable state, RED test"]]);
-      expect(await structure(spec.replace("### Reject an empty name\n\n", ""))).toEqual([[targetLine, "The target has no flow: one ### heading per flow, each with its mermaid diagram and its implementation map"]]);
+      expect(await structure(spec.replace(diagram, ""))).toEqual([]);
+      expect(await structure(spec.replace(map, ""))).toEqual([]);
+      expect(await structure(spec.replace("### Reject an empty name\n\n", ""))).toEqual([]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -188,19 +280,13 @@ describe("plan form", () => {
     try {
       const plan = join(root, "plan.md");
       const cases = [
-        [spec.replace("## Why now", "## Background"), "Why now"],
-        [spec.replace("### Target tree", "### Files"), "Target tree"],
         [spec.replace("export interface Change {\n  readonly name: string;\n  readonly accepted: boolean;\n}", "const value = 1;"), "Interfaces"],
-        [spec.replace("  readonly name: string;\n  readonly accepted: boolean;", "  readonly name: string; readonly accepted: boolean;"), "field"],
         [spec.replace("readonly name: string;", "readonly name: ;"), "TypeScript"],
         [spec.replace("Input[\"Change (input)\"]", "Input[Change (input)]"), "mermaid"],
         [spec.replace("The current parser accepts empty names.", "This phase accepts empty names."), "Stage"],
         [spec.replace("The current parser accepts empty names.", "Continue D1-S4 before INV-12."), "code"],
-        [spec.replace("The current parser accepts empty names.", `${"word ".repeat(31)}ends.`), "thirty"],
-        [spec.replace("The current parser accepts empty names.", `${"word ".repeat(16)}\n${"word ".repeat(16)}ends.`), "thirty"],
         [spec + "\n- Predict: 12 active min / 4 credits.\n", "Predict"],
         [spec + "\n##### Acceptance criteria\n\n- [ ] Works correctly\n", "criterion"],
-        [spec.replace("| Name | Reason |\n|---|---|\n| Change | Names the existing public input. |", "No names."), "table"],
       ];
       for (const [body, reason] of cases) {
         if (body === undefined || reason === undefined) throw new Error("invalid defect fixture");
@@ -481,6 +567,92 @@ describe("plan-gate", () => {
     const bad = gatePlan(plan, { root, nested: false });
     const kinds = bad.violations.map((v) => v.kind).sort();
     expect(kinds).toEqual(["criterion-failed", "missing-receipt", "unknown-receipt"]);
+  });
+
+  // @test-id: tst_core_planctl_repository_001
+  // @scenario: scn_planctl_repository_001
+  // @covers: planctl/src/core/plan-gate.ts::gatePlan
+  // @deterministic: yes
+  // @fixtures: two temporary Git repositories with distinct commits and files
+  it("tst_core_planctl_repository_001 checks receipts and criteria in their owning repository", () => {
+    const local = makeRepo();
+    const remote = makeRepo();
+    try {
+      writeFileSync(join(remote.root, "remote.txt"), "remote delivery\n");
+      git(remote.root, "add remote.txt");
+      git(remote.root, "commit -qm remote");
+      const remoteSha = git(remote.root, "rev-parse HEAD");
+      const plan = join(local.root, "plan.md");
+      const body = planWith([
+        "<!-- plan:delivery:D1:start -->",
+        '<!-- plan:delivery-meta:{"active":false,"repository":"app"} -->',
+        "### PR Delivery D1 — App",
+        "Branch: `feat/fixture`;",
+        "#### Stage D1-S1 — App receipts",
+        `- [x] App work — ${remoteSha}`,
+        `- [x] \`test -f remote.txt\` exits 0 — ${remoteSha}`,
+        "<!-- plan:delivery:D1:end -->",
+        "<!-- plan:delivery:D2:start -->",
+        '<!-- plan:delivery-meta:{"active":true} -->',
+        "### PR Delivery D2 — Catalog",
+        "Branch: `feat/fixture`;",
+        "#### Stage D2-S1 — Local receipts",
+        `- [x] \`test ! -f remote.txt\` exits 0 — ${local.sha}`,
+        "<!-- plan:delivery:D2:end -->",
+      ].join("\n"));
+      writeFileSync(plan, body);
+      git(local.root, `config code-production.repository.app ${remote.root}`);
+      const report = gatePlan(plan, { root: local.root, nested: false });
+      expect(report.violations).toEqual([]);
+      expect(report.checkedCriteria).toBe(2);
+
+      writeFileSync(plan, body.replace(`exits 0 — ${local.sha}`, `exits 0 — ${remoteSha}`));
+      expect(gatePlan(plan, { root: local.root, noExec: true }).violations.map((v) => v.kind)).toEqual(["unknown-receipt"]);
+      git(local.root, "config --unset code-production.repository.app");
+      expect(() => gatePlan(plan, { root: local.root, noExec: true })).toThrow("repository app has no checkout");
+    } finally {
+      rmSync(local.root, { recursive: true, force: true });
+      rmSync(remote.root, { recursive: true, force: true });
+    }
+  });
+
+  // @test-id: tst_core_planctl_repository_002
+  // @scenario: scn_planctl_repository_002
+  // @covers: planctl/src/core/plan-update.ts::repositoryEnvironment, planctl/src/core/plan-gate.ts::gatePlan
+  // @deterministic: yes
+  // @fixtures: two temporary Git repositories; a gate process with the caller's Git environment
+  it("tst_core_planctl_repository_002 isolates repository lookup and criteria from a calling hook", () => {
+    const local = makeRepo();
+    const remote = makeRepo();
+    try {
+      writeFileSync(join(remote.root, "remote.txt"), "remote delivery\n");
+      git(remote.root, "add remote.txt");
+      git(remote.root, "commit -qm remote");
+      const remoteSha = git(remote.root, "rev-parse HEAD");
+      git(local.root, `config code-production.repository.app ${remote.root}`);
+      const plan = join(local.root, "plan.md");
+      writeFileSync(plan, planWith([
+        "<!-- plan:delivery:D1:start -->",
+        '<!-- plan:delivery-meta:{"active":true,"repository":"app"} -->',
+        "### PR Delivery D1 — App",
+        "Branch: `feat/fixture`;",
+        `- [x] App work — ${remoteSha}`,
+        `- [x] \`test -f remote.txt && test "$(git rev-parse --show-toplevel)" = "$PWD"\` exits 0 — ${remoteSha}`,
+        "<!-- plan:delivery:D1:end -->",
+      ].join("\n")));
+
+      const hook = spawnSync(process.execPath, [join(import.meta.dir, "../src/core/plan-gate.ts"), plan, "--root", local.root], {
+        cwd: local.root,
+        env: { ...CLEAN_GIT_ENV, GIT_DIR: join(local.root, ".git"), GIT_WORK_TREE: local.root, GIT_INDEX_FILE: join(local.root, ".git/index") },
+        encoding: "utf8",
+        timeout: 10_000,
+      });
+      expect(hook.stderr).toBe("");
+      expect(hook.status).toBe(0);
+    } finally {
+      rmSync(local.root, { recursive: true, force: true });
+      rmSync(remote.root, { recursive: true, force: true });
+    }
   });
 
   it("tst_scripts_plangate_003 a multi-line box carries its receipt on the last continuation line", () => {

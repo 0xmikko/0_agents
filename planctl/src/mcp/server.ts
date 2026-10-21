@@ -30,15 +30,20 @@ import {
   putDelivery,
   putStage,
   recordDeviation,
+  recoverPlanMutation,
   removeDraftStage,
   resumeTask,
   stageEnd,
+  stageInputs,
   stageFrom,
   stageStart,
   startTask,
   validateImplementation,
 } from "../core/plan-update";
 import { submitSpec } from "../core/spec-submission";
+import { checkContent } from "../core/content-check";
+import { approvedVocabularyFile, readVocabulary, vocabularyChangesSchema } from "../core/vocabulary";
+import { deliveryGate, publishDelivery, recordCompleteGate, requireControlledPublication } from "../core/publication";
 import { decodeTaskRun } from "../core/task-run";
 import { renderProgressView, renderTaskBrief } from "../cli/render";
 import { ownerReply } from "./publish";
@@ -94,7 +99,7 @@ function refusal(text: string): ToolResult {
 }
 
 function describeFindings(findings: readonly GateViolation[]): string {
-  return findings.map((finding) => `${finding.blocking ? "Error" : "Advice"} line ${finding.line}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}`).join("\n");
+  return findings.map((finding) => `${finding.blocking ? "Error" : "Advice"}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}\nEvidence: ${finding.quote}`).join("\n");
 }
 
 /** Every lint error of the whole plan plus what approval would refuse: duplicate IDs, unknown dependencies, cycles. */
@@ -118,23 +123,92 @@ async function refuseInsidePart(candidate: string, root: string, start: string, 
   if (inside.length > 0) throw new Error(`the submitted part has ${inside.length} error(s):\n${describeFindings(inside)}`);
 }
 
-async function lintedApproval(deps: ServerDependencies, plan: string, operation: string, transform: (body: string, ownerWord: string) => { body: string }, ownerWord: string): Promise<{ root: string; plan: string; saved: string }> {
+async function lintedApproval(deps: ServerDependencies, plan: string, operation: string, transform: (body: string, ownerWord: string) => { body: string }, ownerWord: string, expectedRevision: string): Promise<{ root: string; plan: string; saved: string }> {
   const { root, plan: relative } = located(deps.cwd, plan);
+  recoverPlanMutation(root, relative);
   const body = readFileSync(resolve(root, relative), "utf8");
+  const revision = operation === "lock-spec" ? protocolSpecHash : protocolImplementationHash;
+  if (revision(body) !== expectedRevision) throw new Error("The displayed revision is stale; inspect the current version before recording approval.");
+  if ((operation === "lock-spec" && planState(body) !== "SPEC_DRAFT")
+    || (operation === "approve" && planState(body) === "APPROVED")) {
+    return { root, plan: relative, saved: body };
+  }
   const report = await lint(body, root);
-  const errors = report.violations.filter((finding) => finding.blocking);
+  const checks = await checkContent({ root, goal: specGoal(body), kind: "flow", content: specText(body), source: relative });
+  const errors = [...report.violations, ...checks.findings].filter((finding) => finding.blocking);
   if (errors.length > 0) throw new Error(`lint has ${errors.length} error(s):\n${describeFindings(errors)}`);
-  mutatePlanFile(root, relative, operation, (current) => transform(current, ownerWord));
+  mutatePlanFile(root, relative, operation, (current) => {
+    if (current !== body || revision(current) !== expectedRevision) throw new Error("The checked version changed during approval; read it again.");
+    const vocabularyFile = operation === "lock-spec" ? approvedVocabularyFile(root, specText(current)) : null;
+    return { ...transform(current, ownerWord), ...(vocabularyFile === null ? {} : { vocabularyFile }) };
+  });
   return { root, plan: relative, saved: readFileSync(resolve(root, relative), "utf8") };
 }
 
+function specText(body: string): string {
+  return body.split("<!-- plan:spec:start -->")[1]?.split("<!-- plan:spec:end -->")[0]?.trim() ?? body;
+}
+
+function specGoal(body: string): string {
+  return /## (?:The )?Goal\s*\n([\s\S]*?)(?=\n## |\n<!--|$)/i.exec(specText(body))?.[1]?.trim() ?? "Evaluate the stated behavior.";
+}
+
+const deliverySchema = z.object({
+  id: z.string().regex(/^D[1-9]\d*$/), review: z.enum(["required", "none"]).optional(), title: z.string(), branch: z.string(),
+  depends: z.array(z.string()), gate: z.array(z.string()), active: z.boolean(),
+  stageGraph: z.string().describe("One line, for example D1-S1 -> D1-S2."),
+  predictedExternalWaitMinutes: z.number().nonnegative(), repository: z.string().optional(), description: z.string(),
+});
+const stageSchema = z.object({
+  id: z.string().regex(/^D[1-9]\d*-S[1-9]\d*$/), deliveryId: z.string(), title: z.string(), owner: z.string(),
+  profile: z.enum(["fast", "strong"]), depends: z.array(z.string()), parallelWith: z.array(z.string()),
+  writes: z.array(z.string()), tempRoot: z.string().describe(".tmp/code-production/<plan file name without .md>/<Stage-ID>"),
+  predictedActiveMinutes: z.number().nonnegative(), predictedCredits: z.number().nonnegative(),
+  verifyActiveMinutes: z.number().nonnegative(), verifyCredits: z.number().nonnegative(),
+  description: z.string(),
+  tasks: z.array(z.object({
+    id: z.string().regex(/^[A-Z][A-Z0-9_-]*$/), story: z.string(), writes: z.array(z.string()),
+    predictedActiveMinutes: z.number().nonnegative(), predictedCredits: z.number().nonnegative(),
+    how: z.union([z.string(), z.array(z.string())]),
+    red: z.string().describe("Use bun run agent:test:backend -- test/exact-target.test.ts (or frontend/e2e)."),
+  })),
+  criteria: z.array(z.string()).describe("Each command uses `command` exits 0 — observable outcome. Include Commit as a separate item."),
+});
+
 const TOOLS = {
+  publish_delivery: tool({
+    description: "Publish the approved feature Delivery after complete local verification and the requested review. Reconciles an already-published head without another push. Plan-only draft publication requires workflows that exclude those documents from CI. Never merges or pushes protected branches.",
+    schema: z.object({ plan: z.string(), delivery: z.string(), expectedHead: z.string(), phase: z.enum(["plan", "implementation"]), reviewPath: z.string().optional() }),
+    run: async (deps, args) => {
+      const result = await publishDelivery({ plan: resolve(deps.cwd, args.plan), delivery: args.delivery,
+        expectedHead: args.expectedHead, phase: args.phase, ...(args.reviewPath === undefined ? {} : { reviewPath: args.reviewPath }) },
+      { publication: deps.publication });
+      return reply({ ...result }, `${result.pushed ? "Published" : "Already published"}: ${result.url}`);
+    },
+  }),
+  check_content: tool({
+    description: "Check one flow and its adjacent interfaces, or a code excerpt, without creating a plan. Returns factual findings, bounded Jev advice and rendered diagrams. Correct routine findings autonomously; advice cannot grant approval.",
+    schema: z.object({ root: z.string(), goal: z.string().min(1), kind: z.enum(["flow", "code"]), content: z.string(), source: z.string().optional(),
+      questions: z.record(z.string(), z.object({ type: z.literal("noul"), instructions: z.string().min(1),
+        criteria: z.object({ true: z.string().min(1), false: z.string().min(1) }) })).optional(),
+    }),
+    run: async (deps, args) => {
+      const result = await checkContent({ root: repository(deps.cwd, args.root), goal: args.goal, kind: args.kind,
+        content: args.content, ...(args.source === undefined ? {} : { source: args.source }),
+        ...(args.questions === undefined ? {} : { questions: args.questions }) });
+      return reply({ ...result }, [
+        ...result.findings.map(f => `${f.blocking ? "Error" : "Advice"}: ${f.text}\nEvidence: ${f.quote}`),
+        ...result.semanticChecks.map(c => `${c.question}\n${c.probability === null ? "Unavailable" : `Probability: ${c.probability}`}${c.uncertainty ? ` — ${c.uncertainty}` : ""}`),
+      ].join("\n\n") || "No findings.");
+    },
+  }),
   init: tool({
     description: "Create docs/plans/<date>-<slug>.md from the branch of a repository, stage and journal it, and return the authoring contract: the sections, the vocabulary and the Goal rule.",
     schema: z.object({ root: z.string(), title: z.string() }),
     run: async (deps, { root, title }) => {
       const repositoryRoot = repository(deps.cwd, root);
       const created = initPlan(repositoryRoot, { title });
+      requireControlledPublication(repositoryRoot);
       const contract = await authoringContract(repositoryRoot);
       return reply({ plan: created.plan, branch: created.branch, base: created.base, ...contract }, [
         `Plan: ${created.plan}`,
@@ -148,10 +222,12 @@ const TOOLS = {
   }),
   submit_spec: tool({
     description: "Replace the whole SPEC of a draft, and its title when given. Preserves authored words, normalizes line endings and reports blocking errors separately from editorial advice. Refuses a stale revision, a locked plan and a title in another language.",
-    schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string(), title: z.string().optional() }),
-    run: async (deps, { plan, baseRevision, ownerRequest, spec, title }) => {
+    schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string(), title: z.string().optional(), vocabularyChanges: vocabularyChangesSchema.optional() }),
+    run: async (deps, { plan, baseRevision, ownerRequest, spec, title, vocabularyChanges }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
-      const result = await submitSpec(root, title === undefined ? { plan: relative, baseRevision, ownerRequest, spec } : { plan: relative, baseRevision, ownerRequest, spec, title });
+      recoverPlanMutation(root, relative);
+      const result = await submitSpec(root, { plan: relative, baseRevision, ownerRequest, spec,
+        ...(title === undefined ? {} : { title }), ...(vocabularyChanges === undefined ? {} : { vocabularyChanges }) });
       const errors = result.findings.filter((finding) => finding.blocking).length;
       return reply({ plan: relative, ...result }, [
         `Revision ${result.revision}, ${result.state}`,
@@ -165,29 +241,32 @@ const TOOLS = {
     description: "The terms and the words they replace, from the shared vocabulary and the repository's own page.",
     schema: z.object({ root: z.string() }),
     run: async (deps, { root }) => {
-      const contract = await authoringContract(repository(deps.cwd, root));
-      return reply({ terms: contract.vocabulary }, contract.vocabulary.map((pair) => `${pair.word} → ${pair.term}`).join("\n"));
+      const resolved = repository(deps.cwd, root);
+      const contract = await authoringContract(resolved);
+      const definitions = readVocabulary(resolved);
+      return reply({ terms: contract.vocabulary, ...definitions }, definitions.entries.map(e =>
+        `${e.term}: ${e.meaning}${e.definitions.length ? ` (${e.definitions.map(d => `${d.repository}:${d.path}#${d.name}`).join(", ")})` : ""}`).join("\n"));
     },
   }),
   approve_spec: tool({
     description: "Record the owner's word on the SPEC. Runs the same lint as submission on the same bytes; only blocking errors refuse.",
-    schema: z.object({ plan: z.string(), ownerWord: z.string() }),
-    run: async (deps, { plan, ownerWord }) => {
-      const done = await lintedApproval(deps, plan, "lock-spec", lockPlanSpec, ownerWord);
-      return reply({ plan: done.plan, revision: protocolSpecHash(done.saved), state: "SPEC_LOCKED" }, `SPEC locked under "${ownerWord}"`);
+    schema: z.object({ plan: z.string(), ownerWord: z.string(), expectedRevision: z.string() }),
+    run: async (deps, { plan, ownerWord, expectedRevision }) => {
+      const done = await lintedApproval(deps, plan, "lock-spec", lockPlanSpec, ownerWord, expectedRevision);
+      return reply({ plan: done.plan, revision: protocolSpecHash(done.saved), state: planState(done.saved) }, "SPEC approval is recorded.");
     },
   }),
   approve_plan: tool({
     description: "Record the owner's word on the implementation contract. Runs the same lint as authoring on the same bytes.",
-    schema: z.object({ plan: z.string(), ownerWord: z.string() }),
-    run: async (deps, { plan, ownerWord }) => {
-      const done = await lintedApproval(deps, plan, "approve", approvePlan, ownerWord);
-      return reply({ plan: done.plan, revision: protocolImplementationHash(done.saved), state: "APPROVED" }, `plan approved under "${ownerWord}"`);
+    schema: z.object({ plan: z.string(), ownerWord: z.string(), expectedRevision: z.string() }),
+    run: async (deps, { plan, ownerWord, expectedRevision }) => {
+      const done = await lintedApproval(deps, plan, "approve", approvePlan, ownerWord, expectedRevision);
+      return reply({ plan: done.plan, revision: protocolImplementationHash(done.saved), state: planState(done.saved) }, "Implementation approval is recorded.");
     },
   }),
   put_delivery: tool({
     description: "Write one PR Delivery. A Delivery whose branch, commits and PR live in another repository names it with repository (a name, never a path); the checkout is one line per machine, git config code-production.repository.<name> <path>. Refuses with every error of the Delivery at once; returns the whole-plan findings without refusing an incomplete draft.",
-    schema: z.object({ plan: z.string(), delivery: z.record(z.string(), z.unknown()) }),
+    schema: z.object({ plan: z.string(), delivery: deliverySchema }),
     run: async (deps, { plan, delivery }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
       const input = deliveryFrom(delivery);
@@ -201,7 +280,7 @@ const TOOLS = {
   }),
   put_stage: tool({
     description: "Write one Stage with its Tasks. Refuses with every error of the Stage at once, like a compiler; returns the whole-plan findings without refusing an incomplete draft.",
-    schema: z.object({ plan: z.string(), stage: z.record(z.string(), z.unknown()) }),
+    schema: z.object({ plan: z.string(), stage: stageSchema }),
     run: async (deps, { plan, stage }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
       const input = stageFrom(stage);
@@ -231,13 +310,17 @@ const TOOLS = {
       // The same lint as submission, at every write: an amendment may leave old errors, never add one.
       const current = readFileSync(resolve(root, relative), "utf8");
       const before = (await lint(current, root)).violations.map((violation) => `${violation.text}|${violation.quote}`);
-      const after = (await lint(applyOwnerAmendment(current, ownerWord, replacement).body, root)).violations;
+      const candidate = applyOwnerAmendment(current, ownerWord, replacement).body;
+      const checks = await checkContent({ root, goal: specGoal(candidate), kind: "flow", content: specText(candidate), source: relative });
+      const previousChecks = await checkContent({ root, goal: specGoal(current), kind: "flow", content: specText(current), source: relative });
+      before.push(...previousChecks.findings.map(f => `${f.text}|${f.quote}`));
+      const after = [...(await lint(candidate, root)).violations, ...checks.findings];
       const added = after.filter((violation) => violation.blocking && !before.includes(`${violation.text}|${violation.quote}`));
       if (added.length > 0) throw new Error(`amendment adds ${added.length} error(s):\n${describeFindings(added)}`);
       mutatePlanFile(root, relative, "amend", (body) => applyOwnerAmendment(body, ownerWord, replacement));
       const saved = readFileSync(resolve(root, relative), "utf8");
       return reply(
-        { plan: relative, section: replacement.section, specRevision: protocolSpecHash(saved), implementationRevision: protocolImplementationHash(saved), findings: after },
+        { plan: relative, section: replacement.section, specRevision: protocolSpecHash(saved), implementationRevision: protocolImplementationHash(saved), ...checks, findings: after },
         [`${replacement.section} amended under "${ownerWord}"`, `Checks: ${after.filter((finding) => finding.blocking).length} errors`, ...(after.length > 0 ? [describeFindings(after)] : [])].join("\n"),
       );
     },
@@ -311,15 +394,28 @@ const TOOLS = {
       // The Stage closes in its Delivery's checkout, at that checkout's head.
       const at = closeRootOf(root, readFileSync(resolve(root, relative), "utf8"), stage);
       const head = at.head;
+      const before = readFileSync(resolve(root, relative), "utf8");
       let status: "CLOSED" | "PARTIAL" = "PARTIAL";
       let closed = 0;
+      let verificationLogs: readonly string[] = [];
       mutatePlanFile(root, relative, "close", (body) => {
         const result = closePlanStage(body, stage, { root: at.root, head });
         status = result.status;
         closed = result.closed;
+        verificationLogs = result.verificationLogs ?? [];
         return { body: result.body };
       });
-      return reply({ plan: relative, stage, status, closed, head }, `Stage ${stage} ${status}: ${closed} criteria closed at ${head.slice(0, 7)}`);
+      const saved = readFileSync(resolve(root, relative), "utf8");
+      const stageInput = stageInputs(before).find(s => s.id === stage);
+      if (stageInput !== undefined && closed > 0) {
+        for (const criterion of stageInput.criteria) {
+          const command = /^`([^`]+)`\s+exits\s+0/.exec(criterion)?.[1];
+          // Only an actually executed full gate receives a reusable verification record.
+          if (command !== undefined && deliveryGate(before, stageInput.deliveryId) === command && before.includes(`- [ ] ${criterion}`)
+            && saved.includes(`- [x] ${criterion} — ${head}`)) recordCompleteGate(at.root, relative, command, saved);
+        }
+      }
+      return reply({ plan: relative, stage, status, closed, head, verificationLogs }, `Stage ${stage} ${status}: ${closed} criteria closed.\n${verificationLogs.map(path => `Verification output: ${path}`).join("\n")}`);
     },
   }),
   needs_owner: tool({
@@ -391,7 +487,7 @@ function published(deps: ServerDependencies, args: Record<string, unknown>, resu
   const owner = ownerReply(url, revision, state, checks);
   return {
     ...result,
-    structuredContent: { ...structured, revision, state, url, reply: owner },
+    structuredContent: { ...structured, revision, specRevision: protocolSpecHash(saved), implementationRevision: protocolImplementationHash(saved), state, url, reply: owner },
     content: [{ type: "text", text: `${owner}\n${result.content.map((entry) => entry.text).join("\n")}` }],
   };
 }
@@ -494,7 +590,14 @@ export async function dispatchTool(deps: ServerDependencies, name: string, args:
       }
     }
   }
-  appendEvent(deps.eventLog, eventOf(deps, name, args, result, at, Date.now() - began));
+  try { appendEvent(deps.eventLog, eventOf(deps, name, args, result, at, Date.now() - began)); }
+  catch {
+    // This is observer telemetry, not the transaction journal. Never misreport
+    // a completed mutation or ask the agent to recreate a recorded approval.
+    const diagnostic = "Diagnostic event logging is unavailable; the operation result and plan journal are unchanged.";
+    return { ...result, structuredContent: { ...result.structuredContent, diagnostics: [diagnostic] },
+      content: [...result.content, { type: "text", text: diagnostic }] };
+  }
   return result;
 }
 
@@ -503,9 +606,15 @@ export function toolNames(): readonly string[] {
   return Object.keys(TOOLS);
 }
 
-/** The planctl tools over stdio. @tested-by: tst_unit_planctl_mcp_001 */
+/** The planctl tools over stdio. @tested-by: tst_unit_planctl_mcp_001, tst_unit_planctl_mcp_010 */
 export function createPlanctlServer(deps: ServerDependencies): Server {
-  const server = new Server({ name: "planctl", version: "0.1.0" }, { capabilities: { tools: {} } });
+  const server = new Server({ name: "planctl", version: "0.1.0" }, {
+    capabilities: { tools: {} },
+    instructions: "Use the planctl MCP tools to change plans. Commit authorized changes with normal Git hooks enabled. "
+      + "Journal cleanup is automatic: the post-commit hook clears a committed journal, or the next MCP write reconciles it against HEAD. "
+      + "Continue with the next authorized action after a successful commit; no separate clear-transaction command or owner confirmation is needed. "
+      + "If a tool reports a journal mismatch, inspect that error; do not delete the journal or bypass the checks.",
+  });
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: Object.entries(TOOLS).map(([name, definition]) => ({
       name,

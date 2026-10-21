@@ -1,23 +1,18 @@
 ---
 name: end-work
-description: Close an owner-merged Delivery with the numbers from the plan and the event log, a compact retro, and safe worktree cleanup. Use after merge; never commits.
+description: Report an owner-merged Delivery and clean only its verified disposable worktree and temporary files.
 ---
 
 # End Work
 
-This skill needs only the merged plan, Git, the planctl tools and the PR.
-It never commits and never merges.
+1. Call `progress` and verify that the owner merged the Delivery.
+2. Report what shipped, the PR URL, measured results from the plan and
+   `planctl stats --since <plan date>`, and material gaps. Do not invent
+   unavailable cost or timing data.
+3. Update an existing project ledger when the task requires it. Post a PR
+   comment only when the owner requested one.
+4. Remove only the task's clean, fully merged worktree and its registered
+   temporary files when cleanup is authorized. Preserve unpublished work.
 
-1. Call `progress` with the plan: the Delivery reads merged, and the screen
-   names the merge state and the published head. Record the PR URL. If the
-   owner has not merged, stop here; the merge is theirs.
-2. Take the numbers from the plan's Results rows (active and elapsed minutes
-   per Task against the forecast) and from `planctl stats --since <plan date>`:
-   where the agents stopped and why, submit rounds, Task time against
-   forecast, time waiting for the owner, PRs and CI runs per Delivery.
-3. Post one compact retro on the PR: what shipped, scope drift, estimate
-   misses, duplicated work or testing, and one small process experiment for
-   the next plan. Say whether parallel Stages shortened the critical path.
-4. Prove the feature worktree is clean and its branch merged, then remove
-   that worktree and only its registered temp roots.
-5. Return the PR URL and the cleanup result.
+Do not create another plan, experiment register or approval merely to close
+completed work. The owner performs merges.
