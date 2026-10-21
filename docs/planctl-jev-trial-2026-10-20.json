@@ -1,0 +1,6 @@
+{
+  "status": "Historical source evidence is private and retained in the local evaluation archive.",
+  "publicCorpus": "planctl/bench/corpus/cases.json",
+  "publicResults": "planctl/bench/corpus/results.json",
+  "guide": "docs/planctl-trial.md"
+}

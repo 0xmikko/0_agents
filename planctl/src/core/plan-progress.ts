@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
-import { deliveryMetas, deliveryRoot, goalLines, nextOpenTask, planState, runningTaskRecords, stageClosed, stageInputs } from "./plan-update";
+import { deliveryMetas, deliveryRoot, goalLines, nextEligibleTask, planState, runningTaskRecords, stageClosed, stageInputs } from "./plan-update";
 import type { DeliveryMeta } from "./plan-update";
 import type { TaskRun } from "./task-run";
 
@@ -258,7 +258,7 @@ export async function planProgress(root: string, options: ProgressOptions): Prom
     publications,
     publication,
     runtime: installedRuntime(root, options.sourceCommit),
-    next: nextOpenTask(body),
+    next: nextEligibleTask(root, body, options.publication),
   };
 }
 

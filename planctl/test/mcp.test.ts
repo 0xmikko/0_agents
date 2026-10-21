@@ -1,14 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { dispatchTool, toolNames } from "../src/mcp/server";
-import { deliveryMetas, planJournalPath, taskRunPath } from "../src/core/plan-update";
+import { deliveryMetas, mutatePlanFile, planJournalPath, taskRunPath, verifyStagedPlan } from "../src/core/plan-update";
 import { decodeTaskRun } from "../src/core/task-run";
-import { protocolSpecHash } from "../src/core/plan-update";
+import { protocolImplementationHash, protocolSpecHash } from "../src/core/plan-update";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { installStack } from "../../shared/code-production/agent-stack";
 
 interface Fixture {
   readonly root: string;
@@ -31,6 +32,12 @@ function fixture(name: string): Fixture {
   git("add", "src", "test");
   git("commit", "-qm", "the files the SPEC cites");
   return { root, git };
+}
+
+function approvalRevision(name: string, path: string): { expectedRevision?: string } {
+  if (name === "approve_spec") return { expectedRevision: protocolSpecHash(readFileSync(path, "utf8")) };
+  if (name === "approve_plan") return { expectedRevision: protocolImplementationHash(readFileSync(path, "utf8")) };
+  return {};
 }
 
 const delivery = {
@@ -77,6 +84,162 @@ describe("planctl mcp", () => {
   });
 
   /**
+   * @test-id: tst_unit_planctl_mcp_010
+   * @scenario: scn_planctl_mcp_journal_001
+   * @covers: planctl/src/mcp/server.ts::createPlanctlServer,planctl/src/core/plan-update.ts::mutatePlanFile
+   * @deterministic: yes
+   * @invariant: the MCP client is told that journal cleanup is automatic; later writes reconcile committed journals without a shell cleanup, while raw plan edits remain refused.
+   */
+  it("tst_unit_planctl_mcp_010 continues after commits without manual journal cleanup", async () => {
+    const { root, git } = fixture("journal-continuation");
+    try {
+      const started = await client.callTool({ name: "init", arguments: { root, title: "Journal continuation" } });
+      expect(started.isError ?? false, text(started)).toBe(false);
+      const { plan } = started.structuredContent as { plan: string };
+      const absolute = join(root, plan);
+      const journal = planJournalPath(root, plan);
+      git("commit", "-qm", "create the draft");
+      // No post-commit cleanup: an older hook also leaves the per-plan journal in place.
+      expect(existsSync(journal)).toBe(true);
+
+      const progress = await client.callTool({ name: "progress", arguments: { root } });
+      expect(progress.isError ?? false, text(progress)).toBe(false);
+      const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8");
+      const submitted = await client.callTool({ name: "submit_spec", arguments: {
+        plan: absolute, baseRevision: (progress.structuredContent as { revision: string }).revision,
+        ownerRequest: "Reject empty names", spec,
+      } });
+      expect(submitted.isError ?? false, text(submitted)).toBe(false);
+      verifyStagedPlan(root, plan);
+      git("commit", "-qm", "write the specification");
+      writeFileSync(join(root, "notes.md"), "Research continues.\n");
+      git("add", "notes.md");
+      git("commit", "-qm", "save research notes");
+      const head = git("rev-parse", "HEAD");
+
+      const updated = await client.callTool({ name: "submit_spec", arguments: {
+        plan: absolute, baseRevision: (submitted.structuredContent as { revision: string }).revision,
+        ownerRequest: "Use the measured baseline", spec: spec.replace("three per release", "five per release"),
+      } });
+      expect(updated.isError ?? false, text(updated)).toBe(false);
+      verifyStagedPlan(root, plan);
+      expect(JSON.parse(readFileSync(journal, "utf8"))).toMatchObject({
+        baseHead: head, events: [expect.objectContaining({ operation: "set-spec" })],
+      });
+      git("commit", "-qm", "record the measured baseline");
+
+      const raw = `${readFileSync(absolute, "utf8")}\nUnjournaled edit.\n`;
+      writeFileSync(absolute, raw);
+      const refused = await client.callTool({ name: "submit_spec", arguments: {
+        plan: absolute, baseRevision: protocolSpecHash(raw), ownerRequest: "Reject empty names", spec,
+      } });
+      expect(refused.isError).toBe(true);
+      expect(text(refused)).toContain("dirty preimage");
+      expect(readFileSync(absolute, "utf8")).toBe(raw);
+
+      expect(client.getInstructions()).toMatch(/journal cleanup is automatic/i);
+      expect(client.getInstructions()).toContain("clear-transaction");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_011
+   * @scenario: scn_planctl_approval_commit_001
+   * @covers: planctl/src/mcp/server.ts, planctl/src/core/plan-gate.ts::freeze CLI
+   * @deterministic: yes
+   * @fixtures: temporary consumer with installed Git hooks; synthetic owner words
+   * @invariant: the documented MCP approval sequence commits once with real hooks;
+   * raw edits and a missing journal remain refused, and failed commits preserve approvals.
+   * Test environment: stdio MCP and installed runtime, no consumer dependencies.
+   * Clients: MCP Client and Git. Mocks: project verification exits, mdurl publisher.
+   */
+  it("tst_unit_planctl_mcp_011 commits MCP approvals through installed hooks without recreating the plan", async () => {
+    const { root, git } = fixture("approval-commit");
+    try {
+      const scripts = Object.fromEntries([
+        "agent:install", "agent:test:backend", "agent:test:frontend", "agent:test:e2e",
+        "agent:verify:commit", "agent:verify:pr", "agent:verify:docs",
+      ].map((name) => [name, "true"]));
+      writeFileSync(join(root, "package.json"), JSON.stringify({ name: "approval-fixture", scripts }));
+      installStack(root, { base: "main" });
+      git("add", ".");
+      git("commit", "-qm", "install the consumer hooks");
+      const before = git("rev-parse", "HEAD");
+      const started = await client.callTool({ name: "init", arguments: { root, title: "Keep the recorded approval" } });
+      expect(started.isError ?? false, text(started)).toBe(false);
+      const plan = (started.structuredContent as { plan: string }).plan;
+      const absolute = join(root, plan);
+      const seen = await client.callTool({ name: "progress", arguments: { root } });
+      const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8");
+      for (const [name, args] of [
+        ["submit_spec", { baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec }],
+        ["approve_spec", { ownerWord: "spec" }],
+        ["put_delivery", { delivery }],
+        ["put_stage", { stage }],
+        ["approve_plan", { ownerWord: "plan" }],
+      ] as const) {
+        const result = await client.callTool({ name, arguments: { plan: absolute, ...args, ...approvalRevision(name, absolute) } });
+        expect(result.isError ?? false, text(result)).toBe(false);
+      }
+      const approved = readFileSync(absolute, "utf8");
+      const journal = planJournalPath(root, plan);
+      const proof = readFileSync(journal, "utf8");
+      const commit = () => spawnSync("git", ["commit", "-qm", "record the approved plan"], { cwd: root, encoding: "utf8" });
+      const committed = commit();
+      expect(committed.status, `${committed.stdout}\n${committed.stderr}`).toBe(0);
+      expect(git("rev-list", "--count", `${before}..HEAD`)).toBe("1");
+      expect(git("show", `HEAD:${plan}`)).toBe(approved.trim());
+      expect(existsSync(journal)).toBe(false);
+
+      // Recreate the same staged state in this test-owned repository to inject faults.
+      // Never reset a user's checkout or retry a denied real approval.
+      git("reset", "--soft", before);
+      // Exhaust all 16 combinations of these four validity conditions:
+      // the intact case succeeded above; every nonzero fault mask must fail.
+      for (let faults = 1; faults < 16; faults += 1) {
+        writeFileSync(absolute, approved);
+        const changed: { baseHead: string; events: { beforeHash: string }[] } = JSON.parse(proof);
+        if (faults & 2) writeFileSync(absolute, `${approved}\nUnjournaled change.\n`);
+        if (faults & 4) {
+          const first = changed.events[0];
+          if (first === undefined) throw new Error("fixture must contain a creation event");
+          first.beforeHash = "0".repeat(64);
+        }
+        if (faults & 8) changed.baseHead = "0".repeat(40);
+        writeFileSync(journal, JSON.stringify(changed));
+        if (faults & 1) rmSync(journal);
+        git("add", plan);
+        const refused = commit();
+        expect(refused.status, `fault mask ${faults}`).not.toBe(0);
+        expect(`${refused.stdout}${refused.stderr}`).toMatch(/journal|candidate|chain/i);
+        expect(readFileSync(absolute, "utf8")).toContain("Status: APPROVED");
+        expect(git("rev-parse", "HEAD")).toBe(before);
+      }
+      writeFileSync(absolute, approved);
+      writeFileSync(journal, proof);
+      git("add", plan);
+      const retried = commit();
+      expect(retried.status, `${retried.stdout}\n${retried.stderr}`).toBe(0);
+      expect(existsSync(journal)).toBe(false);
+
+      const amended = await client.callTool({ name: "amend", arguments: {
+        plan: absolute, ownerWord: "rename the title", patch: {
+          section: "title", find: "Keep the recorded approval", replace: "Preserve the recorded agreement",
+        },
+      } });
+      expect(amended.isError ?? false, text(amended)).toBe(false);
+      const amendmentCommit = commit();
+      expect(amendmentCommit.status, `${amendmentCommit.stdout}\n${amendmentCommit.stderr}`).toBe(0);
+      expect(readFileSync(absolute, "utf8")).toContain("Preserve the recorded agreement");
+      expect(existsSync(journal)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  /**
    * @test-id: tst_unit_planctl_mcp_001
    * @scenario: scn_planctl_mcp_sequence_001
    * @covers: planctl/src/mcp/server.ts
@@ -95,14 +258,14 @@ describe("planctl mcp", () => {
       writeFileSync(join(home, "spec.md"), spec);
       execFileSync("bun", [join(import.meta.dir, "../src/cli/main.ts"), "set-spec", plan, "--from", join(home, "spec.md")], { cwd: root });
 
-      const locked = await client.callTool({ name: "approve_spec", arguments: { plan: absolute, ownerWord: "spec" } });
+      const locked = await client.callTool({ name: "approve_spec", arguments: { plan: absolute, ownerWord: "spec", expectedRevision: protocolSpecHash(readFileSync(absolute, "utf8")) } });
       expect(locked.isError ?? false, text(locked)).toBe(false);
       const putDelivery = await client.callTool({ name: "put_delivery", arguments: { plan: absolute, delivery } });
       expect(putDelivery.isError ?? false, text(putDelivery)).toBe(false);
       const putStage = await client.callTool({ name: "put_stage", arguments: { plan: absolute, stage } });
       expect(putStage.isError ?? false, text(putStage)).toBe(false);
       expect((putStage.structuredContent as { findings: unknown[] }).findings).toEqual([]);
-      const approved = await client.callTool({ name: "approve_plan", arguments: { plan: absolute, ownerWord: "plan" } });
+      const approved = await client.callTool({ name: "approve_plan", arguments: { plan: absolute, ownerWord: "plan", expectedRevision: protocolImplementationHash(readFileSync(absolute, "utf8")) } });
       expect(approved.isError ?? false, text(approved)).toBe(false);
       expect(readFileSync(absolute, "utf8")).toContain("Status: APPROVED");
 
@@ -168,7 +331,7 @@ describe("planctl mcp", () => {
       const absolute = join(root, (started.structuredContent as { plan: string }).plan);
       const seen = await dispatchTool(deps, "progress", { root });
       await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec });
-      const locked = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec" });
+      const locked = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec", expectedRevision: protocolSpecHash(readFileSync(absolute, "utf8")) });
       expect(locked.isError ?? false, text(locked)).toBe(false);
       const catalog = await dispatchTool(deps, "put_delivery", { plan: absolute, delivery: { ...delivery, id: "D2", title: "Catalog side", branch: "feat/catalog", active: false, stageGraph: "D2-S1", repository: "catalog" } });
       expect(catalog.isError ?? false, text(catalog)).toBe(false);
@@ -180,6 +343,83 @@ describe("planctl mcp", () => {
       expect(deliveryMetas(readFileSync(absolute, "utf8")).find((entry) => entry.id === "D1")?.repository).toBeNull();
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_009
+   * @scenario: scn_planctl_mcp_repository_002
+   * @covers: planctl/src/mcp/server.ts::start_task; planctl/src/core/plan-update.ts::parentRefusal
+   * @deterministic: yes
+   * @invariant: progress and start_task observe a parent in its configured repository; the parent's current head is resolved there even when the plan repository has a branch with the same name.
+   */
+  it("tst_unit_planctl_mcp_009 starts a child using the parent PR and head from the app checkout", async () => {
+    const catalog = fixture("parent-catalog");
+    const app = fixture("parent-app");
+    const calls: { root: string; branch: string }[] = [];
+    const head = app.git("rev-parse", "HEAD");
+    let publishedHead = head;
+    const deps = {
+      cwd: home,
+      publication: (root: string, branch: string) => {
+        calls.push({ root, branch });
+        return root === app.root && branch === delivery.branch
+          ? { prUrl: "https://example.test/app/pull/299", ci: "green" as const, headSha: publishedHead, runId: "1", attempt: 1, merged: false }
+          : null;
+      },
+      sourceCommit: "s".repeat(40), eventLog: join(home, "events-009.jsonl"),
+      publisher: (_repository: string, plan: string) => `http://fixture/${plan}`,
+    };
+    try {
+      app.git("checkout", "-qb", delivery.branch);
+      catalog.git("commit", "-q", "--allow-empty", "-m", "the catalog has a different head");
+      catalog.git("branch", delivery.branch);
+      catalog.git("config", "code-production.repository.app", app.root);
+      const started = await dispatchTool(deps, "init", { root: catalog.root, title: "Continue after the app CI passes" });
+      const absolute = join(catalog.root, (started.structuredContent as { plan: string }).plan);
+      const seen = await dispatchTool(deps, "progress", { root: catalog.root });
+      const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result.");
+      const submitted = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Continue after the app CI passes", spec });
+      expect(submitted.isError ?? false, text(submitted)).toBe(false);
+      const locked = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec", expectedRevision: protocolSpecHash(readFileSync(absolute, "utf8")) });
+      expect(locked.isError ?? false, text(locked)).toBe(false);
+      for (const [name, args] of [
+        ["put_delivery", { delivery: { ...delivery, repository: "app" } }],
+        ["put_stage", { stage }],
+        ["put_delivery", { delivery: { ...delivery, id: "D2", title: "Catalog", branch: "feat/parent-catalog", depends: ["D1"], active: false, stageGraph: "D2-S1" } }],
+        ["put_stage", { stage: { ...stage, id: "D2-S1", deliveryId: "D2", tempRoot: ".tmp/code-production/fixture/D2-S1", tasks: stage.tasks.map((task) => ({ ...task, id: "MCP_FIX_002" })) } }],
+        ["approve_plan", { ownerWord: "plan" }],
+      ] as const) {
+        const result = await dispatchTool(deps, name, { plan: absolute, ...args, ...approvalRevision(name, absolute) });
+        expect(result.isError ?? false, text(result)).toBe(false);
+      }
+      const progress = await dispatchTool(deps, "progress", { plan: absolute });
+      expect(progress.structuredContent?.publication).toMatchObject({ prUrl: "https://example.test/app/pull/299", ci: "green", headSha: head });
+      publishedHead = catalog.git("rev-parse", delivery.branch);
+      const stale = await dispatchTool(deps, "start_task", { plan: absolute, task: "MCP_FIX_002" });
+      expect(stale.isError, text(stale)).toBe(true);
+      expect(text(stale)).toContain(`PR head ${publishedHead.slice(0, 7)} is not the current head ${head.slice(0, 7)}`);
+      expect(readFileSync(absolute, "utf8")).toMatch(/^Active Delivery: D1\s*$/m);
+      publishedHead = head;
+      calls.length = 0;
+      const brief = await dispatchTool(deps, "start_task", { plan: absolute, task: "MCP_FIX_002" });
+      expect(brief.isError ?? false, text(brief)).toBe(false);
+      expect(brief.structuredContent?.taskId).toBe("MCP_FIX_002");
+      expect(calls).toEqual([{ root: app.root, branch: delivery.branch }]);
+      expect(readFileSync(absolute, "utf8")).toMatch(/^Active Delivery: D2\s*$/m);
+      // A completed local parent also unlocks the child before any push or CI.
+      mutatePlanFile(catalog.root, absolute, "fixture-completed-parent", current => ({ body: current
+        .replace(/^Active Delivery: D2/m, "Active Delivery: D1")
+        .replace(/(<!-- plan:stage:D1-S1:start -->)([\s\S]*?)(<!-- plan:stage:D1-S1:end -->)/,
+          (_whole, start: string, block: string, end: string) => start + block.replace(/^- \[ \] (.*)$/gm, `- [x] $1 — ${head}`) + end) }));
+      const ready = await dispatchTool({ ...deps, publication: () => null }, "progress", { plan: absolute });
+      expect(ready.structuredContent?.next).toMatchObject({ taskId: "MCP_FIX_002", blockedBy: null });
+      const local = await dispatchTool({ ...deps, publication: () => null }, "start_task", { plan: absolute, task: "MCP_FIX_002" });
+      expect(local.isError ?? false, text(local)).toBe(false);
+      expect(local.structuredContent?.taskId).toBe("MCP_FIX_002");
+    } finally {
+      rmSync(catalog.root, { recursive: true, force: true });
+      rmSync(app.root, { recursive: true, force: true });
     }
   }, 120_000);
 
@@ -198,12 +438,12 @@ describe("planctl mcp", () => {
     const absolute = join(app.root, plan);
     const seen = await dispatchTool(deps, "progress", { root: app.root });
     await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (seen.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec });
-    await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec" });
+    await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec", expectedRevision: protocolSpecHash(readFileSync(absolute, "utf8")) });
     const put = await dispatchTool(deps, "put_delivery", { plan: absolute, delivery: { ...delivery, repository: "catalog" } });
     expect(put.isError ?? false, text(put)).toBe(false);
     const staged = await dispatchTool(deps, "put_stage", { plan: absolute, stage: { ...stage, criteria } });
     expect(staged.isError ?? false, text(staged)).toBe(false);
-    const approved = await dispatchTool(deps, "approve_plan", { plan: absolute, ownerWord: "plan" });
+    const approved = await dispatchTool(deps, "approve_plan", { plan: absolute, ownerWord: "plan", expectedRevision: protocolImplementationHash(readFileSync(absolute, "utf8")) });
     expect(approved.isError ?? false, text(approved)).toBe(false);
     return { app, catalog, deps, absolute, plan };
   }
@@ -282,15 +522,16 @@ describe("planctl mcp", () => {
     const spec = original.replace(map, "").replace("### Reject an empty name\n\n", "").replace("## Why now", "## Observed behavior");
     try {
       const started = await dispatchTool(deps, "init", { root, title: "Evidence" });
+      expect(text(started)).not.toContain("Why now");
       const plan = join(root, (started.structuredContent as { plan: string }).plan);
       const submitted = await dispatchTool(deps, "submit_spec", { plan, baseRevision: protocolSpecHash(readFileSync(plan, "utf8")), ownerRequest: "Preserve the findings", spec });
       expect(submitted.isError ?? false, text(submitted)).toBe(false);
       const findings = (submitted.structuredContent as { findings: { blocking: boolean }[] }).findings;
-      expect(findings.length).toBeGreaterThan(0);
+      expect(findings).toEqual([]);
       expect(findings.every((finding) => !finding.blocking)).toBe(true);
-      expect(text(submitted)).toContain("Advice");
+      expect(text(submitted)).not.toContain("Why now");
       expect(readFileSync(plan, "utf8")).toContain(spec.trim());
-      const approved = await dispatchTool(deps, "approve_spec", { plan, ownerWord: "spec" });
+      const approved = await dispatchTool(deps, "approve_spec", { plan, ownerWord: "spec", expectedRevision: protocolSpecHash(readFileSync(plan, "utf8")) });
       expect(approved.isError ?? false, text(approved)).toBe(false);
       const saved = readFileSync(plan, "utf8");
       const refused = await dispatchTool(deps, "submit_spec", { plan, baseRevision: protocolSpecHash(saved), ownerRequest: "Replace", spec: "## The Goal\n\nSomething else." });
@@ -336,12 +577,12 @@ describe("planctl mcp", () => {
       const twice = "The parser refuses an empty name before it is ever saved.";
       const repeated = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: revision, ownerRequest: "Reject empty names", spec: spec.replace("Reject empty names before saving.", `${twice}\n\n${twice}`) });
       expect(errorsOf(repeated)).toEqual([]);
-      expect(text(repeated)).toMatch(/Advice line \d+: line \d+ repeats line \d+/);
+      expect(text(repeated)).toMatch(/Advice: line \d+ repeats line \d+/);
       revision = (repeated.structuredContent as { revision: string }).revision;
       const conforming = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: revision, ownerRequest: "Reject empty names", spec });
       expect(errorsOf(conforming)).toEqual([]);
       expect(text(conforming)).toContain("Checks: 0 errors");
-      const approved = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec" });
+      const approved = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec", expectedRevision: protocolSpecHash(readFileSync(absolute, "utf8")) });
       expect(approved.isError ?? false, text(approved)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -389,8 +630,7 @@ describe("planctl mcp", () => {
       const withoutMap = spec.replace(spec.slice(spec.indexOf("| Implementation map"), spec.indexOf("### Interfaces")), "");
       const refused = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (renamed.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec: withoutMap });
       expect(refused.isError ?? false, text(refused)).toBe(false);
-      expect(text(refused)).toContain("flow «Reject an empty name» has no implementation map");
-      expect(text(refused)).toContain("Advice line");
+      expect(text(refused)).not.toContain("has no implementation map");
       expect(text(refused)).toContain("Checks: 0 errors");
       const submitted = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (refused.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec });
       expect(submitted.isError ?? false, text(submitted)).toBe(false);
@@ -398,10 +638,10 @@ describe("planctl mcp", () => {
       const submission = submitted.structuredContent as { revision: string; url: string; reply: string; checkStatus: string };
       expect(submission.checkStatus).toBe("checked");
       expect(submission.url).toBe(`http://fixture/${plan}`);
-      expect(submission.reply).toBe(`Plan: http://fixture/${plan}\nRevision ${submission.revision}, SPEC_DRAFT\nChecks: 0 errors`);
+      expect(submission.reply).toBe(`Plan: http://fixture/${plan}\nDraft solution.\nChecks: 0 errors`);
       expect(received.at(-1)?.bytes).toBe(readFileSync(absolute, "utf8"));
 
-      const locked = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec" });
+      const locked = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec", expectedRevision: protocolSpecHash(readFileSync(absolute, "utf8")) });
       expect(locked.isError ?? false, text(locked)).toBe(false);
       expect((locked.structuredContent as { revision: string }).revision).toBe(submission.revision);
       // An amendment never adds a lint error: the SPEC stays in English and in shape at every write.
@@ -429,7 +669,7 @@ describe("planctl mcp", () => {
       expect(first.isError ?? false, text(first)).toBe(false);
       expect((first.structuredContent as { findings: unknown[] }).findings).toEqual([]);
       expect(received.at(-1)?.bytes).toBe(readFileSync(absolute, "utf8"));
-      expect((first.structuredContent as { reply: string }).reply).toBe(`Plan: http://fixture/${plan}\nRevision ${(first.structuredContent as { revision: string }).revision}, SPEC_LOCKED`);
+      expect((first.structuredContent as { reply: string }).reply).toBe(`Plan: http://fixture/${plan}\nSolution approved; implementation breakdown follows.`);
 
       const duplicate = await dispatchTool(deps, "put_stage", { plan: absolute, stage: { ...stage, id: "D1-S2", title: "Duplicate", depends: ["D1-S1"], writes: ["lib/"], tempRoot: ".tmp/code-production/fixture/D1-S2", tasks: [{ ...stage.tasks[0], writes: ["lib/a.ts", "lib/b.ts", "lib/c.ts"] }] } });
       expect(duplicate.isError ?? false, text(duplicate)).toBe(false);
@@ -445,7 +685,7 @@ describe("planctl mcp", () => {
         expect(removed.isError ?? false, text(removed)).toBe(false);
         lastRevision = (removed.structuredContent as { revision: string }).revision;
       }
-      const approved = await dispatchTool(deps, "approve_plan", { plan: absolute, ownerWord: "plan" });
+      const approved = await dispatchTool(deps, "approve_plan", { plan: absolute, ownerWord: "plan", expectedRevision: protocolImplementationHash(readFileSync(absolute, "utf8")) });
       expect(approved.isError ?? false, text(approved)).toBe(false);
       expect((approved.structuredContent as { revision: string }).revision).toBe(lastRevision);
 
@@ -467,4 +707,24 @@ describe("planctl mcp", () => {
       rmSync(root, { recursive: true, force: true });
     }
   }, 120_000);
+});
+
+/**
+ * @test-id: tst_unit_planctl_mcp_012
+ * @scenario: scn_planctl_telemetry_failure_001
+ * @covers: planctl/src/mcp/server.ts::dispatchTool
+ * @deterministic: yes
+ * @invariant: unavailable diagnostic logging cannot turn an already journaled mutation into an apparent failure.
+ */
+it("tst_unit_planctl_mcp_012 preserves the actual result when telemetry is unwritable", async () => {
+  const { root } = fixture("telemetry");
+  try {
+    const result = await dispatchTool({ cwd: root, publication: () => null, sourceCommit: "test", eventLog: root,
+      publisher: () => "http://fixture/plan" }, "init", { root, title: "Preserve the real outcome" });
+    expect(result.isError ?? false, text(result)).toBe(false);
+    expect(result.structuredContent?.diagnostics).toEqual(["Diagnostic event logging is unavailable; the operation result and plan journal are unchanged."]);
+    const plan = String(result.structuredContent?.plan);
+    expect(existsSync(planJournalPath(root, plan))).toBe(true);
+    expect(readFileSync(join(root, plan), "utf8")).toContain("SPEC_DRAFT");
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

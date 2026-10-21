@@ -1,0 +1,14 @@
+{
+  "scenario": "scn_planctl_spec_quality_001",
+  "request": "Describe how the planctl MCP system works: component responsibilities, named commands with typed inputs/results, the full operation sequence and storage/approval/failure behavior. Put interfaces beside each flow. Goals and development principles alone are not the solution.",
+  "document": "spec-goals-without-solution.md",
+  "expectedSolutionScore": 0,
+  "expectedReady": false,
+  "labelSource": "owner",
+  "ownerAssessment": "Owner rated solution coverage as zero.",
+  "missing": [
+    "MCP operation contracts and typed data",
+    "Concrete component responsibilities and stored state",
+    "End-to-end operation sequence and failure transitions"
+  ]
+}

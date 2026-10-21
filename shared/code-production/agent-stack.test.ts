@@ -1,11 +1,12 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { checkStack, installStack } from "./agent-stack";
+import { planJournalPath } from "../../planctl/src/core/plan-update";
 
 const roots: string[] = [];
 
@@ -85,7 +86,11 @@ function fixture(): string {
   git(root, "config", "user.email", "test@example.com");
   git(root, "config", "user.name", "Test");
   writeFileSync(join(root, "package.json"), packageJson());
-  git(root, "add", "package.json");
+  // Installed CLI checks resolve the same package dependencies as the source;
+  // the fixture must not ask Bun to download them during a Git hook.
+  symlinkSync(resolve(import.meta.dir, "../../planctl/node_modules"), join(root, "node_modules"), "dir");
+  writeFileSync(join(root, ".gitignore"), "/node_modules\n");
+  git(root, "add", "package.json", ".gitignore");
   git(root, "commit", "-m", "test: fixture");
   // init refuses the integration branch and a missing base: the fixture
   // names its base and works on a feature branch, like every real plan
@@ -99,6 +104,41 @@ afterEach(() => {
 });
 
 describe("agent-stack", () => {
+  /**
+   * @test-id: tst_agent_stack_016
+   * @scenario: scn_planctl_journal_cleanup_001
+   * @covers: shared/code-production/templates/hooks/post-commit
+   * @deterministic: yes
+   * @invariant: normal commits clear their own plan journals without touching or failing on a journal for an absent plan.
+   */
+  test("tst_agent_stack_016 cleans only journals for plans carried by the commit", () => {
+    const root = fixture();
+    installStack(root, { base: "staging" });
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "test: installed stack");
+    const cli = resolve(import.meta.dir, "../../planctl/src/cli/main.ts");
+    const plan = "docs/plans/current.md";
+    const created = spawnSync("bun", [cli, "init", plan, "--title", "Current plan"], { cwd: root, encoding: "utf8" });
+    expect(created.status, created.stderr).toBe(0);
+    const journal = planJournalPath(root, plan);
+    const orphan = planJournalPath(root, "docs/plans/removed.md");
+    const abandoned = readFileSync(journal, "utf8").replace(plan, "docs/plans/removed.md");
+    writeFileSync(orphan, abandoned);
+
+    const committed = spawnSync("git", ["-C", root, "commit", "-m", "test: current plan"], { encoding: "utf8" });
+    expect(committed.status, committed.stderr).toBe(0);
+    expect(committed.stderr).not.toMatch(/fatal:|plan-update:/);
+    expect(existsSync(journal)).toBe(false);
+    expect(readFileSync(orphan, "utf8")).toBe(abandoned);
+
+    writeFileSync(join(root, "notes.md"), "Research notes.\n");
+    git(root, "add", "notes.md");
+    const notes = spawnSync("git", ["-C", root, "commit", "-m", "test: ordinary documentation"], { encoding: "utf8" });
+    expect(notes.status, notes.stderr).toBe(0);
+    expect(notes.stderr).not.toMatch(/fatal:|plan-update:/);
+    expect(readFileSync(orphan, "utf8")).toBe(abandoned);
+  }, 30_000);
+
   test("tst_agent_stack_001 installs one framework-agnostic contract", () => {
     const root = fixture();
     const installed = installStack(root, { base: "staging" });

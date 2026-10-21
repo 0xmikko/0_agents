@@ -1,6 +1,6 @@
 ---
 name: review-implementation
-description: One final implementation review, only at the user's request, after the entire plan is implemented and local checks and CI are green. Launches 3 parallel cop reviews and Codex code review. Does NOT fix or repeat automatically.
+description: One final implementation review, only at the user's request, after the entire plan is implemented and the complete local gate passes, before implementation push and CI. Launches 3 parallel cop reviews and Codex code review. Does NOT fix or repeat automatically.
 user-invocable: true
 disable-model-invocation: true
 effort: high
@@ -10,8 +10,8 @@ effort: high
 
 # Review Implementation
 
-Run only at the user's request; that request starts it, and nothing here
-refuses it. Do not start another round on your own after fixes or a new SHA:
+Run only at the user's request, after the complete local gate and before
+implementation push and CI. Do not start another round after fixes or a new SHA:
 fix real defects within the authorized task and check them with typecheck and
 tests covering changed files. Never invoke this skill for an individual Stage
 or commit.
@@ -48,20 +48,27 @@ plan in the conversation — use it to understand intent.
 
 Read AGENTS.md and relevant project docs first for project rules.
 
-## Phase 1: EXACT-HEAD RECEIPT
+## Phase 1: LOCAL VERIFICATION
 
-Do not run product suites here. Require the managed Delivery receipt to name
-the exact SHA under review:
+Use the managed Delivery receipt for the complete local gate on the exact
+SHA under review:
 
 ```bash
 test "$(sed -n '1p' "$(git rev-parse --path-format=absolute --git-path code-production/verify-pr.sha)")" = "$(git rev-parse HEAD)"
 ```
 
-- Receipt matches HEAD and required CI is green for that SHA → proceed to Phase 2.
-- CI still running for HEAD → wait for it. Receipt stale or CI red → name the
-  gap in the report's Goal slot and proceed.
+- Receipt matches HEAD → proceed to Phase 2. A PR and remote CI are not prerequisites.
+- Receipt missing or stale → the caller runs the required local Delivery gate,
+  resolves failures and resumes this requested review without asking the owner
+  to authorize routine verification or invoke the review again.
+- Do not push, create a PR or wait for CI to make a review runnable. Any observed
+  CI failure is evidence to investigate locally, not an entry condition.
 
 The receipt proves checks for the SHA it names; it does not cover later fixes.
+Verify fixes with typecheck and tests covering changed files. A changed SHA
+alone does not trigger another review round. The order is complete local gate,
+review, fixes and affected verification, authorized implementation push, then
+remote CI. Keep publication hooks enabled and reuse valid local evidence.
 
 ## Phase 2: COP REVIEW
 

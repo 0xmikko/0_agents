@@ -652,7 +652,7 @@ describe("Delivery and Stage descriptions", () => {
   it("tst_scripts_planupdate_desc_003 a Stage without a description is refused and told what to write", () => {
     const locked = putDelivery(lockPlanSpec(draft(), "spec").body, delivery()).body;
     const { description: _omit, ...bare } = stage("D1-S1", ["scripts/base.ts"]);
-    expect(() => putStage(locked, bare as unknown as StageInput)).toThrow(/what this Stage solves/);
+    expect(() => putStage(locked, bare as unknown as StageInput)).toThrow(/Stage description is required:/);
   });
 
   // @test-id: tst_scripts_planupdate_desc_004
@@ -1122,6 +1122,58 @@ describe("the Ledger line on the last Stage", () => {
   function ticked(body: string, stageId: string): string {
     return body.replace(`- [ ] ${stageId}-T1 —`, `- [x] ${stageId}-T1 —`);
   }
+
+  // @test-id: tst_core_planctl_close_diagnostic_001
+  // @scenario: scn_planctl_failed_verification_001
+  // @covers: planctl/src/core/plan-update.ts::closePlanStage
+  // @deterministic: yes
+  // @invariant: failed verification leaves its criterion open and preserves the actual command error.
+  it("tst_core_planctl_close_diagnostic_001 preserves a failed command's evidence", () => {
+    const root = mkdtempSync(join(tmpdir(), "planctl-close-evidence-"));
+    try {
+      execFileSync("git", ["init", "-q", root]);
+      const approved = approvedWithStages();
+      const find = approved.slice(approved.indexOf("<!-- plan:stage:D1-S1:start -->"), approved.indexOf("<!-- plan:stage:D1-S1:end -->"));
+      const command = "printf 'fixture failure' >&2; exit 7";
+      const body = applyOwnerAmendment(approved, "fixture", {
+        section: "implementation", find, replace: find.replace("`bun test` exits 0", `\`${command}\` exits 0`),
+      }).body;
+      const closed = closePlanStage(ticked(body, "D1-S1"), "D1-S1", { root, head: "c".repeat(40) });
+      expect(closed.status).toBe("PARTIAL");
+      expect(closed.body).toContain(`- [ ] \`${command}\` exits 0`);
+      const path = closed.verificationLogs?.[0];
+      expect(path).toBeDefined();
+      if (path === undefined) throw new Error("Missing failure evidence");
+      expect(readFileSync(path, "utf8")).toContain("Exit: 7");
+      expect(readFileSync(path, "utf8")).toContain("fixture failure");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  // @test-id: tst_core_planctl_close_literal_001
+  // @scenario: scn_planctl_close_literal_001
+  // @covers: planctl/src/core/plan-update.ts::closePlanStage
+  // @deterministic: yes
+  // @invariant: shell dollar sequences stay literal when criteria close; the approved implementation lock remains valid.
+  it("tst_core_planctl_close_literal_001 preserves dollar sequences and the approved lock", () => {
+    const command = "printf '%s' value | grep -q 'value$' && test '$&' = '$&' && test '$$' = '$$'";
+    const approved = approvedWithStages();
+    // Replace only the first Stage's criterion while it is explicitly amended.
+    const find = approved.slice(approved.indexOf("<!-- plan:stage:D1-S1:start -->"), approved.indexOf("<!-- plan:stage:D1-S1:end -->"));
+    const body = applyOwnerAmendment(approved, "fixture", {
+      section: "implementation",
+      find,
+      replace: find.replace("`bun test` exits 0", () => `\`${command}\` exits 0`),
+    }).body;
+    const calls: string[] = [];
+    const closed = closePlanStage(ticked(body, "D1-S1"), "D1-S1", {
+      root: tmpdir(), head: "c".repeat(40), run: (value) => { calls.push(value); return 0; },
+    });
+    expect(calls).toEqual([command]);
+    expect(closed.status).toBe("CLOSED");
+    expect(closed.body).toContain(`- [x] \`${command}\` exits 0`);
+    expect(protocolLockViolations(closed.body)).toEqual([]);
+    expect(closed.body.match(/<!-- plan:results:D1-S1:start -->/g)).toHaveLength(1);
+  });
 
   // @test-id: tst_scripts_planupdate_023
   // @scenario: scn_plan_control_ledger_001

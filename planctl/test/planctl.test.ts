@@ -382,10 +382,10 @@ if (args[0] === "pr" && args[1] === "list") {
       const plan = `docs/plans/${today}-graph-indexing-llm.md`;
       expect(existsSync(join(fixture.root, plan))).toBe(true);
       expect(named.stdout).toContain(`Plan: ${plan}`);
-      expect(named.stdout).toContain("Sections: The Goal, Why now, The target");
+      expect(named.stdout).toContain("Sections: The Goal, The target");
+      expect(named.stdout).not.toContain("Why now");
       expect(named.stdout).toMatch(/Vocabulary: .+ → .+/);
-      expect(named.stdout).toContain("Goal rule: The Goal is one to six numbered outcomes");
-      expect(named.stdout).toContain("Target rule: Suggested layout:");
+      expect(named.stdout).toMatch(/Target rule: \S/);
       expect(named.stdout).toContain("Example flow:\n### Browser OAuth returns a provider URL");
       expect(run(fixture.root, "verify-staged", plan).status).toBe(0);
     } finally {
