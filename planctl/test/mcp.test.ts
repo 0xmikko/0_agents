@@ -4,12 +4,15 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { z } from "zod";
 import { dispatchTool, toolNames } from "../src/mcp/server";
 import { deliveryMetas, mutatePlanFile, planJournalPath, taskRunPath, verifyStagedPlan } from "../src/core/plan-update";
 import { decodeTaskRun } from "../src/core/task-run";
 import { protocolImplementationHash, protocolSpecHash } from "../src/core/plan-update";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { installStack } from "../../shared/code-production/agent-stack";
+import { checkContent } from "../src/core/content-check";
+import { cacheDirectory } from "../src/core/vocabulary";
 
 interface Fixture {
   readonly root: string;
@@ -508,6 +511,231 @@ describe("planctl mcp", () => {
   }, 120_000);
 
   /**
+   * @test-id: tst_unit_planctl_mcp_013
+   * @scenario: scn_planctl_mcp_authoring_004
+   * @covers: planctl/src/mcp/server.ts::submit_spec,published; planctl/src/mcp/publish.ts::ownerReply
+   * @deterministic: yes; semantic provider deliberately unavailable, no diagrams
+   * @fixtures: temporary consumer repository and plan-lint.md
+   * @invariant: structural checks and nonblocking advice never present unavailable semantic evidence as a writing-quality pass.
+   */
+  it("tst_unit_planctl_mcp_013 reports unavailable semantic evidence in submission text and the owner reply", async () => {
+    const { root } = fixture("unavailable-writing-advice");
+    const deps = { cwd: home, publication: () => null, sourceCommit: "s".repeat(40), eventLog: join(home, "events-013.jsonl"), publisher: (_repository: string, plan: string) => `http://fixture/${plan}` };
+    const apiKey = process.env.TYPESAFE_API_KEY;
+    delete process.env.TYPESAFE_API_KEY;
+    try {
+      const started = await dispatchTool(deps, "init", { root, title: "Report what was checked" });
+      const { plan } = z.object({ plan: z.string() }).parse(started.structuredContent);
+      const absolute = join(root, plan);
+      const repeated = "The parser refuses an empty name before it is ever saved.";
+      const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8")
+        .replace(/```mermaid[\s\S]*?```\n/, "")
+        .replace("The current parser accepts empty names.", `${repeated}\n\n${repeated}`);
+      const submitted = await dispatchTool(deps, "submit_spec", {
+        plan: absolute, baseRevision: protocolSpecHash(readFileSync(absolute, "utf8")), ownerRequest: "Reject empty names", spec,
+      });
+      expect(submitted.isError ?? false, text(submitted)).toBe(false);
+      const report = z.object({
+        revision: z.string(), reply: z.string(),
+        findings: z.array(z.object({ blocking: z.boolean() })),
+        semanticChecks: z.array(z.object({ probability: z.number().nullable(), uncertainty: z.string().nullable() })),
+      }).parse(submitted.structuredContent);
+      expect(report.findings).toEqual([{ blocking: false }]);
+      expect(report.semanticChecks.length).toBeGreaterThan(0);
+      expect(report.semanticChecks.every(check => check.probability === null)).toBe(true);
+      const checks = `Checks: 0 structural errors; 1 advisory finding.\nSemantic advice: ${report.semanticChecks.length} unavailable; 0 inconclusive. Writing quality still needs review.`;
+      expect(text(submitted)).toContain(checks);
+      expect(text(submitted)).toContain("Advice unavailable: TYPESAFE_API_KEY is not configured.");
+      expect(report.reply).toBe(`Plan: http://fixture/${plan}\nDraft solution.\n${checks}`);
+
+      const unchanged = await dispatchTool(deps, "submit_spec", {
+        plan: absolute, baseRevision: report.revision, ownerRequest: "Reject empty names", spec,
+      });
+      expect(unchanged.isError ?? false, text(unchanged)).toBe(false);
+      expect(unchanged.structuredContent?.checkStatus).toBe("no_change");
+      expect(unchanged.structuredContent?.reply).toBe(report.reply);
+      const approved = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec", expectedRevision: report.revision });
+      expect(approved.isError ?? false, text(approved)).toBe(false);
+    } finally {
+      if (apiKey === undefined) delete process.env.TYPESAFE_API_KEY;
+      else process.env.TYPESAFE_API_KEY = apiKey;
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_014
+   * @scenario: scn_planctl_mcp_authoring_005
+   * @covers: planctl/src/mcp/server.ts::submit_spec,published; planctl/src/core/spec-submission.ts::submitSpec
+   * @deterministic: yes; semantic provider deliberately unavailable, no diagrams
+   * @fixtures: temporary consumer repository and plan-lint.md
+   * @invariant: an invalid Target cannot change the saved draft, its journal, its revision or its publication.
+   */
+  it("tst_unit_planctl_mcp_014 refuses an invalid Target before saving or publishing", async () => {
+    const { root } = fixture("target-refusal");
+    let publications = 0;
+    const deps = { cwd: home, publication: () => null, sourceCommit: "s".repeat(40), eventLog: join(home, "events-014.jsonl"), publisher: (_repository: string, plan: string) => { publications += 1; return `http://fixture/${plan}`; } };
+    const apiKey = process.env.TYPESAFE_API_KEY;
+    delete process.env.TYPESAFE_API_KEY;
+    try {
+      const started = await dispatchTool(deps, "init", { root, title: "Reject an unfinished Target" });
+      const { plan } = z.object({ plan: z.string() }).parse(started.structuredContent);
+      const absolute = join(root, plan);
+      const draft = readFileSync(absolute, "utf8");
+      const revision = protocolSpecHash(draft);
+      const journal = planJournalPath(root, plan);
+      const receipt = readFileSync(journal, "utf8");
+      const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8")
+        .replace(/```mermaid[\s\S]*?```\n/, "")
+        .replace("export interface Change {", 'export const events = pgTable("events", { id: text().notNull() });\nexport interface Change {');
+      const refused = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: revision, ownerRequest: "Reject empty names", spec });
+      expect(refused.isError ?? false, text(refused)).toBe(true);
+      expect(text(refused)).toMatch(/target/i);
+      expect(readFileSync(absolute, "utf8")).toBe(draft);
+      expect(protocolSpecHash(readFileSync(absolute, "utf8"))).toBe(revision);
+      expect(readFileSync(journal, "utf8")).toBe(receipt);
+      expect(publications).toBe(0);
+    } finally {
+      if (apiKey === undefined) delete process.env.TYPESAFE_API_KEY;
+      else process.env.TYPESAFE_API_KEY = apiKey;
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_015
+   * @scenario: scn_planctl_mcp_authoring_004
+   * @covers: planctl/src/mcp/server.ts::submit_spec,published; planctl/src/mcp/publish.ts::describeChecks,ownerReply
+   * @deterministic: yes; scripted semantic evidence cached in the temporary consumer, no network or diagrams
+   * @fixtures: temporary consumer repository and plan-lint.md
+   * @invariant: inconclusive semantic evidence is visible separately from unavailable checks and remains nonblocking advice.
+   */
+  it("tst_unit_planctl_mcp_015 distinguishes inconclusive semantic evidence from unavailable checks", async () => {
+    const { root } = fixture("inconclusive-writing-advice");
+    const deps = { cwd: home, publication: () => null, sourceCommit: "s".repeat(40), eventLog: join(home, "events-015.jsonl"), publisher: (_repository: string, plan: string) => `http://fixture/${plan}` };
+    const apiKey = process.env.TYPESAFE_API_KEY;
+    delete process.env.TYPESAFE_API_KEY;
+    try {
+      const started = await dispatchTool(deps, "init", { root, title: "Report inconclusive evidence" });
+      const { plan } = z.object({ plan: z.string() }).parse(started.structuredContent);
+      const absolute = join(root, plan);
+      const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace(/```mermaid[\s\S]*?```\n/, "").trim();
+      let requests = 0;
+      const fetcher: typeof fetch = Object.assign(async (_url: unknown, init?: RequestInit) => {
+        requests += 1;
+        if (typeof init?.body !== "string") throw new Error("Expected semantic request body");
+        const request = z.object({ questions: z.record(z.string(), z.unknown()) }).parse(JSON.parse(init.body));
+        return Response.json({ model: "jev-1.13.0", answers: Object.fromEntries(
+          Object.keys(request.questions).map(id => [id, { type: "noul", noul: id === "target" ? 0.5 : 0.96 }]),
+        ) });
+      }, { preconnect: fetch.preconnect });
+      await checkContent({ root, goal: "Reject empty names", kind: "flow", content: spec, source: plan }, { apiKey: "fixture", browserPath: null, fetcher });
+      expect(requests).toBe(1);
+      const submitted = await dispatchTool(deps, "submit_spec", {
+        plan: absolute, baseRevision: protocolSpecHash(readFileSync(absolute, "utf8")), ownerRequest: "Reject empty names", spec,
+      });
+      expect(submitted.isError ?? false, text(submitted)).toBe(false);
+      const { reply } = z.object({ reply: z.string() }).parse(submitted.structuredContent);
+      const checks = "Checks: 0 structural errors; 1 advisory finding.\nSemantic advice: 0 unavailable; 1 inconclusive. Writing quality still needs review.";
+      expect(text(submitted)).toContain(checks);
+      expect(text(submitted)).toContain("Probability: 0.5 — Inconclusive on the evaluated thresholds");
+      expect(reply).toBe(`Plan: http://fixture/${plan}\nDraft solution.\n${checks}`);
+    } finally {
+      if (apiKey === undefined) delete process.env.TYPESAFE_API_KEY;
+      else process.env.TYPESAFE_API_KEY = apiKey;
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  /**
+   * @test-id: tst_unit_planctl_mcp_016
+   * @scenario: scn_planctl_mcp_authoring_006
+   * @covers: planctl/src/mcp/server.ts::dispatchTool,check_content,submit_spec
+   * @deterministic: yes; input exceeds semantic request bound, no provider or diagrams
+   * @fixtures: temporary consumer with a 50KB contract excerpt and six repeated evidence records
+   * @invariant: real MCP clients receive bounded replies with accurate error/advice totals and a readable artifact containing every omitted finding and evidence quote.
+   */
+  it("tst_unit_planctl_mcp_016 bounds large real MCP results without hiding errors or losing evidence", async () => {
+    const { root, git } = fixture("large-writing-result");
+    try {
+      const fields = [
+        ...Array.from({ length: 9 }, (_, index) => `  readonly value${index}: any;`),
+        ...Array.from({ length: 52 }, (_, index) => `  readonly wire_field_${index}: string;`),
+      ].join("\n");
+      const contract = `export interface Change {\n${fields}\n}`;
+      writeFileSync(join(root, "src/change.ts"), `${contract}\n`);
+      git("add", "src/change.ts");
+      git("commit", "-qm", "the existing wire contract");
+      const small = await client.callTool({ name: "check_content", arguments: {
+        root, goal: "Return a typed result", kind: "flow", content: "```typescript\ninterface Small { readonly value: string }\n```", questions: {},
+      } });
+      expect(small.structuredContent).toEqual({ findings: [], semanticChecks: [], diagramChecks: [] });
+      expect(text(small)).toBe("No findings.");
+      const content = `## The target\n\nThe parser returns the complete change.\n\n\`\`\`typescript\n${contract}\n/* ${"evidence ".repeat(6500)} */\n\`\`\``;
+      const checked = await client.callTool({ name: "check_content", arguments: { root, goal: "Return the complete change", kind: "flow", content } });
+      expect(checked.isError ?? false, text(checked)).toBe(false);
+      expect(Buffer.byteLength(JSON.stringify(checked))).toBeLessThan(32 * 1024);
+
+      const started = await client.callTool({ name: "init", arguments: { root, title: "Large writing result" } });
+      const { plan } = z.object({ plan: z.string() }).parse(started.structuredContent);
+      const absolute = join(root, plan);
+      const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8")
+        .replace(/```mermaid[\s\S]*?```\n/, "")
+        .replace(/export interface Change \{[\s\S]*?\n\}/, `${contract}\n/* ${"evidence ".repeat(6500)} */`).trim();
+      const submitted = await client.callTool({ name: "submit_spec", arguments: {
+        plan: absolute, baseRevision: protocolSpecHash(readFileSync(absolute, "utf8")), ownerRequest: "Return the complete change", spec,
+      } });
+      expect(submitted.isError ?? false, text(submitted)).toBe(false);
+      for (const [result, original] of [[checked, content], [submitted, spec]] as const) {
+        expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(32 * 1024);
+        const compact = z.object({
+          reply: z.string().optional(),
+          totals: z.object({ errors: z.number(), advice: z.number(), unavailable: z.number(), inconclusive: z.number() }),
+          fullResult: z.object({ path: z.string(), bytes: z.number(), omitted: z.object({ findings: z.number(), semanticEvidence: z.boolean(), findingEvidence: z.boolean(), originalText: z.boolean() }) }),
+          findings: z.array(z.object({ blocking: z.boolean() })),
+        }).parse(result.structuredContent);
+        expect(compact.totals).toEqual({ errors: 9, advice: 52, unavailable: 6, inconclusive: 0 });
+        expect(text(result)).toContain("Checks: 9 structural errors; 52 advisory findings.");
+        expect(text(result)).toContain("6 unavailable; 0 inconclusive");
+        expect(text(result)).toContain("Blocking errors remain");
+        expect(text(result)).toContain(compact.fullResult.path);
+        expect(compact.fullResult.path.startsWith(`${cacheDirectory(root, "mcp-results")}/`)).toBe(true);
+        expect(compact.fullResult.omitted).toMatchObject({ semanticEvidence: true, findingEvidence: true, originalText: true });
+        expect(compact.findings.filter(finding => finding.blocking)).toHaveLength(9);
+        const bytes = readFileSync(compact.fullResult.path, "utf8");
+        expect(Buffer.byteLength(bytes)).toBe(compact.fullResult.bytes);
+        expect(Buffer.byteLength(bytes)).toBeGreaterThan(300_000);
+        const full = z.object({ structuredContent: z.object({
+          reply: z.string().optional(), url: z.string().optional(),
+          findings: z.array(z.object({ blocking: z.boolean(), quote: z.string(), text: z.string() })),
+          semanticChecks: z.array(z.object({ evidence: z.array(z.object({ quote: z.string() })) })),
+        }) }).parse(JSON.parse(bytes));
+        expect(full.structuredContent.findings).toHaveLength(61);
+        expect(full.structuredContent.semanticChecks).toHaveLength(6);
+        expect(full.structuredContent.semanticChecks.every(check => check.evidence[0]?.quote === original)).toBe(true);
+        expect(full.structuredContent.findings.some(finding => finding.blocking && finding.quote === "any")).toBe(true);
+        if (result === submitted) {
+          expect(compact.reply).toStartWith(full.structuredContent.reply ?? "missing owner reply");
+          expect(text(result)).toContain(`Plan: ${full.structuredContent.url}`);
+          expect(compact.reply).toContain(compact.fullResult.path);
+        }
+      }
+      expect(readFileSync(absolute, "utf8")).toContain(spec);
+      const beforeRefusal = readFileSync(absolute, "utf8");
+      const refused = await client.callTool({ name: "submit_spec", arguments: {
+        plan: absolute, baseRevision: protocolSpecHash(beforeRefusal), ownerRequest: "Return the complete change",
+        spec: spec.replace(contract, `export const events = pgTable("events", { id: text("${"evidence ".repeat(6500)}") });\n${contract}`),
+      } });
+      expect(refused.isError).toBe(true);
+      expect(Buffer.byteLength(JSON.stringify(refused))).toBeLessThan(32 * 1024);
+      const rejectedArtifact = z.object({ fullResult: z.object({ path: z.string() }) }).parse(refused.structuredContent);
+      expect(text(refused)).toContain(rejectedArtifact.fullResult.path);
+      expect(readFileSync(rejectedArtifact.fullResult.path, "utf8")).toContain("pgTable");
+      expect(readFileSync(absolute, "utf8")).toBe(beforeRefusal);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 120_000);
+
+  /**
    * @test-id: tst_unit_planctl_mcp_008
    * @scenario: scn_planctl_mcp_authoring_002
    * @covers: planctl/src/mcp/server.ts::submit_spec,approve_spec,amend
@@ -581,7 +809,7 @@ describe("planctl mcp", () => {
       revision = (repeated.structuredContent as { revision: string }).revision;
       const conforming = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: revision, ownerRequest: "Reject empty names", spec });
       expect(errorsOf(conforming)).toEqual([]);
-      expect(text(conforming)).toContain("Checks: 0 errors");
+      expect(text(conforming)).toContain("Checks: 0 structural errors");
       const approved = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec", expectedRevision: protocolSpecHash(readFileSync(absolute, "utf8")) });
       expect(approved.isError ?? false, text(approved)).toBe(false);
     } finally {
@@ -631,14 +859,15 @@ describe("planctl mcp", () => {
       const refused = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (renamed.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec: withoutMap });
       expect(refused.isError ?? false, text(refused)).toBe(false);
       expect(text(refused)).not.toContain("has no implementation map");
-      expect(text(refused)).toContain("Checks: 0 errors");
+      expect(text(refused)).toContain("Checks: 0 structural errors");
       const submitted = await dispatchTool(deps, "submit_spec", { plan: absolute, baseRevision: (refused.structuredContent as { revision: string }).revision, ownerRequest: "Reject empty names", spec });
       expect(submitted.isError ?? false, text(submitted)).toBe(false);
       expect(text(submitted)).not.toContain("Example flow:");
       const submission = submitted.structuredContent as { revision: string; url: string; reply: string; checkStatus: string };
       expect(submission.checkStatus).toBe("checked");
       expect(submission.url).toBe(`http://fixture/${plan}`);
-      expect(submission.reply).toBe(`Plan: http://fixture/${plan}\nDraft solution.\nChecks: 0 errors`);
+      expect(submission.reply).toStartWith(`Plan: http://fixture/${plan}\nDraft solution.\nChecks: 0 structural errors; 0 advisory findings.\nSemantic advice: `);
+      expect(submission.reply).toEndWith("Writing quality still needs review.");
       expect(received.at(-1)?.bytes).toBe(readFileSync(absolute, "utf8"));
 
       const locked = await dispatchTool(deps, "approve_spec", { plan: absolute, ownerWord: "spec", expectedRevision: protocolSpecHash(readFileSync(absolute, "utf8")) });

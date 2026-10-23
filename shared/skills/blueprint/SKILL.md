@@ -27,6 +27,11 @@ tool schemas for arguments. Project package.json agent:* scripts define checks.
    data as hand-written TypeScript interfaces or types, not table declarations
    or old definitions followed by fields to add. Explain necessary terms where
    they arise; do not make the owner reconstruct the result.
+   Write changed request and result fields explicitly; do not replace their
+   field lists with Partial, Omit or Pick over another type.
+   Make the data operation and result understandable before listing helpers,
+   files and API calls. Use a concrete example when it explains the behavior
+   more clearly than an inventory of implementation details.
    A small change may need one short paragraph and its data type. Do not narrate
    compliance with these instructions or repeat the same explanation as prose,
    tables and checklists.

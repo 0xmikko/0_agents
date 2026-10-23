@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { cacheDirectory } from "../core/vocabulary";
 import { spawnSync } from "node:child_process";
 import { basename, resolve } from "node:path";
+import type { SubmitSpecResult } from "../core/spec-submission";
 
 /** Publish one plan's saved bytes and return where the owner reads them. */
 type Publisher = (root: string, plan: string) => string;
@@ -29,11 +30,26 @@ export function commandPublisher(command: string): Publisher {
   };
 }
 
-/** The three fixed lines the agent shows the owner after any write; the Checks line only after a submission. */
-export function ownerReply(url: string, _revision: string, state: string, checks: { readonly errors: number } | null): string {
+/** Structural findings and semantic uncertainty remain separate; neither certifies the prose.
+ * @tested-by: tst_unit_planctl_mcp_013, tst_unit_planctl_mcp_015
+ */
+export function describeChecks(
+  findings: readonly Pick<SubmitSpecResult["findings"][number], "blocking">[],
+  semanticChecks: readonly Pick<SubmitSpecResult["semanticChecks"][number], "probability" | "uncertainty">[],
+): string {
+  const errors = findings.filter(finding => finding.blocking).length;
+  const advice = findings.length - errors;
+  const unavailable = semanticChecks.filter(check => check.probability === null).length;
+  const inconclusive = semanticChecks.filter(check => check.probability !== null && check.uncertainty !== null).length;
+  return `Checks: ${errors} structural error${errors === 1 ? "" : "s"}; ${advice} advisory finding${advice === 1 ? "" : "s"}.\n`
+    + `Semantic advice: ${unavailable} unavailable; ${inconclusive} inconclusive. Writing quality still needs review.`;
+}
+
+/** The owner reply after a write includes the submission's structural and semantic limits. */
+export function ownerReply(url: string, _revision: string, state: string, checks: string | null): string {
   return [
     `Plan: ${url}`,
     state === "SPEC_DRAFT" ? "Draft solution." : state === "SPEC_LOCKED" ? "Solution approved; implementation breakdown follows." : "Approved for implementation.",
-    ...(checks === null ? [] : [`Checks: ${checks.errors} errors`]),
+    ...(checks === null ? [] : [checks]),
   ].join("\n");
 }

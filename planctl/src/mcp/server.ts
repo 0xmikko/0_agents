@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -41,12 +41,13 @@ import {
   validateImplementation,
 } from "../core/plan-update";
 import { submitSpec } from "../core/spec-submission";
+import type { SubmitSpecResult } from "../core/spec-submission";
 import { checkContent } from "../core/content-check";
-import { approvedVocabularyFile, readVocabulary, vocabularyChangesSchema } from "../core/vocabulary";
+import { approvedVocabularyFile, cacheDirectory, contentHash, readVocabulary, vocabularyChangesSchema } from "../core/vocabulary";
 import { deliveryGate, publishDelivery, recordCompleteGate, requireControlledPublication } from "../core/publication";
 import { decodeTaskRun } from "../core/task-run";
 import { renderProgressView, renderTaskBrief } from "../cli/render";
-import { ownerReply } from "./publish";
+import { describeChecks, ownerReply } from "./publish";
 
 interface ServerDependencies {
   /** Where relative plan paths resolve; the server never changes it. */
@@ -100,6 +101,79 @@ function refusal(text: string): ToolResult {
 
 function describeFindings(findings: readonly GateViolation[]): string {
   return findings.map((finding) => `${finding.blocking ? "Error" : "Advice"}: ${finding.text}${finding.replacement === null ? "" : ` → ${finding.replacement}`}\nEvidence: ${finding.quote}`).join("\n");
+}
+
+function describeSemanticChecks(checks: SubmitSpecResult["semanticChecks"]): string {
+  return checks.map(check => `${check.question}\n${check.probability === null ? "Unavailable" : `Probability: ${check.probability}`}${check.uncertainty ? ` — ${check.uncertainty}` : ""}`).join("\n\n");
+}
+
+/** Keep complete evidence in the worktree cache before shortening a native client's transport.
+ * @tested-by: tst_unit_planctl_mcp_016
+ * @invariant: totals count the full report, errors appear first, and every omitted byte remains readable locally.
+ */
+function boundedContentResult(root: string, result: ToolResult): ToolResult {
+  const limit = 24 * 1024;
+  if (Buffer.byteLength(JSON.stringify(result)) <= limit) return result;
+  const serialized = `${JSON.stringify(result, null, 2)}\n`;
+  const bytes = Buffer.byteLength(serialized);
+  const directory = cacheDirectory(root, "mcp-results");
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const path = resolve(directory, `${contentHash(serialized)}.json`);
+  writeFileSync(path, serialized, { mode: 0o600 });
+  const excerpt = (value: string, length: number): string => value.length <= length ? value : `${value.slice(0, length)}…`;
+  const report = z.object({
+    findings: z.array(z.object({ blocking: z.boolean(), line: z.number(), text: z.string() })),
+    semanticChecks: z.array(z.object({ question: z.string(), probability: z.number().nullable(), uncertainty: z.string().nullable() })),
+  }).safeParse(result.structuredContent);
+  if (!report.success) {
+    return { ...result, content: [{ type: "text", text: `${excerpt(result.content.map(entry => entry.text).join("\n"), 1000)}\nFull result: ${path} (${bytes} bytes). Original long text is omitted from transport; read the artifact for the complete result.` }],
+      structuredContent: { fullResult: { path, bytes, omitted: { originalText: true } } } };
+  }
+  const { findings, semanticChecks } = report.data;
+  const totals = {
+    errors: findings.filter(finding => finding.blocking).length,
+    advice: findings.filter(finding => !finding.blocking).length,
+    unavailable: semanticChecks.filter(check => check.probability === null).length,
+    inconclusive: semanticChecks.filter(check => check.probability !== null && check.uncertainty !== null).length,
+  };
+  const notice = `Full result: ${path} (${bytes} bytes). Repeated semantic evidence, finding quotes and original long text are omitted; displayed text may be excerpted. Read the JSON artifact in line ranges for complete findings and evidence.`;
+  const original = result.structuredContent ?? {};
+  const summary = [typeof original.reply === "string" ? original.reply : describeChecks(findings, semanticChecks),
+    ...(totals.errors > 0 ? ["Blocking errors remain; saving a draft does not satisfy these checks."] : []),
+    notice].join("\n");
+  const metadata = Object.fromEntries(["plan", "revision", "state", "checkStatus", "url", "specRevision", "implementationRevision"]
+    .filter(key => key in original).map(key => [key, typeof original[key] === "string" ? excerpt(original[key], 512) : original[key]]));
+  let compact: ToolResult = {
+    ...(result.isError === undefined ? {} : { isError: result.isError }),
+    content: [{ type: "text", text: summary }],
+    structuredContent: { ...metadata, ...(typeof original.reply === "string" ? { reply: summary } : {}), totals,
+      findings: [], semanticChecks: [],
+      fullResult: { path, bytes, omitted: { findings: findings.length, semanticChecks: semanticChecks.length, semanticEvidence: true, findingEvidence: true, originalText: true } } },
+  };
+  const shown: typeof findings = [];
+  const ordered = [...findings.filter(finding => finding.blocking), ...findings.filter(finding => !finding.blocking)];
+  for (const finding of ordered) {
+    const item = { ...finding, text: excerpt(finding.text, 512) };
+    const candidate = [...shown, item];
+    const text = `${summary}\n\n${candidate.map(item => `${item.blocking ? "Error" : "Advice"} (line ${item.line}): ${item.text}`).join("\n")}`;
+    const structuredContent = { ...compact.structuredContent, findings: candidate,
+      fullResult: { path, bytes, omitted: { findings: findings.length - candidate.length, semanticChecks: semanticChecks.length, semanticEvidence: true, findingEvidence: true, originalText: true } } };
+    const next = { ...compact, content: [{ type: "text" as const, text }], structuredContent };
+    if (Buffer.byteLength(JSON.stringify(next)) > limit) break;
+    shown.push(item);
+    compact = next;
+  }
+  const shownChecks: typeof semanticChecks = [];
+  for (const check of semanticChecks) {
+    const item = { ...check, question: excerpt(check.question, 512), uncertainty: check.uncertainty === null ? null : excerpt(check.uncertainty, 256) };
+    const candidate = [...shownChecks, item];
+    const next = { ...compact, structuredContent: { ...compact.structuredContent, semanticChecks: candidate,
+      fullResult: { path, bytes, omitted: { findings: findings.length - shown.length, semanticChecks: semanticChecks.length - candidate.length, semanticEvidence: true, findingEvidence: true, originalText: true } } } };
+    if (Buffer.byteLength(JSON.stringify(next)) > limit) break;
+    shownChecks.push(item);
+    compact = next;
+  }
+  return compact;
 }
 
 /** Every lint error of the whole plan plus what approval would refuse: duplicate IDs, unknown dependencies, cycles. */
@@ -198,7 +272,7 @@ const TOOLS = {
         ...(args.questions === undefined ? {} : { questions: args.questions }) });
       return reply({ ...result }, [
         ...result.findings.map(f => `${f.blocking ? "Error" : "Advice"}: ${f.text}\nEvidence: ${f.quote}`),
-        ...result.semanticChecks.map(c => `${c.question}\n${c.probability === null ? "Unavailable" : `Probability: ${c.probability}`}${c.uncertainty ? ` — ${c.uncertainty}` : ""}`),
+        ...(result.semanticChecks.length > 0 ? [describeSemanticChecks(result.semanticChecks)] : []),
       ].join("\n\n") || "No findings.");
     },
   }),
@@ -221,19 +295,19 @@ const TOOLS = {
     },
   }),
   submit_spec: tool({
-    description: "Replace the whole SPEC of a draft, and its title when given. Preserves authored words, normalizes line endings and reports blocking errors separately from actionable writing advice. Rewrite passages flagged as unreadable or incomplete before presenting them. Refuses a stale revision, a locked plan and a title in another language.",
+    description: "Replace the whole SPEC of a draft, and its title when given. Target and Interfaces show only the finished system and complete hand-written TypeScript data types with explicit field lists, not Partial/Omit/Pick over another type. Current code, database declarations and instructions to add fields are refused before saving or publishing. Preserves authored words, normalizes line endings and reports blocking errors separately from actionable writing advice. Rewrite passages flagged as unreadable or incomplete before presenting them. Refuses a stale revision, a locked plan and a title in another language.",
     schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string(), title: z.string().optional(), vocabularyChanges: vocabularyChangesSchema.optional() }),
     run: async (deps, { plan, baseRevision, ownerRequest, spec, title, vocabularyChanges }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
       recoverPlanMutation(root, relative);
       const result = await submitSpec(root, { plan: relative, baseRevision, ownerRequest, spec,
         ...(title === undefined ? {} : { title }), ...(vocabularyChanges === undefined ? {} : { vocabularyChanges }) });
-      const errors = result.findings.filter((finding) => finding.blocking).length;
       return reply({ plan: relative, ...result }, [
         `Revision ${result.revision}, ${result.state}`,
-        `Checks: ${errors} errors`,
+        describeChecks(result.findings, result.semanticChecks),
         ...result.corrections.map((correction) => `Corrected line ${correction.line}: ${correction.after}`),
         ...(result.findings.length > 0 ? [describeFindings(result.findings)] : []),
+        ...(result.semanticChecks.length > 0 ? [describeSemanticChecks(result.semanticChecks)] : []),
       ].join("\n"));
     },
   }),
@@ -474,9 +548,11 @@ function published(deps: ServerDependencies, args: Record<string, unknown>, resu
   const saved = readFileSync(resolve(root, plan), "utf8");
   const state = typeof structured.state === "string" ? structured.state : planState(saved);
   const revision = typeof structured.revision === "string" ? structured.revision : planRevision(saved, state);
-  const findings = Array.isArray(structured.findings) ? structured.findings as readonly { blocking?: unknown }[] : null;
-  const checks = "checkStatus" in structured && findings !== null
-    ? { errors: findings.filter((finding) => finding.blocking === true).length }
+  const checks = "checkStatus" in structured
+    ? describeChecks(
+      z.array(z.object({ blocking: z.boolean() })).parse(structured.findings),
+      z.array(z.object({ probability: z.number().nullable(), uncertainty: z.string().nullable() })).parse(structured.semanticChecks),
+    )
     : null;
   let url: string;
   try {
@@ -588,6 +664,12 @@ export async function dispatchTool(deps: ServerDependencies, name: string, args:
       } catch (error: unknown) {
         result = refusal(error instanceof Error ? error.message : String(error));
       }
+    }
+  }
+  if (name === "check_content" || name === "submit_spec" || name === "amend") {
+    try { result = boundedContentResult(calledLocation(deps.cwd, args).repository, result); }
+    catch (error: unknown) {
+      result = refusal(`${result.content.map(entry => entry.text).join("\n").slice(0, 1000)}\nThe tool returned this result, but storing its complete oversized evidence failed: ${error instanceof Error ? error.message : String(error)}. Inspect the current draft before retrying.`);
     }
   }
   try { appendEvent(deps.eventLog, eventOf(deps, name, args, result, at, Date.now() - began)); }

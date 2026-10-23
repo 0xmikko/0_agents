@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { lint } from "../src/core/plan-gate";
-import { createDraftPlan, journalCreatedPlan, lockPlanSpec, mutatePlanFile, protocolSpecHash } from "../src/core/plan-update";
+import { createDraftPlan, journalCreatedPlan, lockPlanSpec, mutatePlanFile, planJournalPath, protocolSpecHash } from "../src/core/plan-update";
 import { submitSpec } from "../src/core/spec-submission";
 
 
@@ -32,6 +32,27 @@ function repository(): string {
 const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result.");
 
 describe("submit_spec", () => {
+  /**
+   * @test-id: tst_unit_planctl_spec_submission_003
+   * @scenario: scn_planctl_target_002
+   * @covers: planctl/src/core/spec-submission.ts::submitSpec
+   * @deterministic: yes; temporary repository only
+   * @invariant: an invalid Target is refused before saved words, revision or journal change.
+   */
+  it("tst_unit_planctl_spec_submission_003 keeps the saved draft unchanged when Target is current code plus edits", async () => {
+    const root = repository();
+    try {
+      const before = readFileSync(join(root, PLAN), "utf8");
+      const journal = readFileSync(planJournalPath(root, PLAN), "utf8");
+      const badTarget = "## The target\n\nToday the table is:\n```typescript\nconst events = pgTable(\"events\", { id: text().notNull() });\n```\n"
+        + "Four columns are added.\n```typescript\ninterface DeliveredEvent { id: string; }\n```\n";
+      const candidate = spec.replace(/## The target\n[\s\S]*?(?=\n## |$)/, badTarget);
+      await expect(submitSpec(root, { plan: PLAN, baseRevision: protocolSpecHash(before), ownerRequest: "Show only the finished target.", spec: candidate }))
+        .rejects.toThrow(/target/i);
+      expect(readFileSync(join(root, PLAN), "utf8")).toBe(before);
+      expect(readFileSync(planJournalPath(root, PLAN), "utf8")).toBe(journal);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
   /**
    * @test-id: tst_unit_planctl_spec_submission_001
    * @scenario: scn_planctl_spec_submission_001

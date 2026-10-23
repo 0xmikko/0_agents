@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { lint, protocolLanguageViolations } from "./plan-gate";
+import { lint, protocolLanguageViolations, targetViolations } from "./plan-gate";
 import type { GateViolation } from "./plan-gate";
 import { mutatePlanFile, planState, protocolSpecHash, replaceDraftSpec, replaceDraftTitle } from "./plan-update";
 import type { PlanState } from "./plan-update";
@@ -62,6 +62,9 @@ export async function submitSpec(root: string, input: SubmitSpecInput): Promise<
   if (input.baseRevision !== current) throw new Error(`stale revision ${input.baseRevision}; the plan is at ${current}`);
   const normalized = input.spec.replace(/\r\n?/g, "\n").trim();
   const spec = input.vocabularyChanges === undefined ? normalized : withVocabularyProposal(normalized, input.vocabularyChanges);
+  const targetErrors = await targetViolations(spec, "spec");
+  if (targetErrors.length > 0) throw new Error("Target is not ready; the draft and published version are unchanged:\n"
+    + targetErrors.map(f => `line ${f.line}: ${f.text}\nEvidence: ${f.quote}`).join("\n"));
   const before = currentSpec(body);
   const sameTitle = input.title === undefined || body.startsWith(`# ${input.title}\n`);
   if (spec === before && sameTitle) {

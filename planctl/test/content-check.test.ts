@@ -164,7 +164,7 @@ describe("focused authoring feedback", () => {
    * @scenario: scn_planctl_writing_002
    * @covers: planctl/src/core/content-check.ts::checkContent
    * @deterministic: yes; no provider or browser
-   * @invariant: TypeScript ORM declarations alone prompt a complete plain TypeScript target data shape.
+   * @invariant: Target contains final TypeScript data, while storage implementation details stay outside Target.
    */
   it("tst_unit_planctl_content_006 distinguishes database declarations from target data types", async () => {
     const root = mkdtempSync(join(tmpdir(), "target-types-"));
@@ -173,15 +173,62 @@ describe("focused authoring feedback", () => {
         + "export const events = pgTable(\"events\", { owner: text().notNull(), revision: integer().notNull() });\n```";
       const bad = await checkContent({ root, goal: "Describe the finished event data.", kind: "flow", content: database },
         { apiKey: null, browserPath: null });
-      expect(bad.findings.some(f => /TypeScript.*(?:shape|interface)/i.test(f.text) && !f.blocking)).toBe(true);
+      expect(bad.findings.some(f => f.rule === "target" && f.blocking)).toBe(true);
       const target = "The event contains its owner and sequence.\n```typescript\n"
+        + "// The tool parameters use the canonical keys the agent tool names today.\n"
         + "interface Event {\n  owner: string;\n  revision: number;\n}\n```";
       const good = await checkContent({ root, goal: "Describe the finished event data.", kind: "flow", content: target },
         { apiKey: null, browserPath: null });
       expect(good.findings).toEqual([]);
-      const complete = await checkContent({ root, goal: "Describe the finished event data.", kind: "flow", content: target + "\nStorage implementation:\n" + database },
+      const complete = await checkContent({ root, goal: "Describe the finished event data.", kind: "flow", content: "## The target\n" + target + "\n## Today, measured against that\n" + database },
         { apiKey: null, browserPath: null });
-      expect(complete.findings.some(f => /database declaration/i.test(f.text))).toBe(false);
+      expect(complete.findings.some(f => f.rule === "target")).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  /**
+   * @test-id: tst_unit_planctl_content_007
+   * @scenario: scn_planctl_target_001
+   * @covers: planctl/src/core/plan-gate.ts::targetViolations, planctl/src/core/content-check.ts::checkContent
+   * @deterministic: yes; no provider or browser
+   * @invariant: another type in the same real-flow pattern and custom questions cannot hide current database code in Target.
+   */
+  it("tst_unit_planctl_content_007 refuses current code and prose patches even beside a delivered event type", async () => {
+    const root = mkdtempSync(join(tmpdir(), "real-target-"));
+    const flow = "### Every change is an event\n\nToday the table and writer look like this:\n"
+      + "```typescript\nexport const events = pgTable(\"events\", { id: text().notNull() });\n```\n"
+      + "Four columns are added: owner, seq, occurredAt and handledAt.\n"
+      + "```typescript\nexport type GraphMutationEvent = { id: string; owner: string; type: \"entity_created\" };\n```";
+    try {
+      const databaseOnly = flow.replace("Today the table and writer look like this:", "Events are stored here:")
+        .replace("Four columns are added: owner, seq, occurredAt and handledAt.", "");
+      for (const content of [flow, databaseOnly,
+        databaseOnly.replaceAll("```typescript", "```javascript"),
+        databaseOnly.replaceAll("```typescript", "```"),
+        databaseOnly.replace("pgTable(", "pg.pgTable("),
+        databaseOnly.replace("export const events", "import { pgTable as table } from 'drizzle-orm/pg-core';\nexport const events").replace("pgTable(", "table("),
+        databaseOnly.replace("export const events", "const table = pgTable;\nexport const events").replace("pgTable(", "table("),
+        "```typescript\ninterface Unrelated { id: string; }\nexport type Event = typeof events.$inferSelect;\n```",
+        "```typescript\nexport type Event = typeof events['$inferSelect'];\n```",
+        "```typescript\nimport type { InferSelectModel as Row } from 'drizzle-orm';\nexport type Event = Row<typeof events>;\n```",
+        "```typescript\ninterface CreateTriggerParams { name: string; }\ntype UpdateTriggerParams = Partial<Omit<CreateTriggerParams, 'name'>> & { id: string };\n```",
+        "## The target\nThe trigger stores the subscription.\n## Interfaces\n```typescript\ntype UpdateTriggerParams = Partial<CreateTriggerParams> & { id: string };\n```",
+        "Add owner, seq, occurredAt and handledAt to the existing stored event type. Its other fields stay as they are.",
+        "```sql\nCREATE TABLE events (id text);\n```",
+        "## The target\n" + flow + "\n### Another flow\n```typescript\ninterface Unrelated { value: string; }\n```"]) {
+        const result = await checkContent({ root, goal: "Show only the finished event data.", kind: "flow", content, questions: {} },
+          { apiKey: null, browserPath: null });
+        const error = result.findings.find(f => f.rule === "target" && f.blocking);
+        expect(error).toBeDefined();
+        expect(error?.line).toBeGreaterThan(0);
+        expect(error?.quote).not.toBe("");
+      }
+      const currentListener = "## The target\n```typescript\n// today\nclass TriggerGate { evaluate(): boolean { return true; } }\n```";
+      expect((await checkContent({ root, goal: "Show the final gate.", kind: "flow", content: currentListener, questions: {} },
+        { apiKey: null, browserPath: null })).findings.some(f => f.rule === "target" && f.blocking)).toBe(true);
+      const partial = "## The target\n```typescript\ninterface CreateTriggerParams { name: string; }\n// update: the same fields plus id\n```";
+      expect((await checkContent({ root, goal: "Show the final update contract.", kind: "flow", content: partial, questions: {} },
+        { apiKey: null, browserPath: null })).findings.some(f => f.rule === "target" && f.blocking)).toBe(true);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });
