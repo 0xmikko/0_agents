@@ -23,13 +23,23 @@ tool schemas for arguments. Project package.json agent:* scripts define checks.
    coherent flow at a time and retain the decisions and evidence.
    Write the SPEC in English: The Goal states the observable outcome; The target
    describes the finished system, not the migration from today's code.
+   Keep the explanation clear and proportionate to the task. Show complete target
+   data as hand-written TypeScript interfaces or types, not table declarations
+   or old definitions followed by fields to add. Explain necessary terms where
+   they arise; do not make the owner reconstruct the result.
+   A small change may need one short paragraph and its data type. Do not narrate
+   compliance with these instructions or repeat the same explanation as prose,
+   tables and checklists.
    Explain triggers, operations, owning modules, data, results and failure paths.
-   Include readable diagrams, owning files, reuse and meaningful acceptance cases.
+   Include diagrams and implementation detail where they help assess the plan;
+   retain owning files, reuse and meaningful acceptance cases without repeating them.
    Declare changed typed Interfaces and justify new names against the canonical
    vocabulary. Preserve existing wire names. Do not add a Why now section.
 3. Send the complete SPEC through `submit_spec` with the returned revision
    and the owner's request. Preserve concrete findings and discussion.
-   Fix blocking errors; assess advice against the task.
+   Fix blocking errors; assess advice against the task. When writing feedback
+   identifies unreadable prose or an incomplete target, rewrite that passage
+   before presenting it. Preserve the agreed behavior and required detail.
 4. Show the published SPEC and ask for its approval. After the owner's yes,
    call `approve_spec` with their actual approval and the displayed `expectedRevision`.
    Agreement with one paragraph does not approve the whole SPEC.

@@ -16,7 +16,7 @@ function walk(node: Root | Content): (Root | Content)[] {
 }
 
 /**
- * @tested-by: tst_unit_planctl_content_001, tst_unit_planctl_content_004
+ * @tested-by: tst_unit_planctl_content_001, tst_unit_planctl_content_004, tst_unit_planctl_content_005, tst_unit_planctl_content_006
  * @invariant: facts have exact locations; all flow-local declarations are checked;
  * semantic uncertainty never authorizes an approval or forbids an ordinary edit.
  */
@@ -36,6 +36,7 @@ Promise<Pick<SubmitSpecResult, "findings" | "semanticChecks" | "diagramChecks">>
   const dictionary = readVocabulary(input.root);
   const findings: GateViolation[] = [];
   const declared = new Set<string>();
+  const databaseDeclarations: { line: number; quote: string }[] = [];
   const add = (line: number, quote: string, text: string, blocking = true): void => {
     findings.push({ kind: "protocol-shape", rule: "typescript", blocking, line, quote, text, replacement: null });
   };
@@ -61,6 +62,10 @@ Promise<Pick<SubmitSpecResult, "findings" | "semanticChecks" | "diagramChecks">>
     const visit = (node: ts.Node): void => {
       const line = block.line + source.getLineAndCharacterOfPosition(node.getStart(source)).line;
       if (node.kind === ts.SyntaxKind.AnyKeyword) add(line, node.getText(source), "Use the actual boundary type; any cannot prove the contract.");
+      if (input.kind === "flow" && ts.isCallExpression(node) && ts.isIdentifier(node.expression)
+        && ["pgTable", "pgEnum", "pgView", "mysqlTable", "sqliteTable"].includes(node.expression.text)) {
+        databaseDeclarations.push({ line, quote: node.getText(source) });
+      }
       if (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) {
         declared.add(node.name.text);
         if (!/^[A-Z][A-Za-z0-9]*$/.test(node.name.text)) add(line, node.name.text, "New type names use PascalCase.");
@@ -76,6 +81,10 @@ Promise<Pick<SubmitSpecResult, "findings" | "semanticChecks" | "diagramChecks">>
       ts.forEachChild(node, visit);
     };
     visit(source);
+  }
+  if (declared.size === 0) for (const declaration of databaseDeclarations) {
+    add(declaration.line, declaration.quote,
+      "Show the complete target data as a hand-written TypeScript interface or type. A database declaration alone makes the reader reconstruct the data shape; keep storage details beside the implementation that needs them.", false);
   }
   const proposal = proposedVocabulary(input.content);
   for (const finding of dictionary.findings) {
@@ -99,6 +108,17 @@ Promise<Pick<SubmitSpecResult, "findings" | "semanticChecks" | "diagramChecks">>
     ownership: q("Does the proposal preserve the supplied canonical responsibilities, introducing a new name only for a distinct required responsibility?",
       "It reuses existing ownership or introduces a necessary distinct boundary without losing behavior.",
       "It duplicates an existing responsibility under a new name, contradicts its canonical definition, or rewrites unrelated working mechanisms."),
+    ...(input.kind === "flow" ? {
+      clarity: q("Is this explanation clear, direct and proportionate to the stated task, with necessary technical names explained through concrete actions or data? Judge the prose, not just the presence of contracts. Keep required detail; brevity alone is not clarity.",
+        "The reader can follow the explanation without decoding unexplained jargon, abstract scaffolding, repetition or reviewer bookkeeping.",
+        "A simple point is obscured by jargon, abstract mechanisms, repetition or internal bookkeeping; the reader must translate it to understand the task."),
+      relevance: q("Does each passage help explain the requested behavior, data or a real decision, rather than narrating compliance with instructions or restating unrelated source facts? A brief definition of a type actually used in the flow is useful; assurances about unused contracts or retaining names already given are not.",
+        "The text contains useful explanation; it omits irrelevant assurances, unused contracts and statements that merely announce compliance with naming or process instructions.",
+        "It includes filler about retaining canonical names, unused contracts, following instructions or other facts that do not help the owner understand this task."),
+      target: q("Does the proposed solution show the finished behavior and complete resulting data types directly, without asking the reader to assemble them from current code and a list of later edits? Current limitations may be stated separately; present tense is fine for describing the finished system.",
+        "The resulting system and data shapes are explicit; the reader does not need to apply a verbal patch to old definitions.",
+        "The explanation substitutes current internals, database declarations or instructions to add fields for a complete description of the finished system."),
+    } : {}),
   };
   const [semanticChecks, diagrams] = await Promise.all([
     evaluateQuestions({
@@ -109,6 +129,22 @@ Promise<Pick<SubmitSpecResult, "findings" | "semanticChecks" | "diagramChecks">>
     renderDiagrams(input.root, nodes.filter(n => n.type === "code" && n.lang === "mermaid")
       .map(n => ({ content: n.type === "code" ? n.value : "", line: n.position?.start.line ?? 1 })), options.browserPath),
   ]);
+  if (input.kind === "flow" && input.questions === undefined) {
+    for (const [name, advice] of [
+      ["clarity", "Rewrite this explanation in clear, direct prose before presenting it. Keep the task simple, remove unexplained jargon and repetition, and preserve the required behavior and technical detail."],
+      ["relevance", "Remove passages that only announce compliance, justify existing names or restate contracts unused by this flow. Keep the information the owner needs to understand the proposal or make a decision."],
+      ["target", "Describe the finished target directly, with complete hand-written TypeScript data types. Move current-code details and migration edits out of that explanation; do not make the owner assemble the result."],
+    ] as const) {
+      const check = semanticChecks.find(c => c.question === questions[name]?.instructions);
+      if (check?.probability !== null && check?.probability !== undefined && check.probability < 0.8) {
+        findings.push({ kind: "protocol-shape", rule: "clarity", blocking: false, line: 1,
+          quote: input.content.slice(0, 240),
+          text: check.uncertainty === null ? advice
+            : `Inconclusive writing advice: inspect the passage and apply only the changes that help this task. ${advice}`,
+          replacement: null });
+      }
+    }
+  }
   return { findings: [...findings, ...diagrams.findings], semanticChecks, diagramChecks: diagrams.diagramChecks };
 }
 

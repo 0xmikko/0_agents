@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { checkContent } from "../src/core/content-check";
 import { readVocabulary } from "../src/core/vocabulary";
 import { evaluateQuestions } from "../src/core/semantic-check";
+import { z } from "zod";
 
 describe("focused authoring feedback", () => {
   /**
@@ -109,6 +110,78 @@ describe("focused authoring feedback", () => {
       const result = await checkContent({ root, goal: "Return typed results.", kind: "flow", content }, { apiKey: null, browserPath: null });
       expect(result.findings.some(f => /any/.test(f.quote) && f.line > 4 && f.blocking)).toBe(true);
       expect(result.findings.some(f => f.quote === '"external_id"')).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  /**
+   * @test-id: tst_unit_planctl_content_005
+   * @scenario: scn_planctl_writing_001
+   * @covers: planctl/src/core/content-check.ts::checkContent
+   * @deterministic: yes; scripted semantic provider, no network or browser
+   * @invariant: unreadable prose gets an actionable rewrite hint without an approval gate or a hidden rewrite.
+   */
+  it("tst_unit_planctl_content_005 returns rewrite advice for unreadable prose without blocking", async () => {
+    const root = mkdtempSync(join(tmpdir(), "writing-feedback-"));
+    const content = "The schema-admission mechanism instantiates handler-backed identity-channel eligibility.\n"
+      + "```typescript\ninterface DedupInput { entityId: string; }\n```";
+    const requestSchema = z.object({ questions: z.record(z.string(), z.unknown()) });
+    let denied = "clarity";
+    let deniedProbability = 0.03;
+    const fetcher: typeof fetch = Object.assign(async (_url: unknown, init?: RequestInit) => {
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body");
+      const request = requestSchema.parse(JSON.parse(init.body));
+      return Response.json({ model: "jev-1.13.0", answers: Object.fromEntries(
+        Object.keys(request.questions).map(id => [id, { type: "noul", noul: id === denied ? deniedProbability : 0.96 }]),
+      ) });
+    }, { preconnect: fetch.preconnect });
+    try {
+      for (const [question, action] of [["clarity", /rewrite/i], ["target", /finished target/i], ["relevance", /remove/i]] as const) {
+        denied = question;
+        const result = await checkContent({ root, goal: `Find duplicates when a record is saved. Feedback case: ${question}.`, kind: "flow", content },
+          { apiKey: "fixture", browserPath: null, fetcher });
+        const advice = result.findings.find(f => f.rule === "clarity");
+        expect(advice).toBeDefined();
+        expect(advice?.blocking).toBe(false);
+        expect(advice?.text).toMatch(action);
+        expect(result.findings.some(f => f.blocking)).toBe(false);
+        expect(result.semanticChecks.every(c => c.evidence[0]?.quote === content)).toBe(true);
+      }
+      denied = "relevance";
+      deniedProbability = 0.5;
+      const uncertain = await checkContent({ root, goal: "Find duplicates. Check uncertain editorial advice.", kind: "flow", content },
+        { apiKey: "fixture", browserPath: null, fetcher });
+      expect(uncertain.findings.some(f => f.rule === "clarity" && !f.blocking && /inconclusive/i.test(f.text))).toBe(true);
+
+      const unavailable = await checkContent({ root, goal: "Find duplicates.", kind: "flow", content },
+        { apiKey: null, browserPath: null });
+      expect(unavailable.semanticChecks.every(c => c.probability === null)).toBe(true);
+      expect(unavailable.findings.some(f => f.rule === "clarity")).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  /**
+   * @test-id: tst_unit_planctl_content_006
+   * @scenario: scn_planctl_writing_002
+   * @covers: planctl/src/core/content-check.ts::checkContent
+   * @deterministic: yes; no provider or browser
+   * @invariant: TypeScript ORM declarations alone prompt a complete plain TypeScript target data shape.
+   */
+  it("tst_unit_planctl_content_006 distinguishes database declarations from target data types", async () => {
+    const root = mkdtempSync(join(tmpdir(), "target-types-"));
+    try {
+      const database = "The event contains its owner and sequence.\n```typescript\n"
+        + "export const events = pgTable(\"events\", { owner: text().notNull(), revision: integer().notNull() });\n```";
+      const bad = await checkContent({ root, goal: "Describe the finished event data.", kind: "flow", content: database },
+        { apiKey: null, browserPath: null });
+      expect(bad.findings.some(f => /TypeScript.*(?:shape|interface)/i.test(f.text) && !f.blocking)).toBe(true);
+      const target = "The event contains its owner and sequence.\n```typescript\n"
+        + "interface Event {\n  owner: string;\n  revision: number;\n}\n```";
+      const good = await checkContent({ root, goal: "Describe the finished event data.", kind: "flow", content: target },
+        { apiKey: null, browserPath: null });
+      expect(good.findings).toEqual([]);
+      const complete = await checkContent({ root, goal: "Describe the finished event data.", kind: "flow", content: target + "\nStorage implementation:\n" + database },
+        { apiKey: null, browserPath: null });
+      expect(complete.findings.some(f => /database declaration/i.test(f.text))).toBe(false);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });

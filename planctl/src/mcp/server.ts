@@ -187,7 +187,7 @@ const TOOLS = {
     },
   }),
   check_content: tool({
-    description: "Check one flow and its adjacent interfaces, or a code excerpt, without creating a plan. Returns factual findings, bounded Jev advice and rendered diagrams. Correct routine findings autonomously; advice cannot grant approval.",
+    description: "Check one flow and its adjacent interfaces, or a code excerpt, without creating a plan. Returns factual findings, writing advice on clarity and complete target types, bounded Jev advice and rendered diagrams. Revise unreadable passages before presenting them; advice cannot grant approval.",
     schema: z.object({ root: z.string(), goal: z.string().min(1), kind: z.enum(["flow", "code"]), content: z.string(), source: z.string().optional(),
       questions: z.record(z.string(), z.object({ type: z.literal("noul"), instructions: z.string().min(1),
         criteria: z.object({ true: z.string().min(1), false: z.string().min(1) }) })).optional(),
@@ -221,7 +221,7 @@ const TOOLS = {
     },
   }),
   submit_spec: tool({
-    description: "Replace the whole SPEC of a draft, and its title when given. Preserves authored words, normalizes line endings and reports blocking errors separately from editorial advice. Refuses a stale revision, a locked plan and a title in another language.",
+    description: "Replace the whole SPEC of a draft, and its title when given. Preserves authored words, normalizes line endings and reports blocking errors separately from actionable writing advice. Rewrite passages flagged as unreadable or incomplete before presenting them. Refuses a stale revision, a locked plan and a title in another language.",
     schema: z.object({ plan: z.string(), baseRevision: z.string(), ownerRequest: z.string(), spec: z.string(), title: z.string().optional(), vocabularyChanges: vocabularyChangesSchema.optional() }),
     run: async (deps, { plan, baseRevision, ownerRequest, spec, title, vocabularyChanges }) => {
       const { root, plan: relative } = located(deps.cwd, plan);

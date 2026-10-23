@@ -515,7 +515,10 @@ export const GOAL_RULE = "State the requested outcome and a useful observable me
 
 /** A readable solution, not a form-filling exercise. */
 export const TARGET_RULE = "Describe the finished system one flow at a time: trigger/input, owning component, operations, result and relevant failures. "
-  + "Keep each flow's interfaces and example beside it. Cite unchanged canonical contracts. Use a readable diagram where it helps. "
+  + "Write clear, direct prose proportionate to the task; explain necessary technical names where they arise. "
+  + "A small change may need just a short paragraph and its data type. Do not narrate compliance with instructions or repeat the same explanation as prose, tables and checklists. "
+  + "Show complete target data as hand-written TypeScript interfaces or types beside the flow, not database declarations or current code plus instructions to add fields. "
+  + "Cite unchanged canonical contracts. Use a readable diagram where it helps. "
   + "Discuss and check small pieces before assembling the full SPEC. Do not require an implementation-map table or arbitrary prose length.";
 
 /** One worked example handed to the agent at init. */
