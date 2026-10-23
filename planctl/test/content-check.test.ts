@@ -214,6 +214,7 @@ describe("focused authoring feedback", () => {
         "```typescript\ninterface CreateTriggerParams { name: string; }\ntype UpdateTriggerParams = Partial<Omit<CreateTriggerParams, 'name'>> & { id: string };\n```",
         "## The target\nThe trigger stores the subscription.\n## Interfaces\n```typescript\ntype UpdateTriggerParams = Partial<CreateTriggerParams> & { id: string };\n```",
         "Add owner, seq, occurredAt and handledAt to the existing stored event type. Its other fields stay as they are.",
+        "## The target\nThe sync page continues to admit envelopes and apply message chunks as it does today.\n```typescript\ninterface EmailAddressEnsureItem { address: string; name: string | null; }\n```",
         "```sql\nCREATE TABLE events (id text);\n```",
         "## The target\n" + flow + "\n### Another flow\n```typescript\ninterface Unrelated { value: string; }\n```"]) {
         const result = await checkContent({ root, goal: "Show only the finished event data.", kind: "flow", content, questions: {} },

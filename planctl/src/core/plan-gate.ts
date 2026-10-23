@@ -508,7 +508,7 @@ export async function targetViolations(body: string, scope: "spec" | "flow"): Pr
   for (const node of markdownNodes(fromMarkdown(content))) {
     if (node.type === "paragraph" || node.type === "heading") {
       const text = proseText(node);
-      if (/^(?:Today|Currently|At present)\s+/i.test(text)) {
+      if (/^(?:Today|Currently|At present)\s+/i.test(text) || /\bas (?:it|they) (?:do|does|is|are) today\b/i.test(text)) {
         report(sourceLine(node), text, "Target must describe the finished system. Move the current-state explanation to the existing Today section.");
       }
       if (patch.test(text)) report(sourceLine(node), text, "Show the complete final contract in Target; instructions to add fields to another definition are not a target type.");

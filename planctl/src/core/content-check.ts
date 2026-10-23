@@ -124,7 +124,7 @@ Promise<Pick<SubmitSpecResult, "findings" | "semanticChecks" | "diagramChecks">>
   ]);
   if (input.kind === "flow" && input.questions === undefined) {
     for (const [name, advice] of [
-      ["clarity", "Rewrite this explanation in clear, direct prose before presenting it. Keep the task simple, remove unexplained jargon and repetition, and preserve the required behavior and technical detail."],
+      ["clarity", "Rewrite around the data operation and its result. Use a concrete example when helpful; move helper, API and file inventories to implementation notes. Splitting that inventory into paragraphs is insufficient. Preserve required behavior and complete TypeScript types."],
       ["relevance", "Remove passages that only announce compliance, justify existing names or restate contracts unused by this flow. Keep the information the owner needs to understand the proposal or make a decision."],
       ["target", "Describe the finished target directly, with complete hand-written TypeScript data types. Move current-code details and migration edits out of that explanation; do not make the owner assemble the result."],
     ] as const) {
