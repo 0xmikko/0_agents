@@ -296,6 +296,8 @@ def render_page(body_html: str, title: str) -> bytes:
 
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "mdurl/1.0"
+    # @tested-by: tst_agent_unit_mdurl_002
+    timeout = 10
 
     def do_GET(self) -> None:
         path = urllib.parse.urlparse(self.path).path
@@ -351,7 +353,8 @@ def main() -> None:
     if not ROOT.is_dir():
         raise SystemExit(f"MARKDOWN_ROOT does not exist: {ROOT}")
     print(f"[mdurl] serving {ROOT} at http://{HOST}:{PORT}/", flush=True)
-    http.server.HTTPServer((HOST, PORT), Handler).serve_forever()
+    # @tested-by: tst_agent_unit_mdurl_001
+    http.server.ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":
