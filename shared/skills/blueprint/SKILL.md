@@ -17,19 +17,30 @@ tool schemas for arguments. Project package.json agent:* scripts define checks.
 1. Call `progress` with the root. Continue its plan when one exists;
    otherwise call `init`. Create a feature worktree only when isolation is
    needed. Commit a draft when useful; it remains SPEC_DRAFT until approved.
-2. Read `vocabulary` and use `check_content` for one flow with its adjacent
-   interfaces and example. Jev advice is bounded and does not establish approval.
-   Trace the behavior through existing callers, types and tests. Discuss one
-   coherent flow at a time and retain the decisions and evidence.
-   Write the SPEC in English: The Goal states the observable outcome; The target
-   describes the finished system, not the migration from today's code.
-   Explain triggers, operations, owning modules, data, results and failure paths.
-   Include readable diagrams, owning files, reuse and meaningful acceptance cases.
-   Declare changed typed Interfaces and justify new names against the canonical
-   vocabulary. Preserve existing wire names. Do not add a Why now section.
+2. Read `vocabulary` and inspect only the code needed for one coherent flow.
+   Explain what happens, then show its complete final TypeScript data and API
+   types beside that explanation. Explain significant fields and relevant
+   operations or failures so the owner can reason about the types and flow.
+   Use `check_content` on that piece and show a useful fragment early; expand
+   the plan in short iterations, retaining decisions and evidence. Jev advice
+   is bounded and does not establish approval. Fragment checks add no approval
+   stops. A question about a field or implementation is discussion, not an
+   instruction to change the plan or approval of a contract.
+   Write in English. The Goal states the outcome; Target shows only the finished
+   system. Use hand-written field lists, not database declarations, verbal
+   patches or Partial/Omit/Pick that hide the changed fields. Cite unchanged
+   canonical contracts and preserve existing wire names. Explain necessary
+   technical names where they arise. Use a concrete example when useful.
+   Keep file inventories and migration steps in the implementation sections.
+   Use diagrams when they clarify the flow; avoid fixed maps, repeated prose
+   and compliance narration. A wording correction keeps the agreed design and
+   focuses on the affected passage, rather than restarting architecture research.
+   Declare changed types and justify proposed new names. Do not add Why now.
 3. Send the complete SPEC through `submit_spec` with the returned revision
    and the owner's request. Preserve concrete findings and discussion.
-   Fix blocking errors; assess advice against the task.
+   Fix blocking errors; assess advice against the task. When writing feedback
+   identifies unreadable prose or an incomplete target, rewrite that passage
+   before presenting it. Preserve the agreed behavior and required detail.
 4. Show the published SPEC and ask for its approval. After the owner's yes,
    call `approve_spec` with their actual approval and the displayed `expectedRevision`.
    Agreement with one paragraph does not approve the whole SPEC.

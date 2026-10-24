@@ -143,7 +143,7 @@ describe("agent-stack", () => {
     const root = fixture();
     const installed = installStack(root, { base: "staging" });
 
-    expect(installed.files).toHaveLength(15);
+    expect(installed.files).toHaveLength(9);
     expect(git(root, "config", "--worktree", "--get", "core.hooksPath")).toBe(".githooks");
     expect(readFileSync(join(root, ".gitignore"), "utf8")).toContain("/.worktrees/");
     expect(readFileSync(join(root, ".gitignore"), "utf8")).toContain("/.tmp/code-production/");
@@ -280,7 +280,7 @@ describe("agent-stack", () => {
 
     const installed = installStack(root, { base: "staging" });
 
-    expect(installed.files).toHaveLength(14);
+    expect(installed.files).toHaveLength(8);
     expect(installed.files).not.toContain(".github/workflows/code-production.yml");
     expect(readFileSync(workflow, "utf8")).toBe("name: Existing CI\n");
     const manifest = readFileSync(join(root, ".agents/code-production/manifest.json"), "utf8");
@@ -418,20 +418,68 @@ describe("agent-stack", () => {
     expect(() => checkStack(root)).toThrow("git config code-production.base <branch>");
   });
 
-  test("tst_agent_stack_015 install writes the three flow skills as managed copies and check keeps them honest", () => {
+  test("tst_agent_stack_015 install removes local flow skill copies so all tasks use the global skills", () => {
     const root = fixture();
     mkdirSync(join(root, ".claude/skills/quick-fix"), { recursive: true });
     writeFileSync(join(root, ".claude/skills/quick-fix/SKILL.md"), "# quick-fix\n");
     const installed = installStack(root, { base: "staging" });
     const copies = ["blueprint", "blueprint-start", "end-work"].flatMap((name) => [`.claude/skills/${name}/SKILL.md`, `.agents/skills/${name}/SKILL.md`]);
     for (const copy of copies) {
-      expect(installed.files).toContain(copy);
-      expect(readFileSync(join(root, copy), "utf8")).toBe(readFileSync(resolve(import.meta.dir, `../skills/${copy.split("/")[2]}/SKILL.md`), "utf8"));
+      expect(installed.files).not.toContain(copy);
+      expect(existsSync(join(root, copy))).toBe(false);
     }
     expect(readFileSync(join(root, ".claude/skills/quick-fix/SKILL.md"), "utf8")).toBe("# quick-fix\n");
-    writeFileSync(join(root, ".claude/skills/blueprint/SKILL.md"), "# edited by hand\n");
-    expect(() => checkStack(root)).toThrow(".claude/skills/blueprint/SKILL.md");
+    mkdirSync(join(root, ".claude/skills/blueprint"), { recursive: true });
+    writeFileSync(join(root, ".claude/skills/blueprint/SKILL.md"), "# stale local copy\n");
+    expect(() => checkStack(root)).toThrow("local flow skill");
     installStack(root, { base: "staging" });
     expect(() => checkStack(root)).not.toThrow();
+    for (const copy of copies) expect(existsSync(join(root, copy))).toBe(false);
+  });
+
+  /** @test-id: tst_agent_stack_017
+   * @scenario: scn_agent_stack_global_skills_001
+   * @covers: shared/code-production/agent-stack.ts::centralize-skills
+   * @deterministic: yes; isolated repositories and filesystem only
+   * @invariant: migration removes only local flow descriptors or aliases; shared targets, plans, hooks and custom skills survive.
+   */
+  test("tst_agent_stack_017 centralizes skills without changing plans, hooks or shared link targets", () => {
+    const root = fixture();
+    installStack(root, { base: "staging" });
+    const shared = mkdtempSync(join(tmpdir(), "common-skills-"));
+    roots.push(shared);
+    mkdirSync(join(shared, "blueprint"));
+    writeFileSync(join(shared, "blueprint/SKILL.md"), "# shared Blueprint\n");
+    mkdirSync(join(root, ".claude/skills"), { recursive: true });
+    rmSync(join(root, ".claude/skills/blueprint"), { recursive: true, force: true });
+    symlinkSync(join(shared, "blueprint"), join(root, ".claude/skills/blueprint"), "dir");
+    mkdirSync(join(root, ".agents/skills/end-work"), { recursive: true });
+    writeFileSync(join(root, ".agents/skills/end-work/SKILL.md"), "# stale end-work\n");
+    writeFileSync(join(root, ".agents/skills/end-work/notes.md"), "Owner notes\n");
+    mkdirSync(join(root, ".agents/skills/custom"), { recursive: true });
+    writeFileSync(join(root, ".agents/skills/custom/SKILL.md"), "# custom\n");
+    const plan = join(root, "docs/plans/protected.md");
+    writeFileSync(plan, "# Existing plan\nStatus: APPROVED\n");
+    const hook = readFileSync(join(root, ".githooks/pre-commit"), "utf8");
+    const config = git(root, "config", "--worktree", "--get", "core.hooksPath");
+    const manifestPath = join(root, ".agents/code-production/manifest.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    const originalFiles: string[] = manifest.files;
+    writeFileSync(manifestPath, JSON.stringify({ ...manifest, ownerNote: "preserve", files: [...originalFiles,
+      ".claude/skills/blueprint/SKILL.md", ".agents/skills/end-work/SKILL.md"] }));
+    const command = spawnSync("bun", [join(import.meta.dir, "agent-stack.ts"), "centralize-skills", root], { encoding: "utf8" });
+    expect(command.status, command.stderr).toBe(0);
+    expect(existsSync(join(root, ".claude/skills/blueprint"))).toBe(false);
+    expect(existsSync(join(root, ".agents/skills/end-work/SKILL.md"))).toBe(false);
+    expect(readFileSync(join(shared, "blueprint/SKILL.md"), "utf8")).toBe("# shared Blueprint\n");
+    expect(readFileSync(join(root, ".agents/skills/end-work/notes.md"), "utf8")).toBe("Owner notes\n");
+    expect(readFileSync(join(root, ".agents/skills/custom/SKILL.md"), "utf8")).toBe("# custom\n");
+    expect(readFileSync(plan, "utf8")).toBe("# Existing plan\nStatus: APPROVED\n");
+    expect(readFileSync(join(root, ".githooks/pre-commit"), "utf8")).toBe(hook);
+    expect(git(root, "config", "--worktree", "--get", "core.hooksPath")).toBe(config);
+    const migrated = JSON.parse(readFileSync(manifestPath, "utf8"));
+    expect(migrated.files).toEqual(originalFiles);
+    expect(migrated.commit).toBe(manifest.commit);
+    expect(migrated.ownerNote).toBe("preserve");
   });
 });

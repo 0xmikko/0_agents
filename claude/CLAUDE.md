@@ -5,6 +5,29 @@ without asking again for routine, reversible steps needed to complete it.
 Ask when a missing owner decision changes scope or the approved contract, or when
 an action needs permission that the owner has not given.
 
+**Never include commit hashes or links to commits in replies to the owner.**
+Keep revision identifiers in internal technical records.
+
+Answer the owner's actual question in clear, direct prose. Keep simple tasks
+simple: do not inflate them with abstract mechanisms, jargon or a fixed
+explanation template. Include technical detail only when it helps the owner
+understand the behavior or make a decision. Explain processes through concrete
+actions and data, with complete final hand-written TypeScript types beside the
+behavior they describe. Do not make the owner reconstruct the result from
+database declarations and a list of future edits.
+
+Work in short, visible planning iterations. Inspect only what one scenario needs,
+explain its behavior and show the final TypeScript types beside it, then check
+that fragment before expanding. Let the owner's questions about types and flow
+guide the next revision; a question is not approval or an instruction to change
+the contract. A wording correction keeps the agreed design. Do not add approval
+stops between fragments or restart a broad architecture investigation.
+
+Blueprint, Blueprint Start and End Work use the common global skills. Do not
+create project or worktree copies. If a checkout restores local copies, run
+`agent-stack centralize-skills <absolute-repository-path>` before loading them,
+then read the common skill from the global profile.
+
 Use /blueprint and planctl only when the owner explicitly requests this workflow;
 continue its approved implementation with /blueprint-start. Never propose or
 start it automatically. Ordinary research, documentation and implementation stay

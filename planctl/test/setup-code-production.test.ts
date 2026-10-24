@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -75,13 +75,20 @@ describe("setup-code-production", () => {
    * @scenario: scn_planctl_setup_repo_001
    * @covers: lib/setup-code-production.sh
    * @deterministic: yes
-   * @invariant: one command installs the runtime, hooks, workflow, base config and skill copies and registers the server; a repository without the contract is refused by name.
+   * @invariant: one command installs project checks and registers the shared server, preserving global skills without local copies; a missing project contract is refused.
    */
   it("tst_unit_planctl_setup_002 installs everything with one command and refuses a repository without the contract", () => {
     const agents = fakeAgents();
     const good = consumer(SCRIPTS);
     const bad = consumer(SCRIPTS.filter((name) => name !== "agent:verify:pr"));
-    const env = { ...process.env, PATH: `${agents.bin}:${process.env.PATH ?? ""}` };
+    const home = mkdtempSync(join(tmpdir(), "setup-home-"));
+    for (const client of [".claude", ".codex"]) {
+      mkdirSync(join(home, client, "skills"), { recursive: true });
+      for (const skill of ["blueprint", "blueprint-start", "end-work"]) {
+        symlinkSync(join(REPO, "shared/skills", skill), join(home, client, "skills", skill), "dir");
+      }
+    }
+    const env = { ...process.env, HOME: home, PATH: `${agents.bin}:${process.env.PATH ?? ""}` };
     try {
       const installed = spawnSync("bash", [join(REPO, "lib/setup-code-production.sh"), "--repo", good, "--base", "staging"], { encoding: "utf8", env });
       expect(installed.status, `${installed.stdout}\n${installed.stderr}`).toBe(0);
@@ -89,9 +96,14 @@ describe("setup-code-production", () => {
         ".agents/code-production/runtime/planctl.ts",
         ".githooks/pre-commit",
         ".github/workflows/code-production.yml",
-        ".claude/skills/blueprint/SKILL.md",
-        ".agents/skills/end-work/SKILL.md",
       ]) expect(existsSync(join(good, path)), path).toBe(true);
+      for (const [client, globalClient] of [[".claude", ".claude"], [".agents", ".codex"]] as const) {
+        for (const skill of ["blueprint", "blueprint-start", "end-work"]) {
+          expect(existsSync(join(good, client, "skills", skill, "SKILL.md"))).toBe(false);
+          expect(realpathSync(join(home, globalClient, "skills", skill, "SKILL.md")))
+            .toBe(realpathSync(join(REPO, "shared/skills", skill, "SKILL.md")));
+        }
+      }
       expect(execFileSync("git", ["-C", good, "config", "--get", "code-production.base"], { encoding: "utf8" }).trim()).toBe("staging");
       expect(readFileSync(agents.log, "utf8")).toContain("claude mcp add -s user planctl -- planctl mcp");
       const checked = spawnSync("bun", [join(REPO, "shared/code-production/agent-stack.ts"), "check", good], { encoding: "utf8" });
@@ -106,6 +118,7 @@ describe("setup-code-production", () => {
       rmSync(agents.bin, { recursive: true, force: true });
       rmSync(good, { recursive: true, force: true });
       rmSync(bad, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
     }
   });
 });

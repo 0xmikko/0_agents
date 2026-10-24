@@ -7,6 +7,9 @@ import {
   mkdirSync,
   readFileSync,
   lstatSync,
+  readdirSync,
+  rmdirSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -40,17 +43,52 @@ interface ManagedFile {
   readonly guarded: boolean;
 }
 
-/** The three flow skills every consumer carries as copies: the repository's own copy shadows the machine's. */
+/** Reserved global skills: a project copy would shadow the common instructions. */
 const FLOW_SKILLS = ["blueprint", "blueprint-start", "end-work"] as const;
 
-/** One copy per agent: Claude reads .claude/skills, Codex reads .agents/skills. */
-function skillFiles(sourceRoot: string): readonly Omit<ManagedFile, "content">[] {
-  return FLOW_SKILLS.flatMap((name) => [".claude/skills", ".agents/skills"].map((home) => ({
-    source: join(sourceRoot, "../skills", name, "SKILL.md"),
-    target: `${home}/${name}/SKILL.md`,
-    executable: false,
-    guarded: false,
-  })));
+function localFlowSkills(root: string): readonly string[] {
+  return [".claude/skills", ".agents/skills"].flatMap((home) => {
+    for (const parent of [dirname(home), home]) {
+      if (lstatSync(join(root, parent), { throwIfNoEntry: false })?.isSymbolicLink()) {
+        throw new Error(`refusing to traverse linked agent directory: ${parent}`);
+      }
+    }
+    return FLOW_SKILLS.map(name => `${home}/${name}`).filter(path => {
+      const directory = lstatSync(join(root, path), { throwIfNoEntry: false });
+      return directory?.isSymbolicLink() || lstatSync(join(root, path, "SKILL.md"), { throwIfNoEntry: false }) !== undefined;
+    });
+  });
+}
+
+/** Remove only reserved local descriptors or aliases; never follow a link into the shared skill.
+ * @tested-by: tst_agent_stack_015, tst_agent_stack_017
+ */
+function centralizeSkills(root: string): readonly string[] {
+  const local = localFlowSkills(root);
+  const manifestPath = join(root, ".agents/code-production/manifest.json");
+  let manifestText: string | null = null;
+  if (existsSync(manifestPath)) {
+    const manifest = asRecord(JSON.parse(readFileSync(manifestPath, "utf8")), "installed stack manifest");
+    if (!Array.isArray(manifest.files) || !manifest.files.every(file => typeof file === "string")) {
+      throw new Error("installed stack manifest needs its files list");
+    }
+    const reserved = new Set([".claude/skills", ".agents/skills"].flatMap(home => FLOW_SKILLS.map(name => `${home}/${name}/SKILL.md`)));
+    const files = manifest.files.filter(file => !reserved.has(file));
+    if (files.length !== manifest.files.length) manifestText = `${JSON.stringify({ ...manifest, files }, null, 2)}\n`;
+  }
+  for (const path of local) {
+    const directory = join(root, path);
+    if (lstatSync(directory).isSymbolicLink()) unlinkSync(directory);
+    else {
+      const descriptor = join(directory, "SKILL.md");
+      const kind = lstatSync(descriptor);
+      if (!kind.isFile() && !kind.isSymbolicLink()) throw new Error(`skill descriptor must be a file: ${descriptor}`);
+      unlinkSync(descriptor);
+      if (readdirSync(directory).length === 0) rmdirSync(directory);
+    }
+  }
+  if (manifestText !== null) writeFileSync(manifestPath, manifestText);
+  return local;
 }
 
 export interface StackReport {
@@ -192,7 +230,7 @@ function managedFiles(sourceRoot: string, ci: CiContract): readonly ManagedFile[
     },
   ];
   const selected = ci.kind === "external" ? files.filter((file) => file.target !== ".github/workflows/code-production.yml") : files;
-  return [...selected, ...skillFiles(sourceRoot)].map((file) => ({
+  return selected.map((file) => ({
     ...file,
     content: readFileSync(file.source, "utf8"),
   }));
@@ -263,6 +301,7 @@ export function installStack(rootArg: string, options: AgentStackInstallOptions 
   assertRepository(root);
   const contract = readPackage(root);
   const files = managedFiles(sourceRoot, contract.ci);
+  centralizeSkills(root);
   for (const file of files) installFile(root, file);
   writeManifest(root, sourceRoot, files, contract.ci);
   mkdirSync(join(root, "docs/plans"), { recursive: true });
@@ -284,6 +323,8 @@ export function checkStack(rootArg: string, sourceRoot = import.meta.dir): Stack
   const root = resolve(rootArg);
   assertRepository(root);
   const contract = readPackage(root);
+  const localSkills = localFlowSkills(root);
+  if (localSkills.length > 0) throw new Error(`local flow skills shadow the global instructions: ${localSkills.join(", ")}; run agent-stack centralize-skills`);
   const files = managedFiles(sourceRoot, contract.ci);
   const mismatches: string[] = [];
   for (const file of files) {
@@ -304,9 +345,12 @@ const HELP = `Usage: agent-stack <command> [repository] [--base <branch>]
 
 Commands:
   install [repo]   Validate package.json, vendor the deterministic runtime,
-                   install managed Git hooks/GitHub workflow, the three flow
-                   skills as copies, select hooks, and with --base write
+                   install managed Git hooks/GitHub workflow, remove local flow
+                   skill copies, select hooks, and with --base write
                    code-production.base, the branch plans branch from
+  centralize-skills [repo]
+                   Remove local Blueprint, Blueprint Start and End Work copies
+                   so Claude and Codex use their common global skills
   check [repo]     Refuse missing scripts, stale managed files, wrong hooks
                    or a missing code-production.base
   --help           Show this help
@@ -330,6 +374,13 @@ function main(args: readonly string[]): void {
   if (baseIndex !== -1 && (base === undefined || base.startsWith("--"))) throw new Error("--base needs a branch name");
   const positional = args.slice(1).filter((arg, index, all) => arg !== "--base" && all[index - 1] !== "--base");
   const root = positional[0] ?? process.cwd();
+  if (command === "centralize-skills") {
+    const repository = resolve(root);
+    assertRepository(repository);
+    const removed = centralizeSkills(repository);
+    console.log(`agent-stack: centralize-skills OK — ${repository}; removed ${removed.length} local skill entries`);
+    return;
+  }
   const report = command === "install"
     ? installStack(root, base === undefined ? {} : { base })
     : command === "check"

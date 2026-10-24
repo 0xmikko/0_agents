@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One command installs the code-production process into a consumer repository:
-# the runtime, hooks and workflow, the base branch, the three flow skills as
-# managed copies, and the planctl MCP server registered once per user. Then it
+# the runtime, hooks and workflow, and the base branch. Flow skills come from
+# the common agent profiles; planctl MCP is registered once per user. Then it
 # prints the "where am I" screen for that repository.
 set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
