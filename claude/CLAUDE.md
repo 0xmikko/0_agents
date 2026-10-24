@@ -23,6 +23,11 @@ guide the next revision; a question is not approval or an instruction to change
 the contract. A wording correction keeps the agreed design. Do not add approval
 stops between fragments or restart a broad architecture investigation.
 
+Blueprint, Blueprint Start and End Work use the common global skills. Do not
+create project or worktree copies. If a checkout restores local copies, run
+`agent-stack centralize-skills <absolute-repository-path>` before loading them,
+then read the common skill from the global profile.
+
 Use /blueprint and planctl only when the owner explicitly requests this workflow;
 continue its approved implementation with /blueprint-start. Never propose or
 start it automatically. Ordinary research, documentation and implementation stay
