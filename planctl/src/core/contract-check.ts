@@ -12,7 +12,24 @@ function nodes(node: Root | Content): (Root | Content)[] {
 function declarations(text: string, path: string, exportedOnly: boolean) {
   const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
   const printer = ts.createPrinter({ removeComments: true });
-  const normalized = (node: ts.Node) => printer.printNode(ts.EmitHint.Unspecified, node, source).replace(/\s+/g, " ").trim();
+  const normalized = (node: ts.Node): string => {
+    const transformed = ts.transform(node, [context => root => {
+      const visit = (child: ts.Node): ts.Node => {
+        const current = ts.visitEachChild(child, visit, context);
+        if (ts.isStringLiteral(current)) return ts.factory.createStringLiteral(current.text);
+        if (ts.isPropertySignature(current)) return ts.factory.updatePropertySignature(current,
+          current.modifiers?.filter(modifier => modifier.kind !== ts.SyntaxKind.ReadonlyKeyword),
+          current.name, current.questionToken, current.type);
+        return current;
+      };
+      return visit(root);
+    }]);
+    try {
+      const current = transformed.transformed[0];
+      if (current === undefined) throw new Error(`cannot normalize contract in ${path}`);
+      return printer.printNode(ts.EmitHint.Unspecified, current, source).replace(/\s+/g, " ").trim();
+    } finally { transformed.dispose(); }
+  };
   const localExports = new Set(source.statements.flatMap(s => ts.isExportDeclaration(s) && !s.moduleSpecifier && s.exportClause && ts.isNamedExports(s.exportClause)
     ? s.exportClause.elements.map(e => (e.propertyName ?? e.name).text) : []));
   const localTypes = new Map(source.statements.flatMap(s => ts.isInterfaceDeclaration(s) || ts.isTypeAliasDeclaration(s) ? [[s.name.text, s] as const] : []));
@@ -116,6 +133,9 @@ export async function checkContractChanges(root: string, commit: string, body: s
       if (now.callable && was === undefined) return;
       const contract = approved.get(name);
       if (contract === undefined) { add(path, name, "is not listed in SPEC; record the implementation change without reopening approval", now.text, false); return; }
+      // A complete final declaration already authorizes its field list and
+      // parameters; it does not also need prose enumerating removed old fields.
+      if (now.text === contract.text) return;
       if (now.members !== null && contract.members !== null) {
         for (const key of new Set([...(was?.members?.keys() ?? []), ...now.members.keys()])) {
           if (was?.members?.get(key) === now.members.get(key)) continue;

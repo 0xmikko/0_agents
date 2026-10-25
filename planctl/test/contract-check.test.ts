@@ -147,3 +147,32 @@ it("tst_unit_planctl_contract_005 accepts an unchanged type move but rejects cha
     expect(changed.some(f => f.blocking && f.text.includes("ActorKind"))).toBe(true);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+/** @test-id: tst_unit_planctl_contract_006
+ * @scenario: scn_planctl_final_contract_001
+ * @covers: planctl/src/core/contract-check.ts::checkContractChanges
+ * @deterministic: yes
+ * @invariant: the complete approved target authorizes its final field list;
+ * property readonly and quote style do not require another owner decision,
+ * while an incompatible field type still blocks.
+ */
+it("tst_unit_planctl_contract_006 compares final event shapes without requiring removal prose", async () => {
+  const root = mkdtempSync(join(tmpdir(), "contract-final-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  try {
+    git("init", "-q"); git("config", "user.email", "test@example.com"); git("config", "user.name", "Test");
+    writeFileSync(join(root, "event.ts"), "export interface Event<P = string> { id: string; timestamp: string; metadata: unknown; payload: P }\n");
+    git("add", "."); git("commit", "-qm", "old writer");
+    const target = "export type EventPayload = { type: \"entity_created\"; entityId: string; occurredAt: string | null };\n"
+      + "export interface Event { timestamp: string; payload: EventPayload }\n";
+    const implemented = "export type EventPayload = { readonly type: 'entity_created'; readonly entityId: string; readonly occurredAt: string | null };\n"
+      + "export interface Event { readonly timestamp: string; readonly payload: EventPayload }\n";
+    const spec = `\`\`\`typescript\n${target}\`\`\``;
+    writeFileSync(join(root, "event.ts"), implemented);
+    git("add", "."); git("commit", "-qm", "implement the approved final writer");
+    expect((await checkContractChanges(root, git("rev-parse", "HEAD"), spec)).filter(f => f.blocking)).toEqual([]);
+    writeFileSync(join(root, "event.ts"), implemented.replace("timestamp: string", "timestamp: number"));
+    git("add", "."); git("commit", "-qm", "accidental timestamp contract regression");
+    expect((await checkContractChanges(root, git("rev-parse", "HEAD"), spec)).some(f => f.blocking && f.text.includes("timestamp"))).toBe(true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
