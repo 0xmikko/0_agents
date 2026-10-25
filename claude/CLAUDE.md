@@ -31,6 +31,14 @@ change to promised behavior, public compatibility, constraints or acceptance
 criteria, or permission not already granted. Do not reopen a locked SPEC merely
 to enumerate implementation details.
 
+Execution approval covers all approved Deliveries and Stages, including their
+required reviews, fixes, PR publication and CI. Continue eligible work across
+those boundaries without asking for another start word. Report each ready PR
+as progress, not completion of the whole plan. A status question is not a pause:
+answer briefly and continue. Only a real owner decision or an explicit external
+prerequisite can block dependent work; keep independent work moving. Protected
+branch merges still require the owner's separate instruction.
+
 Blueprint, Blueprint Start and End Work use the common global skills. Do not
 create project or worktree copies. If a checkout restores local copies, run
 `agent-stack centralize-skills <absolute-repository-path>` before loading them,

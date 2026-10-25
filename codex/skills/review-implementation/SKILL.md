@@ -1,8 +1,8 @@
 ---
 name: review-implementation
-description: One final implementation review, only at the user's request, after the entire plan is implemented and the complete local gate passes, before implementation push and CI. Launches 3 parallel cop reviews and Codex code review. Does NOT fix or repeat automatically.
+description: Final review of an implemented Delivery after its complete local gate, automatically when the approved contract requires it or on an explicit owner request. One full cop/Codex pass; executor fixes findings and continues publication.
 user-invocable: true
-disable-model-invocation: true
+disable-model-invocation: false
 effort: high
 ---
 
@@ -10,15 +10,21 @@ effort: high
 
 # Review Implementation
 
-Run only at the user's request, after the complete local gate and before
-implementation push and CI. Do not start another round after fixes or a new SHA:
-fix real defects within the authorized task and check them with typecheck and
-tests covering changed files. Never invoke this skill for an individual Stage
-or commit.
+Run when the approved Delivery contract requires review, or when the owner
+explicitly requests one. Approving a contract with `review: required` already
+authorizes this work; never ask for another invocation or approval word.
+Otherwise do not introduce an optional review on your own.
 
-Reuse the Delivery verification, enforce project rules via 3 cops, run Codex
-code review, triage findings and report a structured verdict. This skill does
-NOT fix.
+Review the implemented Delivery after its complete local gate. Later planned
+Deliveries are not missing work in this review. Run one full pass by the three
+cops and Codex, not a pass after every Stage or commit. The review role reports;
+the executor fixes real defects and continues through publication and CI.
+
+Keep the review and verification gates intact. Save the actual report in the
+task checkout's Git-local review record (`git rev-parse --git-path
+code-production/review.md`), or pass its actual path as `reviewPath`. Detailed
+revision identifiers belong there, not in replies to the owner. Completion of review is a workflow step,
+not a reason to ask whether authorized execution should continue.
 
 ## Anti-patterns (do not do)
 
@@ -64,9 +70,12 @@ test "$(sed -n '1p' "$(git rev-parse --path-format=absolute --git-path code-prod
 - Do not push, create a PR or wait for CI to make a review runnable. Any observed
   CI failure is evidence to investigate locally, not an entry condition.
 
-The receipt proves checks for the SHA it names; it does not cover later fixes.
-Verify fixes with typecheck and tests covering changed files. A changed SHA
-alone does not trigger another review round. The order is complete local gate,
+The initial receipt proves checks for the head it names; it does not cover
+later fixes. Record its actual head separately from affected verification for
+the corrected head. Before publication, satisfy the existing gate's tracked-input
+and receipt requirements; never label old evidence as covering new inputs.
+A bookkeeping-only head change does not itself require another full gate or
+review round. Verify real fixes with typecheck and tests covering changed files. The order is complete local gate,
 review, fixes and affected verification, authorized implementation push, then
 remote CI. Keep publication hooks enabled and reuse valid local evidence.
 
@@ -88,29 +97,30 @@ review tool is available, use it; otherwise perform the review locally.
 
 ## Phase 4: TRIAGE
 
-For every finding from cops + Codex, classify into one bucket:
+For every finding from cops and Codex, inspect the actual code and approved
+Delivery and classify it:
 
-- **REAL** — clear gap, bug, or risk in the actual context. Block APPROVAL.
-- **CONTEXT-MISMATCHED** — concern doesn't apply given context (e.g.
-  security warning on a local-only CLI, "abstract this" on a 5-line
-  helper, performance concern on a one-shot script, "add metrics" on a
-  prototype). Surface as ASK_USER.
-- **STYLE / WORDING** — naming, doc phrasing, log tone. DROP per scope;
-  do not surface.
+- **REAL** — a demonstrated implementation defect or missing required test.
+  The executor fixes it within the approved scope and verifies the change.
+- **NEEDS_EVIDENCE** — the claim is not established. Inspect callers or gather
+  the specific scoped test/log evidence. Missing evidence does not itself
+  create an owner decision or authorize APPROVED.
+- **CONTEXT-MISMATCHED** — the concern does not apply. Drop it with the
+  concrete reason in the private report; do not ask the owner to reject an
+  irrelevant suggestion.
+- **OWNER_DECISION** — a concrete choice changes agreed behavior, compatibility,
+  constraints, acceptance criteria or permissions not already granted. Surface
+  this as ASK_USER with the actual choice and its consequences.
+- **STYLE / WORDING** — drop per scope.
 
-If unsure whether a finding is REAL or CONTEXT-MISMATCHED, default to
-CONTEXT-MISMATCHED (ask the user). Better one user question than silently
-mis-fixing.
+Uncertainty alone goes to NEEDS_EVIDENCE. Only a demonstrated OWNER_DECISION
+requires a new owner answer. Do not blindly forward reviewer opinions.
 
-For each ASK_USER, include in the report your reasoning so the user can
-decide quickly:
-
-```
-ASK_USER: <quote of finding>  [from: <cop name | Codex>]
-  Why context-mismatched: <e.g. "the binary runs only on user's local
-    machine; no remote attack surface for the security concern raised">
-  Options: (a) apply (b) skip with clarification (c) override
-```
+When real findings are fixed, an existing reviewing agent checks those fixes
+and the affected verification evidence and updates the actual report for the
+resulting head. This is focused closure of the same review, not another full
+round by all cops. Never invent APPROVED or reuse a report for unverified code.
+The executor then continues publication and eligible work without another word.
 
 ## Phase 5: FINAL REPORT
 
@@ -119,7 +129,10 @@ Present a consolidated structured verdict:
 ```
 REVIEW VERDICT: [APPROVED | NEEDS_WORK | NEEDS_HUMAN_DECISION]
 
-Delivery receipt: PASS @ <head-sha>
+Reviewed-Head: <actual-reviewed-head>
+Initial Delivery gate: PASS @ <head-it-verified>
+Fix verification: <affected-check evidence for the reviewed head, or no fixes>
+Publication gate: <actual receipt state; caller must satisfy it before publishing>
 
 Cops:
   coherence-cop:  [PASS|REJECT] (N findings)
@@ -132,10 +145,13 @@ REAL findings (must fix before approval):
   - <finding> — <source>
   ...
 
-ASK_USER findings (context-mismatched; need human decision):
+NEEDS_EVIDENCE findings (executor gathers evidence):
+  - <specific missing evidence> — <next check>
+
+ASK_USER findings (concrete owner decisions only):
   - <finding> — <source>
-    Why context-mismatched: <reasoning>
-    Options: (a) apply (b) skip with clarification (c) override
+    Why existing approval cannot resolve the choice: <reasoning>
+    Options and consequences: <the actual owner choices>
   ...
 
 DROPPED (style/wording, out of scope):
@@ -144,10 +160,12 @@ DROPPED (style/wording, out of scope):
 ```
 
 VERDICT rules:
-- **APPROVED**: no REAL, no ASK_USER. (DROPPED is fine.)
-- **NEEDS_WORK**: REAL findings exist; caller must fix.
-- **NEEDS_HUMAN_DECISION**: ASK_USER findings exist (regardless of REAL);
-  caller must consult the user before acting on those findings.
+- **APPROVED**: no REAL, no NEEDS_EVIDENCE, no ASK_USER. (DROPPED is fine.)
+- **NEEDS_WORK**: REAL findings or missing required evidence remain; the caller fixes or gathers evidence autonomously.
+- **NEEDS_HUMAN_DECISION**: a concrete OWNER_DECISION remains; ask only about that choice and continue independent authorized work.
 
-Do NOT fix anything. Do NOT return any verdict besides the three above.
+The reviewing role does not change product code. This restriction does not
+stop the executor: it fixes REAL findings, supplies evidence for focused
+closure, publishes and continues eligible work. Do not return a verdict
+outside the three above.
 No "should be fine now", no "fixes will address" — those are anti-patterns.

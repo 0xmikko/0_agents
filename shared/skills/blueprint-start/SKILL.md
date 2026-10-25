@@ -53,24 +53,35 @@ incompatibility. Run the needed operation, diagnose an actual failure, and make
 the smallest authorized repair. A stack install also changes hooks and skills;
 inspect its actual scope before using it. Do not make it a routine prerequisite.
 
-After completing the work, run the project's complete local gate. When final
-review is requested, run review-implementation now, before implementation push
-and remote CI. Fix real findings and verify affected changes; fixes do not
-automatically start another review. Then call `publish_delivery` for the checked head within the
-existing authorization and confirm CI for that head. A PR or green CI is never
-a prerequisite for review. Return the PR and plan URLs. The owner merges.
+Execute the whole approved plan, not just the current Delivery. For each
+Delivery, finish its Stages, run its complete local gate, and invoke
+review-implementation when its contract says `review: required` or the owner
+requested it. Approval of that contract is already review authorization; do
+not ask for a separate invocation. Review this Delivery's implemented changes,
+not future Deliveries. Fix real findings and obtain focused verification of
+the fixes from the reviewing role; do not repeat the full review at each commit.
 
-Within existing publication authorization, push the feature branch, create or
-update its PR through `publish_delivery` and follow CI to its result; do not hand these steps back to the
-owner or ask for the same permission again. Return the PR link when it exists.
-Use `progress` for CI; for details use Actions runs selected by repository and
-exact PR head, then `gh run view` or `gh run watch --exit-status`. Do not use
-`gh pr checks` or `statusCheckRollup` with the fine-grained PAT. Preserve failure
-exit codes through logging. A routine CI wait needs no new owner message.
+Publish the checked Delivery through `publish_delivery`, confirm CI for the
+exact published head, and repair actual failures within the existing scope.
+Use `progress` or `gh run list` filtered by branch and head, then `gh run view`
+or `gh run watch --exit-status`. A Checks API permission error is not proof
+that Actions runs cannot be read; do not hand routine CI observation to the
+owner. Preserve failure exit codes and keep publication hooks enabled.
 
-Plan approval, publication and green CI do not authorize protected-branch
-merge, auto-merge or direct push. Only a separate explicit owner instruction
-authorizes those actions on `staging` or `main`.
+Report a ready PR as progress, then call `start_task` for the next eligible
+Task or Delivery. Follow the declared branches, repositories and dependency
+order. When the contract permits a green unmerged parent, its child can proceed
+from that verified code while keeping the project's PR destination rules.
+Do not ask whether to continue after a Stage, review, ready PR or ordinary CI
+wait. Completion of one Delivery is not completion of the plan. A status
+question asks for a brief update; answer and resume the authorized work.
+
+Stop for a concrete owner decision or an explicit external prerequisite that
+cannot be satisfied within the existing authorization; continue independent
+eligible work. Return the whole-plan result only when the approved scope is
+finished or accurately blocked. Plan approval and green CI do not authorize
+protected-branch merge, auto-merge or direct push; those remain the owner's
+separate decision.
 
 Delegate only when the owner or applicable instructions authorize it and the
 plan provides disjoint writes. Preserve other agents' changes and processes.
