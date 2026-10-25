@@ -445,7 +445,7 @@ const TOOLS = {
     },
   }),
   complete_task: tool({
-    description: "Record one or more Tasks of a Stage from their IDs, the commit and a result sentence; paths, times, planned tests and the temp root are derived.",
+    description: "Record one or more Tasks of a Stage from their IDs, the commit and a result sentence; paths, times, planned tests and the temp root are derived. Additional ordinary implementation files and types absent from SPEC are recorded, not refused; keep the approved SPEC unchanged. Actual conflicts with an approved type contract and undeclared protected paths still block.",
     schema: z.object({ plan: z.string(), taskIds: z.array(z.string()).min(1), commit: z.string(), result: z.string(), deviations: z.array(z.string()).optional() }),
     run: async (deps, { plan, taskIds, commit, result, deviations }) => {
       const { root, plan: relative } = located(deps.cwd, plan);
@@ -493,7 +493,7 @@ const TOOLS = {
     },
   }),
   needs_owner: tool({
-    description: "Record that a started Task needs one owner answer, as a form: what this is about, the options with their consequences, the recommendation, the form of the answer.",
+    description: "Record a concrete owner decision that changes agreed behavior, compatibility, constraints or acceptance criteria, or requires permission not already granted. An additional implementation file, internal type change or move, missing SPEC inventory entry or tool refusal alone is not such a decision. State the real choice, consequences, recommendation and answer form.",
     schema: z.object({
       plan: z.string(),
       task: z.string(),

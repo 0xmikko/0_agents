@@ -276,11 +276,6 @@ function isProtectedPath(path: string): boolean {
   return PROTECTED_PATHS.some((prefix) => path === prefix || path.startsWith(prefix));
 }
 
-/** A test may live anywhere: it never counts as a file outside the Stage folders. */
-function isTestPath(path: string): boolean {
-  return /(^|\/)(test|tests|__tests__)\//.test(path) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(path);
-}
-
 function beyondTaskWrites(declaredPaths: readonly string[], paths: readonly string[]): readonly string[] {
   return paths.filter((path) => !coveredByWrites(declaredPaths, path)).sort();
 }
@@ -1323,7 +1318,6 @@ export function recordStageResult(
     if (isProtectedPath(path) && !coveredByWrites(declaredPaths, path)) {
       throw new Error(`protected path ${path} is not named by the Task writes`);
     }
-    if (!isTestPath(path) && !coveredByWrites(stage.writes, path)) throw new Error(`file outside the Stage folders: ${path}`);
   }
   const commitIsAncestor = options.commitIsAncestor ?? defaultCommitIsAncestor;
   if (!commitIsAncestor(receipt.commit)) throw new Error(`Stage result commit ${receipt.commit} is not ancestral to HEAD`);
@@ -1664,19 +1658,14 @@ export async function completeTask(
     state: existsSync(resolve(checkout, stage.tempRoot)) ? "present" : "absent",
   } as const;
   const tests = tasks.map((task) => ({ id: task.id, command: task.red }));
-  // An exported type the SPEC does not name is the one thing a commit may
-  // not change silently: the Interfaces section is the owner's contract.
+  // Source-code exports are not an exhaustive owner contract. Preserve the
+  // approved SPEC and record implementation changes in the execution log.
   const { undeclaredExportedTypes } = await import("./plan-gate");
   const undeclared = await undeclaredExportedTypes(checkout, input.commit, body);
-  if (undeclared.length > 0) {
-    const names = undeclared.map((type) => `${type.name} in ${type.path}`).join(", ");
-    throw new Error(`exported type ${names} is missing from SPEC Interfaces; declare it there under the owner's word`);
-  }
   const { checkContractChanges } = await import("./contract-check");
   const changedContracts = await checkContractChanges(checkout, input.commit, body);
-  // Legacy plans may cite unchanged contracts without spelling their whole shape.
-  // The existing inventory checks new names; enforce positively established shape conflicts.
-  const conflicts = changedContracts.filter(f => !f.text.includes("has no approved contract") && !f.text.includes("needs canonical source verification"));
+  // Refuse positively established conflicts, not missing inventory entries.
+  const conflicts = changedContracts.filter(f => f.blocking);
   if (conflicts.length) throw new Error(conflicts.map(f => `${f.text}\nEvidence: ${f.quote}`).join("\n"));
   const receipt: StageResultReceipt = {
     version: 1,
@@ -1693,7 +1682,11 @@ export async function completeTask(
     paths,
     tests,
     result: input.result,
-    deviations: [...(input.deviations ?? [])],
+    deviations: [
+      ...(input.deviations ?? []),
+      ...undeclared.map(type => `Implementation type not listed in SPEC: ${type.name} in ${type.path}`),
+      ...changedContracts.filter(f => !f.blocking).map(f => f.text),
+    ],
     tempRoots: [tempRoot],
   };
   mutatePlanFile(root, plan, "record-result", (current) => recordStageResult(current, receipt, {

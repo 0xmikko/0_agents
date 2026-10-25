@@ -452,7 +452,7 @@ function undeclaredTypesOf(root: string, commit: string, types: ReadonlySet<stri
 
 function lintCommit(root: string, commit: string, types: ReadonlySet<string>, line: number, ts: typeof import("typescript"), add: AddFinding): void {
   for (const { path, name } of undeclaredTypesOf(root, commit, types, ts)) {
-    add(line, `${path}: exported type ${name} is missing from SPEC Interfaces`, "typescript", name);
+    add(line, `${path}: exported type ${name} is not listed in SPEC Interfaces; record implementation details in the execution log and continue within the approved behavior`, "typescript", name, null, false);
   }
 }
 
@@ -596,7 +596,8 @@ function namedPaths(line: string): readonly string[] {
 }
 
 /** Exported TypeScript types a commit adds or changes that the plan's
- * Interfaces section does not declare. Completion refuses them by name.
+ * Interfaces section does not declare. Completion records them without
+ * treating a source-code export as a new owner decision.
  * @tested-by: tst_scripts_planupdate_025
  */
 export async function undeclaredExportedTypes(root: string, commit: string, body: string): Promise<readonly { path: string; name: string }[]> {

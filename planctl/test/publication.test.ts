@@ -51,6 +51,8 @@ it.each(["required", "none"] as const)("tst_unit_planctl_publication_001 publish
     writeFileSync(join(root, ".agents/code-production/runtime/planctl.ts"), "process.exit(0);\n");
     const hook = readFileSync(join(import.meta.dir, "../../shared/code-production/templates/hooks/pre-push"), "utf8");
     writeFileSync(join(root, ".git/hooks/pre-push"), hook, { mode: 0o755 });
+    mkdirSync(join(root, "src"));
+    writeFileSync(join(root, "src/internal.ts"), "export interface WriterInput { id: string }\n");
     git("add", "."); git("commit", "-qm", "implementation");
     const head = git("rev-parse", "HEAD");
     let created = false; let calls = 0; let interrupted = false;

@@ -23,7 +23,9 @@ Use the remaining headings returned by the authoring tools when useful.
 Diagrams, maps, sentence length and layout are authoring advice; do not remove
 necessary detail to satisfy them.
 
-Declare changed exported types in **Interfaces** as valid typed TypeScript.
+Declare the types needed to understand the agreed behavior and flow in
+**Interfaces** as valid typed TypeScript. This is not an inventory of every
+implementation export that may be needed later.
 Explain proposed new names and reuse canonical repository definitions. Name the
 owning files, including public contracts reached through another module.
 Missing files, invalid declarations, untyped pseudocode and invalid diagrams
@@ -69,13 +71,17 @@ Delivery/Stage/Task contract. The mutation journal binds changes to the plan
 blob and Git HEAD; all plan writes use MCP, including results and amendments.
 Direct edits cannot replace journaled approval.
 
-Keep promised behavior, type contracts, criteria and forecasts unchanged during
-execution. Results record what happened. Scope changes require an amendment
-under the owner's word; an earlier approval does not authorize unrelated work.
+Keep promised behavior, approved contract meanings, criteria and forecasts
+unchanged during execution. Necessary implementation refinements are authorized:
+record internal type changes or moves, exports, helpers, generated declarations,
+harnesses and additional tests in results and continue. A missing implementation
+type is not a reason to reopen locked SPEC. A concrete change to agreed behavior,
+compatibility, constraints or acceptance criteria requires the owner's word;
+an earlier approval does not authorize unrelated work.
 
-The current completion gate checks Stage folders and protected Task paths.
-It records additional writes within permitted folders; tests have their own
-allowance. A protected path must be declared by the Task. A tooling repair
+The completion gate records additional implementation files beyond the predicted
+Task and Stage writes. Those lists do not alone create another approval stop.
+A protected path must still be declared by the Task. A tooling repair
 authorized in chat does not silently rewrite an approved Task: record any
 necessary amendment through MCP using that authorization.
 

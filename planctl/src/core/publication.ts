@@ -162,7 +162,7 @@ export async function publishDelivery(input: {
     const baseBranch = pr?.baseRefName ?? configuredBase;
     const baseRef = spawnSync("git", ["-C", checkout, "rev-parse", "--verify", `refs/remotes/origin/${baseBranch}`], { encoding: "utf8" }).status === 0 ? `origin/${baseBranch}` : baseBranch;
     const base = git(checkout, "merge-base", baseRef, head);
-    const contracts = await checkContractChanges(checkout, head, body, base);
+    const contracts = (await checkContractChanges(checkout, head, body, base)).filter(finding => finding.blocking);
     if (contracts.length) throw new Error(`The implementation differs from its approved contracts:\n${contracts.map(c => c.text).join("\n")}`);
   }
   const remote = git(checkout, "ls-remote", "--heads", "origin", `refs/heads/${branch}`).split(/\s/)[0] ?? "";

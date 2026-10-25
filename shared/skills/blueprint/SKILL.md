@@ -35,7 +35,9 @@ tool schemas for arguments. Project package.json agent:* scripts define checks.
    Use diagrams when they clarify the flow; avoid fixed maps, repeated prose
    and compliance narration. A wording correction keeps the agreed design and
    focuses on the affected passage, rather than restarting architecture research.
-   Declare changed types and justify proposed new names. Do not add Why now.
+   Declare the types needed to understand the agreed behavior and flow, and
+   justify proposed new names. Do not require an exhaustive inventory of future
+   implementation exports. Do not add Why now.
 3. Send the complete SPEC through `submit_spec` with the returned revision
    and the owner's request. Preserve concrete findings and discussion.
    Fix blocking errors; assess advice against the task. When writing feedback

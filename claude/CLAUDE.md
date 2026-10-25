@@ -23,6 +23,14 @@ guide the next revision; a question is not approval or an instruction to change
 the contract. A wording correction keeps the agreed design. Do not add approval
 stops between fragments or restart a broad architecture investigation.
 
+Approval covers necessary implementation refinements within the agreed behavior.
+Additional callers, internal type changes or moves, exports, generated declarations
+and tests do not by themselves require another owner decision. Record the reasons
+and affected files in execution results and continue. Ask only for a concrete
+change to promised behavior, public compatibility, constraints or acceptance
+criteria, or permission not already granted. Do not reopen a locked SPEC merely
+to enumerate implementation details.
+
 Blueprint, Blueprint Start and End Work use the common global skills. Do not
 create project or worktree copies. If a checkout restores local copies, run
 `agent-stack centralize-skills <absolute-repository-path>` before loading them,
@@ -32,8 +40,9 @@ Use /blueprint and planctl only when the owner explicitly requests this workflow
 continue its approved implementation with /blueprint-start. Never propose or
 start it automatically. Ordinary research, documentation and implementation stay
 interactive; do not ask the owner to select a mode.
-Plans are in English. Declare changed types and explain proposed new names before
-approval; reuse the repository's existing names and canonical definitions.
+Plans are in English. Show the types that explain the agreed behavior and flow,
+and explain proposed new names before approval; reuse canonical definitions.
+Approval does not require predicting every implementation export.
 
 Choose the simplest sufficient change. Extend the existing mechanism. Add files,
 abstractions, runners or worktrees only when the task needs them.

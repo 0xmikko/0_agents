@@ -413,8 +413,8 @@ ${spec}<!-- plan:spec:end -->
       git(root, "add src/change.ts");
       git(root, 'commit -qm "introduce public input"');
       const refused = check(body, "--commit", "HEAD");
-      expect(refused.status).toBe(1);
-      expect(refused.stdout).toContain("src/change.ts: exported type Surprise is missing");
+      expect(refused.status).toBe(0);
+      expect(refused.stdout).toContain("src/change.ts: exported type Surprise is not listed");
       const documented = body.replace("export interface Change {", "export type Surprise = string;\nexport interface Change {");
       expect(check(documented, "--commit", "HEAD").status).toBe(0);
       git(root, "checkout -qb extra");
@@ -422,13 +422,13 @@ ${spec}<!-- plan:spec:end -->
       git(root, "add src/extra.ts");
       git(root, 'commit -qm "add an allowed extra file"');
       const extra = check(documented, "--commit", "HEAD");
-      expect(extra.status).toBe(1);
-      expect(extra.stdout).toContain("exported type Outside is missing");
+      expect(extra.status).toBe(0);
+      expect(extra.stdout).toContain("exported type Outside is not listed");
       git(root, "checkout -q -");
       git(root, 'merge --no-ff -qm "merge the extra input" extra');
       const merge = check(documented, "--commit", "HEAD");
-      expect(merge.status).toBe(1);
-      expect(merge.stdout).toContain("exported type Outside is missing");
+      expect(merge.status).toBe(0);
+      expect(merge.stdout).toContain("exported type Outside is not listed");
       mkdirSync(join(root, "docs"));
       writeFileSync(join(root, "docs/graph.md"), "| Term | Meaning | Not |\n|---|---|---|\n| name | input name | label |\n");
       const glossary = check(body.replace("empty names", "empty label"));

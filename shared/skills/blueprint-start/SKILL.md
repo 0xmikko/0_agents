@@ -32,11 +32,16 @@ publication boundaries, not each work commit. After a failure, repeat only the
 failed or affected checks; reuse successful checks while their inputs are unchanged.
 Do not skip necessary verification to meet the time target.
 
-An additional caller, file, move of an unchanged type or incomplete bookkeeping
-does not by itself change the approved behavior. Repair these within the existing
-authorization. Ask only for a material change of the agreed outcome, compatibility,
-module responsibility or scope; a tool refusal is not a new approval requirement.
-Keep plan records accurate through MCP rather than fabricating owner approval.
+File and export inventories guide implementation; they are not an exhaustive
+permission boundary. Adapt necessary callers, internal types and their locations,
+helpers, generated declarations, harnesses and tests within the agreed behavior.
+Record the reasons and affected files in execution results and continue. Missing
+implementation types belong in that record, not an owner amendment to locked SPEC.
+Ask only when a concrete decision changes the agreed behavior, compatibility,
+constraints or acceptance criteria. Correct an accidental contract mismatch
+autonomously. A tool refusal alone is not a new owner decision; diagnose and repair
+authorized tooling rather than asking for wording to satisfy its inventory.
+Preserve other agents' ownership and explicit protected-path requirements.
 
 Run project agent:* commands directly in their checkout. Avoid shell wrappers
 or redirections that prevent reusable command approvals from matching.

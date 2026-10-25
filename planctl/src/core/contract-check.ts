@@ -71,7 +71,8 @@ function declarations(text: string, path: string, exportedOnly: boolean) {
 /**
  * @tested-by: tst_unit_planctl_contract_001
  * @invariant: compare changed members, not just names; unchanged moves and copies
- * reuse identical declarations. Unknown inferred contracts are never a pass.
+ * reuse identical declarations. Missing definitions remain advice, never a
+ * claim of approval; positively established contract conflicts still block.
  */
 export async function checkContractChanges(root: string, commit: string, body: string, base = `${commit}^1`): Promise<readonly GateViolation[]> {
   const run = (...args: string[]) => spawnSync("git", ["-C", root, ...args], { encoding: "utf8", env: repositoryEnvironment() });
@@ -93,12 +94,14 @@ export async function checkContractChanges(root: string, commit: string, body: s
     }
   }
   const findings: GateViolation[] = [];
-  const add = (path: string, name: string, detail: string, quote: string): void => {
+  const add = (path: string, name: string, detail: string, quote: string, blocking = true): void => {
     if (findings.some(f => f.text.startsWith(`${path}: ${name} ${detail}.`))) return;
-    findings.push({ kind: "protocol-shape", rule: "typescript", blocking: true, line: 1, quote,
+    findings.push({ kind: "protocol-shape", rule: "typescript", blocking, line: 1, quote,
       text: `${path}: ${name} ${detail}. Compare the actual declaration with the approved flow; correct an accidental mismatch autonomously.`, replacement: null });
   };
-  for (const { path, previousPath: oldPath } of contractChangePaths(root, base, commit)) {
+  const changes = contractChangePaths(root, base, commit);
+  const currentExports = changes.flatMap(({ path }) => [...declarations(read(commit, path), path, true)]);
+  for (const { path, previousPath: oldPath } of changes) {
     const before = declarations(read(base, oldPath), oldPath, true);
     const previousDeclarations = declarations(read(base, oldPath), oldPath, false);
     const after = declarations(read(commit, path), path, true);
@@ -112,7 +115,7 @@ export async function checkContractChanges(root: string, commit: string, body: s
         && JSON.stringify([...was.members]) === JSON.stringify([...now.members])) return;
       if (now.callable && was === undefined) return;
       const contract = approved.get(name);
-      if (contract === undefined) { add(path, name, "has no approved contract", now.text); return; }
+      if (contract === undefined) { add(path, name, "is not listed in SPEC; record the implementation change without reopening approval", now.text, false); return; }
       if (now.members !== null && contract.members !== null) {
         for (const key of new Set([...(was?.members?.keys() ?? []), ...now.members.keys()])) {
           if (was?.members?.get(key) === now.members.get(key)) continue;
@@ -132,9 +135,14 @@ export async function checkContractChanges(root: string, commit: string, body: s
       const now = after.get(name);
       if (was?.text === now?.text && JSON.stringify([...(was?.dependencies ?? [])]) === JSON.stringify([...(now?.dependencies ?? [])])) continue;
       if (now === undefined) {
+        if (was && currentExports.some(([candidate, declaration]) => candidate === name && declaration.text === was.text
+          && JSON.stringify([...declaration.dependencies]) === JSON.stringify([...was.dependencies]))) continue;
         const rename = new RegExp(`\\brename[sd]?\\s+\`?${name}\`?\\s+to\\s+\`?([A-Za-z][A-Za-z0-9]*)`, "i").exec(spec)?.[1];
         if (rename && approved.has(rename) && after.has(rename)) continue;
-        if (!new RegExp(`\\b(?:remove|delete|retire)[sd]?\\s+(?:the\\s+)?\`?${name}\\b`, "i").test(spec)) add(path, name, "was removed without an approved removal", was?.text ?? name);
+        if (!new RegExp(`\\b(?:remove|delete|retire)[sd]?\\s+(?:the\\s+)?\`?${name}\\b`, "i").test(spec)) {
+          const declared = approved.has(name);
+          add(path, name, declared ? "was removed without an approved removal" : "was removed or moved; record its destination or reason", was?.text ?? name, declared);
+        }
         continue;
       }
       for (const [dependency, actual] of now.dependencies) {
@@ -150,7 +158,7 @@ export async function checkContractChanges(root: string, commit: string, body: s
       .filter(s => ts.isExportDeclaration(s) && s.moduleSpecifier).map(s => s.getText()).join("\n");
     const oldExports = exports(read(base, oldPath));
     const newExports = exports(read(commit, path));
-    if (oldExports !== newExports) add(path, "re-export", "needs canonical source verification", newExports || oldExports);
+    if (oldExports !== newExports) add(path, "re-export", "needs canonical source verification", newExports || oldExports, false);
   }
   return findings;
 }

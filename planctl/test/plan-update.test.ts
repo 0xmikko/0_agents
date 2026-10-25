@@ -1226,13 +1226,14 @@ describe("story errors arrive together", () => {
   });
 });
 
-describe("exported types are declared before completion", () => {
+describe("implementation types do not require another owner approval", () => {
   // @test-id: tst_scripts_planupdate_025
   // @scenario: scn_plan_control_exported_type_001
-  // @covers: planctl/src/core/plan-update.ts::completeTask,applyOwnerAmendment
+  // @covers: planctl/src/core/plan-update.ts::completeTask
   // @deterministic: yes
-  // @invariant: a commit changing an exported type absent from Interfaces is refused by name; the owner's amendment declaring it keeps the plan approved and the completion passes.
-  it("tst_scripts_planupdate_025 refuses an undeclared exported type, then completes after the owner's amendment", async () => {
+  // @invariant: implementation type changes and moves are recorded while completion
+  // preserves both approved locks and requires no owner amendment.
+  it("tst_scripts_planupdate_025 completes and records unlisted implementation types without changing SPEC", async () => {
     const root = mkdtempSync(join(tmpdir(), "plan-update-types-"));
     const git = (...args: readonly string[]): string =>
       execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
@@ -1242,11 +1243,19 @@ describe("exported types are declared before completion", () => {
       git("config", "user.name", "Test");
       let body = lockPlanSpec(draft(), "spec").body;
       body = putDelivery(body, delivery()).body;
-      body = putStage(body, { ...stage("D1-S1", ["scripts/"]), tasks: stage("D1-S1", ["scripts/base.ts"]).tasks }).body;
+      body = putStage(body, stage("D1-S1", ["scripts/base.ts"])).body;
       body = putStage(body, stage("D1-S2", ["scripts/a.ts"], ["D1-S3"])).body;
       body = putStage(body, stage("D1-S3", ["scripts/b.ts"], ["D1-S2"])).body;
       body = putStage(body, { ...stage("D1-S4", ["docs/plans/fixture.md"]), profile: "strong", owner: "integrator", depends: ["D1-S2", "D1-S3"], parallelWith: [] }).body;
       body = approvePlan(body, "approve").body;
+      mkdirSync(join(root, "scripts"), { recursive: true });
+      writeFileSync(join(root, "scripts/base.ts"), [
+        "export type ActorKind = 'user' | 'system';",
+        "export interface EventPayload { entityId: string }",
+        "export interface Event { payload: EventPayload; actor: ActorKind }",
+      ].join("\n"));
+      const approvedType = "export interface Change { readonly name: string; readonly accepted: boolean }\n";
+      writeFileSync(join(root, "scripts/approved.ts"), approvedType);
       mkdirSync(join(root, "docs/plans"), { recursive: true });
       writeFileSync(join(root, "docs/plans/fixture.md"), body);
       git("add", "docs/plans/fixture.md");
@@ -1262,29 +1271,42 @@ describe("exported types are declared before completion", () => {
         startedAt: new Date(Date.now() - 60_000).toISOString(),
         baseHead: git("rev-parse", "HEAD"),
       }));
+      writeFileSync(join(root, "scripts/approved.ts"), approvedType.replace("name: string", "name: number"));
+      git("add", "scripts/approved.ts");
+      git("commit", "-qm", "accidental approved-contract mismatch");
+      await expect(completeTask(root, { plan: "docs/plans/fixture.md", taskIds: ["D1-S1-T1"],
+        commit: git("rev-parse", "HEAD"), result: "incorrect public type" }, decodeTaskRun))
+        .rejects.toThrow(/Change changes name beyond its approved shape/);
+      expect(existsSync(runPath)).toBe(true);
+      expect(readFileSync(join(root, "docs/plans/fixture.md"), "utf8")).toBe(body);
+      writeFileSync(join(root, "scripts/approved.ts"), approvedType);
       mkdirSync(join(root, "scripts"), { recursive: true });
-      writeFileSync(join(root, "scripts/base.ts"), "export interface Extra {\n  readonly id: string;\n}\n");
+      writeFileSync(join(root, "scripts/base.ts"), [
+        "import type { ActorKind } from './sdk-event';",
+        "export interface EventPayload { entityId: string; occurredAt: string | null }",
+        "export interface Event { payload: EventPayload; actor: ActorKind; timestamp: string }",
+      ].join("\n"));
+      writeFileSync(join(root, "scripts/sdk-event.ts"), "export type ActorKind = 'user' | 'system';\n");
       git("add", "-A");
       git("commit", "-qm", "work");
       const commit = git("rev-parse", "HEAD");
-      const input = { plan: "docs/plans/fixture.md", taskIds: ["D1-S1-T1"], commit, result: "extra type shipped" };
-      await expect(completeTask(root, input, decodeTaskRun)).rejects.toThrow(/exported type Extra/);
-      expect(existsSync(runPath)).toBe(true);
-
-      const amended = applyOwnerAmendment(body, "declare", {
-        section: "spec",
-        find: "export interface Change {",
-        replace: "export interface Extra {\n  readonly id: string;\n}\n\nexport interface Change {",
-      }).body;
-      expect(amended).toContain("Status: APPROVED");
-      expect(amended).toMatch(/^Implementation lock: sha256:[0-9a-f]{64} owner:declare/m);
-      expect(protocolLockViolations(amended)).toEqual([]);
-      writeFileSync(join(root, "docs/plans/fixture.md"), amended);
-      git("add", "docs/plans/fixture.md");
-      git("commit", "-qm", "plan: declare Extra");
+      const input = { plan: "docs/plans/fixture.md", taskIds: ["D1-S1-T1"], commit,
+        result: "writer types adapted to the approved event row", deviations: ["Moved ActorKind to the SDK without changing its values"] };
       const done = await completeTask(root, input, decodeTaskRun);
-      expect(done.paths).toEqual(["scripts/base.ts"]);
-      expect(readFileSync(join(root, "docs/plans/fixture.md"), "utf8")).toContain(`- [x] D1-S1-T1 —`);
+      expect(done.paths).toEqual(["scripts/approved.ts", "scripts/base.ts", "scripts/sdk-event.ts"]);
+      expect(done.beyondWrites).toEqual(["scripts/approved.ts", "scripts/sdk-event.ts"]);
+      const completed = readFileSync(join(root, "docs/plans/fixture.md"), "utf8");
+      expect(completed).toContain(`- [x] D1-S1-T1 —`);
+      expect(completed.slice(completed.indexOf(SPEC_START), completed.indexOf(SPEC_END)))
+        .toBe(body.slice(body.indexOf(SPEC_START), body.indexOf(SPEC_END)));
+      expect(completed.match(/^Spec lock:.*$/m)?.[0]).toBe(body.match(/^Spec lock:.*$/m)?.[0]);
+      expect(completed.match(/^Implementation lock:.*$/m)?.[0]).toBe(body.match(/^Implementation lock:.*$/m)?.[0]);
+      expect(protocolLockViolations(completed)).toEqual([]);
+      expect(completed).toContain("Moved ActorKind to the SDK");
+      expect(completed).toContain("EventPayload in scripts/base.ts");
+      expect(completed).toContain("Event in scripts/base.ts");
+      expect(completed).toContain("ActorKind in scripts/sdk-event.ts");
+      expect(existsSync(runPath)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
