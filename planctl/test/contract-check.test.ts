@@ -138,6 +138,7 @@ it("tst_unit_planctl_contract_005 accepts an unchanged type move but rejects cha
     const spec = `\`\`\`typescript\n${actor}${event}\`\`\``;
     writeFileSync(join(root, "writer.ts"), "import type { ActorKind } from './sdk';\nexport type { ActorKind } from './sdk';\n" + event);
     writeFileSync(join(root, "sdk.ts"), actor);
+    writeFileSync(join(root, "sdk.d.ts"), actor);
     git("add", "."); git("commit", "-qm", "move type, preserve its export and variants");
     const moved = await checkContractChanges(root, git("rev-parse", "HEAD"), spec);
     expect(moved.filter(f => f.blocking)).toEqual([]);
@@ -174,5 +175,111 @@ it("tst_unit_planctl_contract_006 compares final event shapes without requiring 
     writeFileSync(join(root, "event.ts"), implemented.replace("timestamp: string", "timestamp: number"));
     git("add", "."); git("commit", "-qm", "accidental timestamp contract regression");
     expect((await checkContractChanges(root, git("rev-parse", "HEAD"), spec)).some(f => f.blocking && f.text.includes("timestamp"))).toBe(true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+/** @test-id: tst_unit_planctl_contract_007
+ * @scenario: scn_planctl_contract_move_002
+ * @covers: planctl/src/core/contract-check.ts::checkContractChanges
+ * @deterministic: yes
+ * @invariant: a moved and changed declaration is compared with its original
+ * fields even when Git reports deletion/addition; approved changes pass while
+ * unapproved fields, variants and removals still block.
+ */
+it("tst_unit_planctl_contract_007 checks a changed type move independently of Git similarity", async () => {
+  const root = mkdtempSync(join(tmpdir(), "contract-changed-move-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  try {
+    git("init", "-q"); git("config", "user.email", "test@example.com"); git("config", "user.name", "Test");
+    writeFileSync(join(root, "old.ts"), "export interface TriggerConfig { name: string; retired: string; window: number }\nexport type TriggerMode = 'old';\n");
+    git("add", "."); git("commit", "-qm", "old trigger contract");
+    const base = git("rev-parse", "HEAD");
+    const target = "export interface TriggerConfig { name: string; subscriptions: string[]; since: string | null }\nexport type TriggerMode = 'active' | 'paused';\n";
+    rmSync(join(root, "old.ts"));
+    writeFileSync(join(root, "new.ts"), target);
+    git("add", "."); git("commit", "-qm", "move and implement target");
+    expect(git("diff", "--name-status", "--find-renames", base, "HEAD")).toContain("D\told.ts");
+    const spec = `\`\`\`typescript\n${target}\`\`\``;
+    expect((await checkContractChanges(root, git("rev-parse", "HEAD"), spec, base)).filter(f => f.blocking)).toEqual([]);
+
+    writeFileSync(join(root, "new.ts"), target.replace("subscriptions: string[]", "subscriptions: number[]").replace("'paused'", "'paused' | 'invented'"));
+    git("add", "."); git("commit", "-qm", "wrong destination shapes");
+    const wrong = await checkContractChanges(root, git("rev-parse", "HEAD"), spec, base);
+    expect(wrong.some(f => f.blocking && f.text.includes("new.ts: TriggerConfig changes subscriptions"))).toBe(true);
+    expect(wrong.some(f => f.blocking && f.text.includes("new.ts: TriggerMode"))).toBe(true);
+
+    writeFileSync(join(root, "new.ts"), "export interface TriggerConfig { name: string; window: number | null }\nexport type TriggerMode = 'active' | 'paused';\n");
+    git("add", "."); git("commit", "-qm", "partial target loses unapproved old member");
+    const partial = "```typescript\ninterface TriggerConfig { window: number | null }\ntype TriggerMode = 'active' | 'paused';\n```";
+    const removal = await checkContractChanges(root, git("rev-parse", "HEAD"), partial, base);
+    expect(removal.some(f => f.blocking && f.text.includes("new.ts: TriggerConfig removes retired"))).toBe(true);
+    expect(removal.some(f => f.text.includes("changes name"))).toBe(false);
+    expect(removal.some(f => f.text.includes("removed without an approved removal"))).toBe(false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+/** @test-id: tst_unit_planctl_contract_008
+ * @scenario: scn_planctl_contract_move_003
+ * @covers: planctl/src/core/contract-check.ts::checkContractChanges
+ * @deterministic: yes
+ * @invariant: same-name destinations do not conceal an ambiguous move or a real
+ * removal; changed local dependencies at a unique destination remain checked.
+ */
+it("tst_unit_planctl_contract_008 preserves removal and dependency checks across moves", async () => {
+  const root = mkdtempSync(join(tmpdir(), "contract-move-provenance-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  try {
+    git("init", "-q"); git("config", "user.email", "test@example.com"); git("config", "user.name", "Test");
+    writeFileSync(join(root, "old.ts"), "type Selector = string;\nexport interface TriggerConfig { selector: Selector; name: string }\n");
+    git("add", "."); git("commit", "-qm", "original declaration and dependency");
+    const base = git("rev-parse", "HEAD");
+    const target = "type Selector = string | null;\nexport interface TriggerConfig { selector: Selector; name: string; enabled: boolean }\n";
+    const spec = `\`\`\`typescript\n${target}\`\`\``;
+    rmSync(join(root, "old.ts"));
+    writeFileSync(join(root, "one.ts"), target);
+    writeFileSync(join(root, "two.ts"), target);
+    git("add", "."); git("commit", "-qm", "ambiguous destinations");
+    expect((await checkContractChanges(root, git("rev-parse", "HEAD"), spec, base)).some(f => f.blocking && f.text.includes("TriggerConfig"))).toBe(true);
+    rmSync(join(root, "two.ts"));
+    writeFileSync(join(root, "one.ts"), target.replace("Selector = string | null", "Selector = number"));
+    git("add", "."); git("commit", "-qm", "unique move with wrong local dependency");
+    const wrong = await checkContractChanges(root, git("rev-parse", "HEAD"), spec, base);
+    expect(wrong.some(f => f.blocking && f.text.includes("one.ts: Selector"))).toBe(true);
+    rmSync(join(root, "one.ts"));
+    git("add", "."); git("commit", "-qm", "actual contract removal");
+    expect((await checkContractChanges(root, git("rev-parse", "HEAD"), spec, base)).some(f => f.blocking && f.text.includes("removed without"))).toBe(true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+/** @test-id: tst_unit_planctl_contract_009
+ * @scenario: scn_planctl_contract_move_004
+ * @covers: planctl/src/core/contract-check.ts::checkContractChanges
+ * @deterministic: yes
+ * @invariant: explicit Git provenance separates unrelated same-name contracts;
+ * an approved symbol rename also remains valid when its file moves.
+ */
+it("tst_unit_planctl_contract_009 retains explicit file provenance for same-name types and approved renames", async () => {
+  const root = mkdtempSync(join(tmpdir(), "contract-move-origins-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  try {
+    git("init", "-q"); git("config", "user.email", "test@example.com"); git("config", "user.name", "Test");
+    writeFileSync(join(root, "a.ts"), "export interface Config { left: string }\n");
+    writeFileSync(join(root, "b.ts"), "export interface Config { right: number }\n");
+    git("add", "."); git("commit", "-qm", "unrelated same-name types");
+    const base = git("rev-parse", "HEAD");
+    git("mv", "a.ts", "c.ts"); git("mv", "b.ts", "d.ts");
+    git("commit", "-qm", "two unchanged moves");
+    const spec = "```typescript\ninterface Config { left: string }\n```";
+    expect((await checkContractChanges(root, git("rev-parse", "HEAD"), spec, base)).filter(f => f.blocking)).toEqual([]);
+
+    writeFileSync(join(root, "c.ts"), "// Stable context keeps Git file provenance independent of the type name.\n".repeat(12) + "export interface Config { left: string }\n");
+    git("add", "."); git("commit", "-qm", "file context before approved rename");
+    const renameBase = git("rev-parse", "HEAD");
+    git("mv", "c.ts", "renamed.ts");
+    writeFileSync(join(root, "renamed.ts"), "// Stable context keeps Git file provenance independent of the type name.\n".repeat(12) + "export interface Settings { left: string }\n");
+    git("add", "."); git("commit", "-qm", "approved symbol rename and file move");
+    const renamed = "Rename Config to Settings.\n```typescript\ninterface Config { left: string }\ninterface Settings { left: string }\n```";
+    expect(git("diff", "--name-status", "--find-renames", renameBase, "HEAD")).toContain("c.ts\trenamed.ts");
+    expect((await checkContractChanges(root, git("rev-parse", "HEAD"), renamed, renameBase)).filter(f => f.blocking)).toEqual([]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

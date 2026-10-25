@@ -43,6 +43,19 @@ autonomously. A tool refusal alone is not a new owner decision; diagnose and rep
 authorized tooling rather than asking for wording to satisfy its inventory.
 Preserve other agents' ownership and explicit protected-path requirements.
 
+When a feature adds required configuration, complete its launch integration:
+trace the existing launcher and packaging paths, supply the approved configuration
+explicitly, and verify configured boots while preserving refusal on missing values.
+Necessary launcher, desktop and packaging changes belong to that implementation
+even if the file inventory missed them. Ask only if a configuration value or
+promised launch behavior actually needs a new owner decision.
+
+Repair a proven false tooling rejection in an isolated owned branch when the
+active tooling checkout has others' changes. Reproduce the failure, preserve
+the check's real invariant, verify against the actual rejected diff and make
+the repaired version available through the authorized tooling path. An owner-only
+protected merge remains separate; continue independent work while it is pending.
+
 Run project agent:* commands directly in their checkout. Avoid shell wrappers
 or redirections that prevent reusable command approvals from matching.
 If the sandbox refuses a necessary command, retry that command with the tool's
