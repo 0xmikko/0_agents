@@ -43,6 +43,9 @@ Blueprint, Blueprint Start and End Work use the common global skills. Do not
 create project or worktree copies. If a checkout restores local copies, run
 `agent-stack centralize-skills <absolute-repository-path>` before loading them,
 then read the common skill from the global profile.
+Required implementation reviews also use the global profile's
+`review-implementation/SKILL.md` directly; repository-local copies do not govern
+the approved workflow or require a repeated owner invocation.
 
 Use /blueprint and planctl only when the owner explicitly requests this workflow;
 continue its approved implementation with /blueprint-start. Never propose or

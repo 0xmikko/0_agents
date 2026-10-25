@@ -56,8 +56,12 @@ inspect its actual scope before using it. Do not make it a routine prerequisite.
 Execute the whole approved plan, not just the current Delivery. For each
 Delivery, finish its Stages, run its complete local gate, and invoke
 review-implementation when its contract says `review: required` or the owner
-requested it. Approval of that contract is already review authorization; do
-not ask for a separate invocation. Review this Delivery's implemented changes,
+requested it. Load the global profile's review instructions directly from
+`~/.codex/skills/review-implementation/SKILL.md` or
+`~/.claude/skills/review-implementation/SKILL.md`, as applicable. A repository
+copy is a legacy snapshot and must not override this workflow or add a manual
+start requirement. Approval of the contract already authorizes review; do not
+ask for a separate invocation. Review this Delivery's implemented changes,
 not future Deliveries. Fix real findings and obtain focused verification of
 the fixes from the reviewing role; do not repeat the full review at each commit.
 
