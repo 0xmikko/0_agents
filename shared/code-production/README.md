@@ -60,7 +60,9 @@ fallback command.
 | GitHub PR head | same gates on published SHA | `agent:verify:docs`; full `agent:verify:pr` only when PR is ready |
 | Final review | reuse the exact PR-head receipts | no unchanged suite rerun |
 
-One PR Delivery may contain several Stage commits. Independent Stages may be
+One complete owner-requested outcome normally uses one PR Delivery with several
+Stage commits. Additional Deliveries need independently useful, separately
+mergeable results or a required repository boundary. Independent Stages may be
 delegated in parallel; Deliveries are published sequentially by default.
 
 ## Install in a repository

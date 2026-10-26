@@ -49,8 +49,13 @@ tool schemas for arguments. Project package.json agent:* scripts define checks.
 4. Show the published SPEC and ask for its approval. After the owner's yes,
    call `approve_spec` with their actual approval and the displayed `expectedRevision`.
    Agreement with one paragraph does not approve the whole SPEC.
-5. Use `put_delivery` and `put_stage` one-to-one: one Stage ends in one PR.
-   A Stage may contain several local work commits. Keep older approved plans intact.
+5. Default to one Delivery (one PR, created through `put_delivery`) for the
+   complete owner-requested outcome.
+   Use `put_stage` for technical work commits within that Delivery. Split into
+   additional Deliveries only for independently useful, separately mergeable
+   results or a required repository boundary; explain that reason in the contract.
+   Technical layers, Stage count and test groups alone do not justify more PRs.
+   Keep existing approved plans intact; regroup them only through an authorized amendment.
    Tasks name concrete changes, their writes, How and a scoped RED command.
    Include the files that own changed contracts. Derive estimates from the work.
    A Delivery in another repository names that repository; its checkout is

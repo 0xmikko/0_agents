@@ -23,6 +23,12 @@ verify it, and create one work commit per Stage. Import the result through MCP
 and close the Stage. Amend an approved contract only under the owner's word.
 A Deviation records a shortfall; it does not authorize extra scope.
 
+Default to one PR for the complete owner-requested outcome. Technical Stages
+are work commits inside that Delivery. Additional PRs need independently useful,
+separately mergeable results or a required repository boundary, rather than one
+PR per layer or Stage. Preserve already-approved contracts until an authorized
+amendment regroups them.
+
 ## Verification
 
 Use the project's [agent:* commands](../package-contract.md). During work,

@@ -39,6 +39,11 @@ answer briefly and continue. Only a real owner decision or an explicit external
 prerequisite can block dependent work; keep independent work moving. Protected
 branch merges still require the owner's separate instruction.
 
+Default to one PR for one complete requested outcome; technical Stages are
+commits inside it. Split only for independently useful, separately mergeable
+results or a required repository boundary. Explain the split before approval;
+keep already-approved contracts intact until an authorized amendment changes them.
+
 Blueprint, Blueprint Start and End Work use the common global skills. Do not
 create project or worktree copies. If a checkout restores local copies, run
 `agent-stack centralize-skills <absolute-repository-path>` before loading them,

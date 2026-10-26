@@ -11,7 +11,7 @@ names are checked against both.
 | plan | one Markdown file in `docs/plans/`, the owner's contract with the agent | blueprint document |
 | SPEC | the hand-written part of a plan the owner approves first | specification section |
 | Delivery | one branch and one pull request of a plan | lane |
-| Stage | one complete outcome and one PR in new plans; may contain several local work commits | phase |
+| Stage | one coherent work commit within a Delivery; technical Stages share its PR | phase |
 | Task | one change inside a Stage, a story and its writes | ticket |
 | writes | the files, directories or globs a Task or Stage changes | write set |
 | Stage result file | `stage-result.json`, what `complete-task` imports | |

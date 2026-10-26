@@ -19,6 +19,8 @@ from its checkpoint. The approved plan supplies scope and dependency order.
 3. Inspect the diff and commit useful completed work locally. Keep hooks enabled.
    Call `complete_task` with its Tasks, commit and result, then `close_stage`.
    Plan results ride the next work commit; final results use a closure commit.
+   Technical Stages keep the Delivery's branch and PR. Run its complete gate
+   and required final review when the whole Delivery is ready for publication.
 4. Continue eligible work. Use `add_deviation` for a shortfall within scope.
    A scope change needs the owner's word through `amend`.
 5. Use `needs_owner` only for a decision the agent cannot resolve inside the

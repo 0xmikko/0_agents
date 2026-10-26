@@ -77,6 +77,11 @@ file listed with CREATE / MODIFY); test specification quality (step-by-step
 `Step N → Verify` behavioral scenarios, NOT pseudocode); test strategy;
 file count justification.
 
+For a new or revised contract, check that one requested outcome uses one PR
+by default, with technical Stages inside it. Extra PRs need an independently
+useful, separately mergeable result or a required repository boundary. Preserve
+already-approved decompositions until an authorized amendment changes them.
+
 ## Loop
 
 ```

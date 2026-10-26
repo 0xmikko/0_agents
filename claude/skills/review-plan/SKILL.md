@@ -101,6 +101,11 @@ the Target tree (every file with CREATE / MODIFY); Invariants as
 mechanisms; the implementation contract's Stages as one commit each with
 RED commands.
 
+For a new or revised contract, check that one requested outcome uses one PR
+by default, with technical Stages inside it. Extra PRs need an independently
+useful, separately mergeable result or a required repository boundary. Preserve
+already-approved decompositions until an authorized amendment changes them.
+
 ## Loop
 
 ```

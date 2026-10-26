@@ -37,9 +37,14 @@ state; the agent cannot declare its own approval.
 
 ## The implementation contract
 
-A Plan contains sequential PR Deliveries. Each Delivery names its branch,
-base/dependencies, verification gate, temporary root and description of the
-result. One Delivery is one PR; normally only one is active.
+A plan normally contains one PR Delivery for the complete owner-requested
+outcome, with technical Stages inside it. Each Delivery names its branch,
+base/dependencies, verification gate, temporary root and result. Split into
+additional Deliveries only for independently useful, separately mergeable results
+or a required repository boundary, and state that reason in the contract.
+Technical layers and Stage count alone do not justify more PRs. One Delivery is
+one PR; normally only one is active. Existing approved contracts keep their
+agreed decomposition until an owner-authorized amendment changes it.
 
 For work in another repository, set the Delivery's `repository` name and map
 it with `git config code-production.repository.<name> <checkout>`. Its branch,
