@@ -16,9 +16,9 @@ behavior requiring it. Reject support for a case that does not exist. Two
 current users justify a reusable mechanism; a caller-owned contract or test
 boundary must demonstrate its purpose.
 
-Reject a diff that is mostly symbol renames without the requested behavior,
-and a new exported type the SPEC's Interfaces block does not name. Check
-names against the repository and its vocabulary before accepting another one.
+Reject a diff that is mostly symbol renames without the requested behavior.
+An internal export or type absent from the SPEC's Interfaces is not itself a
+defect; verify its necessity and compatibility. Reuse canonical definitions.
 
 Reject an extra wrapper for an existing operation, a second mechanism for the
 same job, and a fallback or default the owner did not request. Missing data

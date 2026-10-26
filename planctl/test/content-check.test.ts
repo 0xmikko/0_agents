@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { checkContent } from "../src/core/content-check";
 import { readVocabulary } from "../src/core/vocabulary";
 import { evaluateQuestions } from "../src/core/semantic-check";
+import { z } from "zod";
 
 describe("focused authoring feedback", () => {
   /**
@@ -111,6 +112,126 @@ describe("focused authoring feedback", () => {
       expect(result.findings.some(f => f.quote === '"external_id"')).toBe(false);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
+
+  /**
+   * @test-id: tst_unit_planctl_content_005
+   * @scenario: scn_planctl_writing_001
+   * @covers: planctl/src/core/content-check.ts::checkContent
+   * @deterministic: yes; scripted semantic provider, no network or browser
+   * @invariant: unreadable prose gets an actionable rewrite hint without an approval gate or a hidden rewrite.
+   */
+  it("tst_unit_planctl_content_005 returns rewrite advice for unreadable prose without blocking", async () => {
+    const root = mkdtempSync(join(tmpdir(), "writing-feedback-"));
+    const content = "The schema-admission mechanism instantiates handler-backed identity-channel eligibility.\n"
+      + "```typescript\ninterface DedupInput { entityId: string; }\n```";
+    const requestSchema = z.object({ questions: z.record(z.string(), z.unknown()) });
+    let denied = "clarity";
+    let deniedProbability = 0.03;
+    const fetcher: typeof fetch = Object.assign(async (_url: unknown, init?: RequestInit) => {
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body");
+      const request = requestSchema.parse(JSON.parse(init.body));
+      return Response.json({ model: "jev-1.13.0", answers: Object.fromEntries(
+        Object.keys(request.questions).map(id => [id, { type: "noul", noul: id === denied ? deniedProbability : 0.96 }]),
+      ) });
+    }, { preconnect: fetch.preconnect });
+    try {
+      for (const [question, action] of [["clarity", /rewrite/i], ["target", /finished target/i], ["relevance", /remove/i]] as const) {
+        denied = question;
+        const result = await checkContent({ root, goal: `Find duplicates when a record is saved. Feedback case: ${question}.`, kind: "flow", content },
+          { apiKey: "fixture", browserPath: null, fetcher });
+        const advice = result.findings.find(f => f.rule === "clarity");
+        expect(advice).toBeDefined();
+        expect(advice?.blocking).toBe(false);
+        expect(advice?.text).toMatch(action);
+        expect(result.findings.some(f => f.blocking)).toBe(false);
+        expect(result.semanticChecks.every(c => c.evidence[0]?.quote === content)).toBe(true);
+      }
+      denied = "relevance";
+      deniedProbability = 0.5;
+      const uncertain = await checkContent({ root, goal: "Find duplicates. Check uncertain editorial advice.", kind: "flow", content },
+        { apiKey: "fixture", browserPath: null, fetcher });
+      expect(uncertain.findings.some(f => f.rule === "clarity" && !f.blocking && /inconclusive/i.test(f.text))).toBe(true);
+
+      const unavailable = await checkContent({ root, goal: "Find duplicates.", kind: "flow", content },
+        { apiKey: null, browserPath: null });
+      expect(unavailable.semanticChecks.every(c => c.probability === null)).toBe(true);
+      expect(unavailable.findings.some(f => f.rule === "clarity")).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  /**
+   * @test-id: tst_unit_planctl_content_006
+   * @scenario: scn_planctl_writing_002
+   * @covers: planctl/src/core/content-check.ts::checkContent
+   * @deterministic: yes; no provider or browser
+   * @invariant: Target contains final TypeScript data, while storage implementation details stay outside Target.
+   */
+  it("tst_unit_planctl_content_006 distinguishes database declarations from target data types", async () => {
+    const root = mkdtempSync(join(tmpdir(), "target-types-"));
+    try {
+      const database = "The event contains its owner and sequence.\n```typescript\n"
+        + "export const events = pgTable(\"events\", { owner: text().notNull(), revision: integer().notNull() });\n```";
+      const bad = await checkContent({ root, goal: "Describe the finished event data.", kind: "flow", content: database },
+        { apiKey: null, browserPath: null });
+      expect(bad.findings.some(f => f.rule === "target" && f.blocking)).toBe(true);
+      const target = "The event contains its owner and sequence.\n```typescript\n"
+        + "// The tool parameters use the canonical keys the agent tool names today.\n"
+        + "interface Event {\n  owner: string;\n  revision: number;\n}\n```";
+      const good = await checkContent({ root, goal: "Describe the finished event data.", kind: "flow", content: target },
+        { apiKey: null, browserPath: null });
+      expect(good.findings).toEqual([]);
+      const complete = await checkContent({ root, goal: "Describe the finished event data.", kind: "flow", content: "## The target\n" + target + "\n## Today, measured against that\n" + database },
+        { apiKey: null, browserPath: null });
+      expect(complete.findings.some(f => f.rule === "target")).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  /**
+   * @test-id: tst_unit_planctl_content_007
+   * @scenario: scn_planctl_target_001
+   * @covers: planctl/src/core/plan-gate.ts::targetViolations, planctl/src/core/content-check.ts::checkContent
+   * @deterministic: yes; no provider or browser
+   * @invariant: another type in the same real-flow pattern and custom questions cannot hide current database code in Target.
+   */
+  it("tst_unit_planctl_content_007 refuses current code and prose patches even beside a delivered event type", async () => {
+    const root = mkdtempSync(join(tmpdir(), "real-target-"));
+    const flow = "### Every change is an event\n\nToday the table and writer look like this:\n"
+      + "```typescript\nexport const events = pgTable(\"events\", { id: text().notNull() });\n```\n"
+      + "Four columns are added: owner, seq, occurredAt and handledAt.\n"
+      + "```typescript\nexport type GraphMutationEvent = { id: string; owner: string; type: \"entity_created\" };\n```";
+    try {
+      const databaseOnly = flow.replace("Today the table and writer look like this:", "Events are stored here:")
+        .replace("Four columns are added: owner, seq, occurredAt and handledAt.", "");
+      for (const content of [flow, databaseOnly,
+        databaseOnly.replaceAll("```typescript", "```javascript"),
+        databaseOnly.replaceAll("```typescript", "```"),
+        databaseOnly.replace("pgTable(", "pg.pgTable("),
+        databaseOnly.replace("export const events", "import { pgTable as table } from 'drizzle-orm/pg-core';\nexport const events").replace("pgTable(", "table("),
+        databaseOnly.replace("export const events", "const table = pgTable;\nexport const events").replace("pgTable(", "table("),
+        "```typescript\ninterface Unrelated { id: string; }\nexport type Event = typeof events.$inferSelect;\n```",
+        "```typescript\nexport type Event = typeof events['$inferSelect'];\n```",
+        "```typescript\nimport type { InferSelectModel as Row } from 'drizzle-orm';\nexport type Event = Row<typeof events>;\n```",
+        "```typescript\ninterface CreateTriggerParams { name: string; }\ntype UpdateTriggerParams = Partial<Omit<CreateTriggerParams, 'name'>> & { id: string };\n```",
+        "## The target\nThe trigger stores the subscription.\n## Interfaces\n```typescript\ntype UpdateTriggerParams = Partial<CreateTriggerParams> & { id: string };\n```",
+        "Add owner, seq, occurredAt and handledAt to the existing stored event type. Its other fields stay as they are.",
+        "## The target\nThe sync page continues to admit envelopes and apply message chunks as it does today.\n```typescript\ninterface EmailAddressEnsureItem { address: string; name: string | null; }\n```",
+        "```sql\nCREATE TABLE events (id text);\n```",
+        "## The target\n" + flow + "\n### Another flow\n```typescript\ninterface Unrelated { value: string; }\n```"]) {
+        const result = await checkContent({ root, goal: "Show only the finished event data.", kind: "flow", content, questions: {} },
+          { apiKey: null, browserPath: null });
+        const error = result.findings.find(f => f.rule === "target" && f.blocking);
+        expect(error).toBeDefined();
+        expect(error?.line).toBeGreaterThan(0);
+        expect(error?.quote).not.toBe("");
+      }
+      const currentListener = "## The target\n```typescript\n// today\nclass TriggerGate { evaluate(): boolean { return true; } }\n```";
+      expect((await checkContent({ root, goal: "Show the final gate.", kind: "flow", content: currentListener, questions: {} },
+        { apiKey: null, browserPath: null })).findings.some(f => f.rule === "target" && f.blocking)).toBe(true);
+      const partial = "## The target\n```typescript\ninterface CreateTriggerParams { name: string; }\n// update: the same fields plus id\n```";
+      expect((await checkContent({ root, goal: "Show the final update contract.", kind: "flow", content: partial, questions: {} },
+        { apiKey: null, browserPath: null })).findings.some(f => f.rule === "target" && f.blocking)).toBe(true);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
 });
 
 /**
@@ -120,7 +241,7 @@ describe("focused authoring feedback", () => {
  * @deterministic: yes
  * @invariant: an actual browser renders valid input, rejects syntax errors and detects unreadably scaled labels.
  */
-it.skipIf(!Bun.which("chromium") && !Bun.which("google-chrome"))("tst_unit_planctl_diagram_001 renders, caches and measures actual diagrams", async () => {
+it.skipIf(!process.env.PLANCTL_CHROMIUM_PATH && !Bun.which("chromium") && !Bun.which("google-chrome"))("tst_unit_planctl_diagram_001 renders, caches and measures actual diagrams", async () => {
   const root = mkdtempSync(join(tmpdir(), "diagram-check-"));
   try {
     const content = "No contracts change.\n```mermaid\nflowchart TD\n A[Input] --> B[Result]\n```";

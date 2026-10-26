@@ -19,6 +19,8 @@ from its checkpoint. The approved plan supplies scope and dependency order.
 3. Inspect the diff and commit useful completed work locally. Keep hooks enabled.
    Call `complete_task` with its Tasks, commit and result, then `close_stage`.
    Plan results ride the next work commit; final results use a closure commit.
+   Technical Stages keep the Delivery's branch and PR. Run its complete gate
+   and required final review when the whole Delivery is ready for publication.
 4. Continue eligible work. Use `add_deviation` for a shortfall within scope.
    A scope change needs the owner's word through `amend`.
 5. Use `needs_owner` only for a decision the agent cannot resolve inside the
@@ -32,11 +34,29 @@ publication boundaries, not each work commit. After a failure, repeat only the
 failed or affected checks; reuse successful checks while their inputs are unchanged.
 Do not skip necessary verification to meet the time target.
 
-An additional caller, file, move of an unchanged type or incomplete bookkeeping
-does not by itself change the approved behavior. Repair these within the existing
-authorization. Ask only for a material change of the agreed outcome, compatibility,
-module responsibility or scope; a tool refusal is not a new approval requirement.
-Keep plan records accurate through MCP rather than fabricating owner approval.
+File and export inventories guide implementation; they are not an exhaustive
+permission boundary. Adapt necessary callers, internal types and their locations,
+helpers, generated declarations, harnesses and tests within the agreed behavior.
+Record the reasons and affected files in execution results and continue. Missing
+implementation types belong in that record, not an owner amendment to locked SPEC.
+Ask only when a concrete decision changes the agreed behavior, compatibility,
+constraints or acceptance criteria. Correct an accidental contract mismatch
+autonomously. A tool refusal alone is not a new owner decision; diagnose and repair
+authorized tooling rather than asking for wording to satisfy its inventory.
+Preserve other agents' ownership and explicit protected-path requirements.
+
+When a feature adds required configuration, complete its launch integration:
+trace the existing launcher and packaging paths, supply the approved configuration
+explicitly, and verify configured boots while preserving refusal on missing values.
+Necessary launcher, desktop and packaging changes belong to that implementation
+even if the file inventory missed them. Ask only if a configuration value or
+promised launch behavior actually needs a new owner decision.
+
+Repair a proven false tooling rejection in an isolated owned branch when the
+active tooling checkout has others' changes. Reproduce the failure, preserve
+the check's real invariant, verify against the actual rejected diff and make
+the repaired version available through the authorized tooling path. An owner-only
+protected merge remains separate; continue independent work while it is pending.
 
 Run project agent:* commands directly in their checkout. Avoid shell wrappers
 or redirections that prevent reusable command approvals from matching.
@@ -48,24 +68,39 @@ incompatibility. Run the needed operation, diagnose an actual failure, and make
 the smallest authorized repair. A stack install also changes hooks and skills;
 inspect its actual scope before using it. Do not make it a routine prerequisite.
 
-After completing the work, run the project's complete local gate. When final
-review is requested, run review-implementation now, before implementation push
-and remote CI. Fix real findings and verify affected changes; fixes do not
-automatically start another review. Then call `publish_delivery` for the checked head within the
-existing authorization and confirm CI for that head. A PR or green CI is never
-a prerequisite for review. Return the PR and plan URLs. The owner merges.
+Execute the whole approved plan, not just the current Delivery. For each
+Delivery, finish its Stages, run its complete local gate, and invoke
+review-implementation when its contract says `review: required` or the owner
+requested it. Load the global profile's review instructions directly from
+`~/.codex/skills/review-implementation/SKILL.md` or
+`~/.claude/skills/review-implementation/SKILL.md`, as applicable. A repository
+copy is a legacy snapshot and must not override this workflow or add a manual
+start requirement. Approval of the contract already authorizes review; do not
+ask for a separate invocation. Review this Delivery's implemented changes,
+not future Deliveries. Fix real findings and obtain focused verification of
+the fixes from the reviewing role; do not repeat the full review at each commit.
 
-Within existing publication authorization, push the feature branch, create or
-update its PR through `publish_delivery` and follow CI to its result; do not hand these steps back to the
-owner or ask for the same permission again. Return the PR link when it exists.
-Use `progress` for CI; for details use Actions runs selected by repository and
-exact PR head, then `gh run view` or `gh run watch --exit-status`. Do not use
-`gh pr checks` or `statusCheckRollup` with the fine-grained PAT. Preserve failure
-exit codes through logging. A routine CI wait needs no new owner message.
+Publish the checked Delivery through `publish_delivery`, confirm CI for the
+exact published head, and repair actual failures within the existing scope.
+Use `progress` or `gh run list` filtered by branch and head, then `gh run view`
+or `gh run watch --exit-status`. A Checks API permission error is not proof
+that Actions runs cannot be read; do not hand routine CI observation to the
+owner. Preserve failure exit codes and keep publication hooks enabled.
 
-Plan approval, publication and green CI do not authorize protected-branch
-merge, auto-merge or direct push. Only a separate explicit owner instruction
-authorizes those actions on `staging` or `main`.
+Report a ready PR as progress, then call `start_task` for the next eligible
+Task or Delivery. Follow the declared branches, repositories and dependency
+order. When the contract permits a green unmerged parent, its child can proceed
+from that verified code while keeping the project's PR destination rules.
+Do not ask whether to continue after a Stage, review, ready PR or ordinary CI
+wait. Completion of one Delivery is not completion of the plan. A status
+question asks for a brief update; answer and resume the authorized work.
+
+Stop for a concrete owner decision or an explicit external prerequisite that
+cannot be satisfied within the existing authorization; continue independent
+eligible work. Return the whole-plan result only when the approved scope is
+finished or accurately blocked. Plan approval and green CI do not authorize
+protected-branch merge, auto-merge or direct push; those remain the owner's
+separate decision.
 
 Delegate only when the owner or applicable instructions authorize it and the
 plan provides disjoint writes. Preserve other agents' changes and processes.

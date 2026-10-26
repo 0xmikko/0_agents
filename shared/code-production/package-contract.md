@@ -27,15 +27,20 @@ Rules:
 6. Final review reuses the published-SHA gate result. It reruns a suite only
    when the reviewed SHA changed.
 
-## The base branch and the skill copies
+## The base branch and the common flow skills
 
 `agent-stack install --base <branch>` writes `code-production.base`, the
 branch every plan of the repository branches from; `check` refuses a missing
-value and names the command. The three flow skills (`blueprint`,
-`blueprint-start`, `end-work`) are managed copies under `.claude/skills` and
-`.agents/skills`, written from `shared/skills` on every install and compared
-by `check`, like the runtime. Skills the repository owns beside them are not
-touched.
+value and names the command. Claude and Codex load the three flow skills
+(`blueprint`, `blueprint-start`, `end-work`) from their global profiles, linked
+to the common `shared/skills` source. Projects and worktrees carry no copies
+that could shadow those instructions. `install` removes old copies and `check`
+refuses a local override of these names. Other project-owned skills are untouched.
+
+Use `agent-stack centralize-skills <repository>` to remove only those local
+copies and their manifest entries from an existing checkout. This migration
+does not reinstall hooks, change project commands or edit a plan. Portable
+Git/CI validation files remain separate from the shared authoring MCP package.
 
 ## Existing CI
 

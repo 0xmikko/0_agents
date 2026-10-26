@@ -15,13 +15,19 @@ when isolation is needed. A committed draft remains a draft.
 
 In the explicitly selected workflow there are two planning approvals: the SPEC, then the concrete implementation
 contract. There is no outline approval. Show the owner the published plan and
-the decision to approve. Review rounds run only at the owner's request.
+the decision to approve. An owner-approved `review: required` contract already requests its final review; otherwise review requires an explicit request.
 
 After approval, continue eligible work within that contract. Start each Task
 through MCP, reproduce missing behavior, make the smallest sufficient change,
 verify it, and create one work commit per Stage. Import the result through MCP
 and close the Stage. Amend an approved contract only under the owner's word.
 A Deviation records a shortfall; it does not authorize extra scope.
+
+Default to one PR for the complete owner-requested outcome. Technical Stages
+are work commits inside that Delivery. Additional PRs need independently useful,
+separately mergeable results or a required repository boundary, rather than one
+PR per layer or Stage. Preserve already-approved contracts until an authorized
+amendment regroups them.
 
 ## Verification
 
@@ -30,7 +36,7 @@ run existing tests of changed behavior and necessary targeted typechecks.
 Aim for 20–60 seconds per work loop. Broad checks belong at major integration
 or publication boundaries, not each work commit. After a failure, retry only
 failed or affected checks. After completing the work, run the
-complete local gate, then the requested final review. Fix real findings and
+complete local gate, then the final review required by the approved contract or explicitly requested. Fix real findings and
 verify affected changes before the authorized implementation push; remote CI
 checks the published commit afterward. A PR and green CI are not prerequisites
 for review. Reuse passing checks whose inputs have not changed. Keep Git hooks
@@ -66,6 +72,13 @@ another approval. Sandbox permissions are enforced separately by the host;
 an instruction cannot grant access to a protected path.
 
 ## Completion
+
+A ready Delivery PR is progress, not the end of a multi-Delivery plan. Continue
+with the next eligible Task through MCP after publication and exact-head CI.
+Use the approved dependency rules, including green unmerged parents where
+allowed. Required review, fixing findings and CI observation need no repeated
+owner start word. Status questions do not pause execution. An explicit external
+merge prerequisite remains binding; protected merges are the owner's alone.
 
 Return the PR and plan URLs, verification evidence, deviations and unverified
 gaps. Record actual time and usage when available; never invent them. Clean

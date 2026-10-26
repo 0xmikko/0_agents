@@ -67,10 +67,20 @@ the plan to another model or review service.
 
 ### What review evaluates
 
+Apply `~/.codex/agents/dry-solid-cop.md` in this same review pass. Read the
+project's reuse map when supplied, then inspect existing owners for every new
+configuration path, store, client or abstraction. Preserve the direct-review
+rule above: these are additional criteria, not a second reviewer or full audit.
+
 Requirements completeness; architecture feasibility; file change map (every
 file listed with CREATE / MODIFY); test specification quality (step-by-step
 `Step N → Verify` behavioral scenarios, NOT pseudocode); test strategy;
 file count justification.
+
+For a new or revised contract, check that one requested outcome uses one PR
+by default, with technical Stages inside it. Extra PRs need an independently
+useful, separately mergeable result or a required repository boundary. Preserve
+already-approved decompositions until an authorized amendment changes them.
 
 ## Loop
 

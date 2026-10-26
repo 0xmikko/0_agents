@@ -23,6 +23,10 @@ second one.
 
 ## Plan and PR continuity
 
+One complete owner-requested outcome normally uses one Delivery branch and PR.
+Its technical Stages are commits within that PR. Additional PRs require an
+independently useful, separately mergeable result or a required repository boundary.
+
 The plan is born in its own feature worktree and stays staged under one
 journal while it is authored; every write publishes it for owner review, and
 it is committed once, after the owner approves it. Open the Delivery PR when

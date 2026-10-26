@@ -12,7 +12,24 @@ function nodes(node: Root | Content): (Root | Content)[] {
 function declarations(text: string, path: string, exportedOnly: boolean) {
   const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
   const printer = ts.createPrinter({ removeComments: true });
-  const normalized = (node: ts.Node) => printer.printNode(ts.EmitHint.Unspecified, node, source).replace(/\s+/g, " ").trim();
+  const normalized = (node: ts.Node): string => {
+    const transformed = ts.transform(node, [context => root => {
+      const visit = (child: ts.Node): ts.Node => {
+        const current = ts.visitEachChild(child, visit, context);
+        if (ts.isStringLiteral(current)) return ts.factory.createStringLiteral(current.text);
+        if (ts.isPropertySignature(current)) return ts.factory.updatePropertySignature(current,
+          current.modifiers?.filter(modifier => modifier.kind !== ts.SyntaxKind.ReadonlyKeyword),
+          current.name, current.questionToken, current.type);
+        return current;
+      };
+      return visit(root);
+    }]);
+    try {
+      const current = transformed.transformed[0];
+      if (current === undefined) throw new Error(`cannot normalize contract in ${path}`);
+      return printer.printNode(ts.EmitHint.Unspecified, current, source).replace(/\s+/g, " ").trim();
+    } finally { transformed.dispose(); }
+  };
   const localExports = new Set(source.statements.flatMap(s => ts.isExportDeclaration(s) && !s.moduleSpecifier && s.exportClause && ts.isNamedExports(s.exportClause)
     ? s.exportClause.elements.map(e => (e.propertyName ?? e.name).text) : []));
   const localTypes = new Map(source.statements.flatMap(s => ts.isInterfaceDeclaration(s) || ts.isTypeAliasDeclaration(s) ? [[s.name.text, s] as const] : []));
@@ -70,8 +87,13 @@ function declarations(text: string, path: string, exportedOnly: boolean) {
 
 /**
  * @tested-by: tst_unit_planctl_contract_001
- * @invariant: compare changed members, not just names; unchanged moves and copies
- * reuse identical declarations. Unknown inferred contracts are never a pass.
+ * @tested-by: tst_unit_planctl_contract_007, tst_unit_planctl_contract_008
+ * @invariant: pair unique moved declarations independently of file similarity,
+ * then compare their changed members and dependencies against the contract.
+ * Ambiguous changed destinations cannot stand in for a removed declaration;
+ * identical moves and generated copies preserve the existing contract.
+ * Missing definitions remain advice, never a
+ * claim of approval; positively established contract conflicts still block.
  */
 export async function checkContractChanges(root: string, commit: string, body: string, base = `${commit}^1`): Promise<readonly GateViolation[]> {
   const run = (...args: string[]) => spawnSync("git", ["-C", root, ...args], { encoding: "utf8", env: repositoryEnvironment() });
@@ -93,16 +115,46 @@ export async function checkContractChanges(root: string, commit: string, body: s
     }
   }
   const findings: GateViolation[] = [];
-  const add = (path: string, name: string, detail: string, quote: string): void => {
+  const add = (path: string, name: string, detail: string, quote: string, blocking = true): void => {
     if (findings.some(f => f.text.startsWith(`${path}: ${name} ${detail}.`))) return;
-    findings.push({ kind: "protocol-shape", rule: "typescript", blocking: true, line: 1, quote,
+    findings.push({ kind: "protocol-shape", rule: "typescript", blocking, line: 1, quote,
       text: `${path}: ${name} ${detail}. Compare the actual declaration with the approved flow; correct an accidental mismatch autonomously.`, replacement: null });
   };
-  for (const { path, previousPath: oldPath } of contractChangePaths(root, base, commit)) {
-    const before = declarations(read(base, oldPath), oldPath, true);
-    const previousDeclarations = declarations(read(base, oldPath), oldPath, false);
-    const after = declarations(read(commit, path), path, true);
-    const currentDeclarations = declarations(read(commit, path), path, false);
+  const changes = contractChangePaths(root, base, commit);
+  // Read actual paths on both sides: Git may label a changed move as A/D,
+  // or arbitrarily pair one destination of a copy with the removed source.
+  const files = [...new Set(changes.flatMap(({ path, previousPath }) => [path, previousPath]))].map(path => ({
+    path,
+    before: declarations(read(base, path), path, true),
+    after: declarations(read(commit, path), path, true),
+    previousDeclarations: declarations(read(base, path), path, false),
+    currentDeclarations: declarations(read(commit, path), path, false),
+  }));
+  const moves = new Map<string, { source: typeof files[number]; destination: typeof files[number] }>();
+  const moveKey = (path: string, name: string) => `${path}\0${name}`;
+  const rememberMove = (name: string, source: typeof files[number], destination: typeof files[number]) => {
+    const move = { source, destination };
+    moves.set(moveKey(source.path, name), move);
+    moves.set(moveKey(destination.path, name), move);
+  };
+  const removedNames = new Set(files.flatMap(file => [...file.before.keys()].filter(name => !file.after.has(name))));
+  for (const name of removedNames) {
+    const sources = files.filter(file => file.before.has(name) && !file.after.has(name));
+    const destinations = files.filter(file => file.after.has(name) && !file.before.has(name));
+    if (sources.length === 1 && destinations.length === 1 && sources[0] && destinations[0]) {
+      rememberMove(name, sources[0], destinations[0]);
+    } else {
+      // Keep explicit Git provenance when unrelated modules use the same name.
+      // Multiple changed copies of one removed source still have no unique pair.
+      for (const source of sources) {
+        const mapped = destinations.filter(destination => changes.some(change =>
+          change.previousPath === source.path && change.path === destination.path));
+        if (mapped.length === 1 && mapped[0]) rememberMove(name, source, mapped[0]);
+      }
+    }
+  }
+  for (const file of files) {
+    const { path, before, after, currentDeclarations } = file;
     const compare = (name: string, was: ReturnType<typeof declarations> extends Map<string, infer T> ? T | undefined : never,
       now: ReturnType<typeof declarations> extends Map<string, infer T> ? T : never): void => {
       if (was?.text === now.text) return;
@@ -112,7 +164,10 @@ export async function checkContractChanges(root: string, commit: string, body: s
         && JSON.stringify([...was.members]) === JSON.stringify([...now.members])) return;
       if (now.callable && was === undefined) return;
       const contract = approved.get(name);
-      if (contract === undefined) { add(path, name, "has no approved contract", now.text); return; }
+      if (contract === undefined) { add(path, name, "is not listed in SPEC; record the implementation change without reopening approval", now.text, false); return; }
+      // A complete final declaration already authorizes its field list and
+      // parameters; it does not also need prose enumerating removed old fields.
+      if (now.text === contract.text) return;
       if (now.members !== null && contract.members !== null) {
         for (const key of new Set([...(was?.members?.keys() ?? []), ...now.members.keys()])) {
           if (was?.members?.get(key) === now.members.get(key)) continue;
@@ -128,14 +183,35 @@ export async function checkContractChanges(root: string, commit: string, body: s
       }
     };
     for (const name of new Set([...before.keys(), ...after.keys()])) {
-      const was = before.get(name);
+      const move = moves.get(moveKey(path, name));
+      const origin = move?.destination === file ? move.source : file;
+      const previousDeclarations = origin.previousDeclarations;
+      const was = origin.before.get(name);
       const now = after.get(name);
       if (was?.text === now?.text && JSON.stringify([...(was?.dependencies ?? [])]) === JSON.stringify([...(now?.dependencies ?? [])])) continue;
       if (now === undefined) {
+        if (move?.source === file) continue;
+        if (was && files.some(candidate => {
+          const declaration = candidate.after.get(name);
+          return declaration?.text === was.text
+            && JSON.stringify([...declaration.dependencies]) === JSON.stringify([...was.dependencies]);
+        })) continue;
         const rename = new RegExp(`\\brename[sd]?\\s+\`?${name}\`?\\s+to\\s+\`?([A-Za-z][A-Za-z0-9]*)`, "i").exec(spec)?.[1];
-        if (rename && approved.has(rename) && after.has(rename)) continue;
-        if (!new RegExp(`\\b(?:remove|delete|retire)[sd]?\\s+(?:the\\s+)?\`?${name}\\b`, "i").test(spec)) add(path, name, "was removed without an approved removal", was?.text ?? name);
+        if (rename && approved.has(rename) && (after.has(rename) || changes.some(change => change.previousPath === path
+          && files.find(candidate => candidate.path === change.path)?.after.has(rename)))) continue;
+        if (!new RegExp(`\\b(?:remove|delete|retire)[sd]?\\s+(?:the\\s+)?\`?${name}\\b`, "i").test(spec)) {
+          const declared = approved.has(name);
+          add(path, name, declared ? "was removed without an approved removal" : "was removed or moved; record its destination or reason", was?.text ?? name, declared);
+        }
         continue;
+      }
+      // Preserve Git's evidence for unchanged copies whose source still exists;
+      // a copy is not a unique move and cannot excuse removal elsewhere.
+      const copy = changes.find(change => change.path === path && change.previousPath !== path);
+      const copied = copy && files.find(candidate => candidate.path === copy.previousPath);
+      if (was === undefined && copied?.after.has(name)) {
+        const original = copied.before.get(name);
+        if (original?.text === now.text && JSON.stringify([...original.dependencies]) === JSON.stringify([...now.dependencies])) continue;
       }
       for (const [dependency, actual] of now.dependencies) {
         if (was?.dependencies.get(dependency) === actual || previousDeclarations.get(dependency)?.text === actual) continue;
@@ -148,9 +224,9 @@ export async function checkContractChanges(root: string, commit: string, body: s
     // Changed re-exports require their canonical declarations; never silently treat them as checked.
     const exports = (text: string) => ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true).statements
       .filter(s => ts.isExportDeclaration(s) && s.moduleSpecifier).map(s => s.getText()).join("\n");
-    const oldExports = exports(read(base, oldPath));
+    const oldExports = exports(read(base, path));
     const newExports = exports(read(commit, path));
-    if (oldExports !== newExports) add(path, "re-export", "needs canonical source verification", newExports || oldExports);
+    if (oldExports !== newExports) add(path, "re-export", "needs canonical source verification", newExports || oldExports, false);
   }
   return findings;
 }

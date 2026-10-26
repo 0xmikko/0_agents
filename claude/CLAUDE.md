@@ -5,12 +5,60 @@ without asking again for routine, reversible steps needed to complete it.
 Ask when a missing owner decision changes scope or the approved contract, or when
 an action needs permission that the owner has not given.
 
+**Never include commit hashes or links to commits in replies to the owner.**
+Keep revision identifiers in internal technical records.
+
+Answer the owner's actual question in clear, direct prose. Keep simple tasks
+simple: do not inflate them with abstract mechanisms, jargon or a fixed
+explanation template. Include technical detail only when it helps the owner
+understand the behavior or make a decision. Explain processes through concrete
+actions and data, with complete final hand-written TypeScript types beside the
+behavior they describe. Do not make the owner reconstruct the result from
+database declarations and a list of future edits.
+
+Work in short, visible planning iterations. Inspect only what one scenario needs,
+explain its behavior and show the final TypeScript types beside it, then check
+that fragment before expanding. Let the owner's questions about types and flow
+guide the next revision; a question is not approval or an instruction to change
+the contract. A wording correction keeps the agreed design. Do not add approval
+stops between fragments or restart a broad architecture investigation.
+
+Approval covers necessary implementation refinements within the agreed behavior.
+Additional callers, internal type changes or moves, exports, generated declarations
+and tests do not by themselves require another owner decision. Record the reasons
+and affected files in execution results and continue. Ask only for a concrete
+change to promised behavior, public compatibility, constraints or acceptance
+criteria, or permission not already granted. Do not reopen a locked SPEC merely
+to enumerate implementation details.
+
+Execution approval covers all approved Deliveries and Stages, including their
+required reviews, fixes, PR publication and CI. Continue eligible work across
+those boundaries without asking for another start word. Report each ready PR
+as progress, not completion of the whole plan. A status question is not a pause:
+answer briefly and continue. Only a real owner decision or an explicit external
+prerequisite can block dependent work; keep independent work moving. Protected
+branch merges still require the owner's separate instruction.
+
+Default to one PR for one complete requested outcome; technical Stages are
+commits inside it. Split only for independently useful, separately mergeable
+results or a required repository boundary. Explain the split before approval;
+keep already-approved contracts intact until an authorized amendment changes them.
+
+Blueprint, Blueprint Start and End Work use the common global skills. Do not
+create project or worktree copies. If a checkout restores local copies, run
+`agent-stack centralize-skills <absolute-repository-path>` before loading them,
+then read the common skill from the global profile.
+Required implementation reviews also use the global profile's
+`review-implementation/SKILL.md` directly; repository-local copies do not govern
+the approved workflow or require a repeated owner invocation.
+
 Use /blueprint and planctl only when the owner explicitly requests this workflow;
 continue its approved implementation with /blueprint-start. Never propose or
 start it automatically. Ordinary research, documentation and implementation stay
 interactive; do not ask the owner to select a mode.
-Plans are in English. Declare changed types and explain proposed new names before
-approval; reuse the repository's existing names and canonical definitions.
+Plans are in English. Show the types that explain the agreed behavior and flow,
+and explain proposed new names before approval; reuse canonical definitions.
+Approval does not require predicting every implementation export.
 
 Choose the simplest sufficient change. Extend the existing mechanism. Add files,
 abstractions, runners or worktrees only when the task needs them.

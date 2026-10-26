@@ -17,7 +17,7 @@ import { stageInputs, stageResultCommitPaths, deliveryMetas, deliveryRoot, deliv
 export { MACHINABLE, protocolSpecHash, protocolImplementationHash } from "./plan-update";
 
 /** Which lint rule a finding comes from; gate findings (receipts, boxes) carry none. */
-type LintRule = "structure" | "mermaid" | "typescript" | "vocabulary" | "codes" | "sentence" | "story" | "goal" | "clarity" | "language";
+type LintRule = "structure" | "mermaid" | "typescript" | "vocabulary" | "codes" | "sentence" | "story" | "goal" | "clarity" | "language" | "target";
 
 /** One finding an agent can act on: the rule, the line, the offending text
  * and the replacement when one exists. Lint errors and gate refusals block;
@@ -452,7 +452,7 @@ function undeclaredTypesOf(root: string, commit: string, types: ReadonlySet<stri
 
 function lintCommit(root: string, commit: string, types: ReadonlySet<string>, line: number, ts: typeof import("typescript"), add: AddFinding): void {
   for (const { path, name } of undeclaredTypesOf(root, commit, types, ts)) {
-    add(line, `${path}: exported type ${name} is missing from SPEC Interfaces`, "typescript", name);
+    add(line, `${path}: exported type ${name} is not listed in SPEC Interfaces; record implementation details in the execution log and continue within the approved behavior`, "typescript", name, null, false);
   }
 }
 
@@ -484,6 +484,106 @@ function specView(body: string, fromMarkdown: (value: string) => Root): {
   return { specStart, specEnd, specLines, nodes, blocks, headings, section };
 }
 
+/** Deterministic requirements cover Target and its Interfaces, independently
+ * of unrelated types elsewhere or the availability of a semantic provider.
+ * @tested-by: tst_unit_planctl_content_006, tst_unit_planctl_content_007, tst_unit_planctl_spec_submission_003
+ */
+export async function targetViolations(body: string, scope: "spec" | "flow"): Promise<readonly GateViolation[]> {
+  const [{ fromMarkdown }, ts] = await Promise.all([import("mdast-util-from-markdown"), import("typescript")]);
+  const view = specView(body, fromMarkdown);
+  const target = view.section("The target");
+  if (target === null && scope === "spec") return [];
+  const interfaces = view.section("Interfaces");
+  const regions = (target === null ? [] : [target, ...(interfaces === null ? [] : [interfaces])])
+    .map(region => ({ start: region.line, end: region.line + region.text.split("\n").length }));
+  const content = target === null ? body : view.specLines.map((line, index) =>
+    regions.some(region => index >= region.start && index < region.end) ? line : "").join("\n");
+  const findings: GateViolation[] = [];
+  const report = (line: number, quote: string, text: string): void => {
+    findings.push({ kind: "protocol-shape", rule: "target", blocking: true, line, quote, text, replacement: null });
+  };
+  const databaseBuilders = new Set(["pgTable", "pgEnum", "pgView", "mysqlTable", "sqliteTable"]);
+  const databaseTypes = new Set(["InferSelectModel", "InferInsertModel"]);
+  const patch = /\b(?:same (?:fields|shape|type|interface)\b[^.\n]{0,80}\bplus|(?:fields|columns) (?:are|will be|must be) added|(?:I|we) will add\b|(?:add|append)\s+[^.\n]{1,160}\bto (?:the )?(?:existing|current)\b[^.\n]{0,80}\b(?:type|interface|schema|contract)\b)/i;
+  for (const node of markdownNodes(fromMarkdown(content))) {
+    if (node.type === "paragraph" || node.type === "heading") {
+      const text = proseText(node);
+      if (/^(?:Today|Currently|At present)\s+/i.test(text) || /\bas (?:it|they) (?:do|does|is|are) today\b/i.test(text)) {
+        report(sourceLine(node), text, "Target must describe the finished system. Move the current-state explanation to the existing Today section.");
+      }
+      if (patch.test(text)) report(sourceLine(node), text, "Show the complete final contract in Target; instructions to add fields to another definition are not a target type.");
+    }
+    if (node.type !== "code") continue;
+    if (node.lang === "sql" && /\b(?:create|alter|drop)\s+(?:table|type|view)\b/i.test(node.value)) {
+      report(sourceLine(node), node.value, "Target data must be shown as complete hand-written TypeScript types, not database definitions.");
+    }
+    if (!["", "ts", "tsx", "typescript", "js", "jsx", "javascript"].includes(node.lang ?? "")) continue;
+    const source = ts.createSourceFile("target.ts", node.value, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    for (const statement of source.statements) {
+      if (!ts.isImportDeclaration(statement) || !statement.importClause?.namedBindings || !ts.isNamedImports(statement.importClause.namedBindings)) continue;
+      for (const imported of statement.importClause.namedBindings.elements) {
+        if (databaseBuilders.has(imported.propertyName?.text ?? imported.name.text)) databaseBuilders.add(imported.name.text);
+        if (databaseTypes.has(imported.propertyName?.text ?? imported.name.text)) databaseTypes.add(imported.name.text);
+      }
+    }
+    for (const statement of source.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const declaration of statement.declarationList.declarations) {
+        const value = declaration.initializer;
+        const name = value === undefined ? null : ts.isIdentifier(value) ? value.text
+          : ts.isPropertyAccessExpression(value) ? value.name.text : null;
+        if (ts.isIdentifier(declaration.name) && name !== null && databaseBuilders.has(name)) databaseBuilders.add(declaration.name.text);
+      }
+    }
+    const reconstructedFields = (type: import("typescript").TypeNode): boolean => {
+      if (ts.isTypeReferenceNode(type)) return ts.isIdentifier(type.typeName) && ["Partial", "Omit", "Pick", "Required"].includes(type.typeName.text);
+      if (ts.isParenthesizedTypeNode(type)) return reconstructedFields(type.type);
+      return (ts.isIntersectionTypeNode(type) || ts.isUnionTypeNode(type)) && type.types.some(reconstructedFields);
+    };
+    const visit = (syntax: import("typescript").Node): void => {
+      const line = sourceLine(node) + 1 + source.getLineAndCharacterOfPosition(syntax.getStart(source)).line;
+      if (ts.isCallExpression(syntax)) {
+        const name = ts.isIdentifier(syntax.expression) ? syntax.expression.text
+          : ts.isPropertyAccessExpression(syntax.expression) ? syntax.expression.name.text : null;
+        if (name !== null && databaseBuilders.has(name)) report(line, syntax.getText(source),
+          "Target must show the complete final TypeScript data type. Database declarations belong outside Target, even when another interface is present.");
+      }
+      if (ts.isTypeQueryNode(syntax) && /\$infer(?:Select|Insert)\b/.test(syntax.getText(source))) {
+        report(line, syntax.getText(source), "Write the final Target fields and their TypeScript types explicitly; an inferred database type does not show them.");
+      }
+      if (ts.isIndexedAccessTypeNode(syntax) && ts.isLiteralTypeNode(syntax.indexType)
+        && ts.isStringLiteral(syntax.indexType.literal) && /^\$infer(?:Select|Insert)$/.test(syntax.indexType.literal.text)) {
+        report(line, syntax.getText(source), "Write the final Target fields and their TypeScript types explicitly; an inferred database type does not show them.");
+      }
+      if (ts.isTypeReferenceNode(syntax)) {
+        const name = ts.isIdentifier(syntax.typeName) ? syntax.typeName.text : syntax.typeName.right.text;
+        if (databaseTypes.has(name)) report(line, syntax.getText(source),
+          "Write the final Target fields and their TypeScript types explicitly; an inferred database type does not show them.");
+      }
+      if ((ts.isTypeAliasDeclaration(syntax) && reconstructedFields(syntax.type))
+        || (ts.isInterfaceDeclaration(syntax) && syntax.heritageClauses?.some(clause => clause.types.some(type =>
+          ts.isIdentifier(type.expression) && ["Partial", "Omit", "Pick", "Required"].includes(type.expression.text))))) {
+        report(line, syntax.getText(source), "List the complete fields of the final Target type explicitly; do not make the reader derive its field list with Partial, Omit or Pick.");
+      }
+      ts.forEachChild(syntax, visit);
+    };
+    visit(source);
+    const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, node.value);
+    for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
+      if (token !== ts.SyntaxKind.SingleLineCommentTrivia && token !== ts.SyntaxKind.MultiLineCommentTrivia) continue;
+      const comment = scanner.getTokenText();
+      const line = sourceLine(node) + 1 + source.getLineAndCharacterOfPosition(scanner.getTokenPos()).line;
+      if (/^\s*(?:\/\/|\/\*+)\s*today\b|\bcurrent (?:code|implementation|schema)\b/i.test(comment)) {
+        report(line, comment, "Remove current-code examples from Target; show only the finished component and its contracts.");
+      }
+      if (patch.test(comment) || /\{[^\n]*\}\s*(?:→|=>)\s*\{/.test(comment)) {
+        report(line, comment, "Replace this contract sketch with the complete hand-written Target request or result type.");
+      }
+    }
+  }
+  return findings;
+}
+
 /** The repository paths a line names: tokens with a slash, globs and URLs aside. */
 function namedPaths(line: string): readonly string[] {
   const found = new Set<string>();
@@ -496,7 +596,8 @@ function namedPaths(line: string): readonly string[] {
 }
 
 /** Exported TypeScript types a commit adds or changes that the plan's
- * Interfaces section does not declare. Completion refuses them by name.
+ * Interfaces section does not declare. Completion records them without
+ * treating a source-code export as a new owner decision.
  * @tested-by: tst_scripts_planupdate_025
  */
 export async function undeclaredExportedTypes(root: string, commit: string, body: string): Promise<readonly { path: string; name: string }[]> {
@@ -515,7 +616,12 @@ export const GOAL_RULE = "State the requested outcome and a useful observable me
 
 /** A readable solution, not a form-filling exercise. */
 export const TARGET_RULE = "Describe the finished system one flow at a time: trigger/input, owning component, operations, result and relevant failures. "
-  + "Keep each flow's interfaces and example beside it. Cite unchanged canonical contracts. Use a readable diagram where it helps. "
+  + "Write clear, direct prose proportionate to the task; explain necessary technical names where they arise. "
+  + "A small change may need just a short paragraph and its data type. Do not narrate compliance with instructions or repeat the same explanation as prose, tables and checklists. "
+  + "Show complete target data as hand-written TypeScript interfaces or types beside the flow, not database declarations or current code plus instructions to add fields. "
+  + "Write changed request and result fields explicitly, rather than deriving their field lists with Partial, Omit or Pick. "
+  + "Make the data operation and result understandable before listing helpers, files and API calls; use a concrete example when it explains the behavior more clearly. "
+  + "Cite unchanged canonical contracts. Use a readable diagram where it helps. "
   + "Discuss and check small pieces before assembling the full SPEC. Do not require an implementation-map table or arbitrary prose length.";
 
 /** One worked example handed to the agent at init. */
@@ -585,6 +691,7 @@ export async function lint(body: string, root: string, commit?: string): Promise
   if ((specStart >= 0 || specEnd >= 0) && (specStart < 0 || specEnd <= specStart)) {
     return { violations: [refusal("protocol-shape", 1, "missing ordered SPEC markers")], metrics: [] };
   }
+  violations.push(...await targetViolations(body, "spec"));
   const required = REQUIRED_SECTIONS;
   for (const name of required) {
     if (!headings.some((node) => proseText(node).toLowerCase() === name.toLowerCase())) add(specStart + 2, `missing SPEC section: ${name}`, "structure", name, null, name === "The Goal" || name === "The target");

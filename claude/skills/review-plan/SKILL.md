@@ -88,6 +88,11 @@ both checkouts: it is no repository, and `--skip-git-repo-check` is not used.
 
 ### What Codex evaluates
 
+Include `~/.codex/agents/dry-solid-cop.md` and the project's reuse map, when
+supplied, in the same Codex review prompt. Inspect existing owners for new
+configuration paths, stores, clients and abstractions. This adds criteria to
+the existing pass, not another reviewer or a whole-repository audit.
+
 Requirements completeness against the owner's request; architecture
 feasibility; every flow of The target with its diagram and implementation
 map (Owner, Target files, Input / wake, Output / durable state, RED test);
@@ -95,6 +100,11 @@ the Target tree (every file with CREATE / MODIFY); Invariants as
 `Step N → Verify` behavioral scenarios, not pseudocode; Reuse of existing
 mechanisms; the implementation contract's Stages as one commit each with
 RED commands.
+
+For a new or revised contract, check that one requested outcome uses one PR
+by default, with technical Stages inside it. Extra PRs need an independently
+useful, separately mergeable result or a required repository boundary. Preserve
+already-approved decompositions until an authorized amendment changes them.
 
 ## Loop
 
