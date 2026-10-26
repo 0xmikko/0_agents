@@ -46,6 +46,9 @@ not a reason to ask whether authorized execution should continue.
   - Security issue
   - Data loss risk
   - Public-API break
+  - Demonstrated duplicate mechanism or responsibility/dependency violation
+    against the project's architecture; a principle or style preference alone
+    does not establish a defect
 
 ## Context
 
@@ -53,6 +56,9 @@ You are reviewing changes made by another agent. There may be an active
 plan in the conversation — use it to understand intent.
 
 Read AGENTS.md and relevant project docs first for project rules.
+Read the project's reuse map when supplied. Before starting, briefly state the
+reviewed scope and the checks being reused or run. Keep all reviewers on the
+same plan/diff and relevant callers; report unrelated existing debt separately.
 
 ## Phase 1: LOCAL VERIFICATION
 
@@ -83,17 +89,24 @@ remote CI. Keep publication hooks enabled and reuse valid local evidence.
 
 Launch the three cops in parallel using the available subagent surface:
 
-- coherence-cop  (`~/.codex/agents/coherence-cop.md`)
+- dry-solid-cop  (`~/.codex/agents/dry-solid-cop.md`)
 - coverage-cop   (`~/.codex/agents/coverage-cop.md`)
 - simplicity-cop (`~/.codex/agents/simplicity-cop.md`)
 
 Collect their verdicts and finding lists.
+DRY/SOLID takes the architecture/reuse slot; do not also run coherence-cop.
+Reuse the completed gate. Reviewers inspect its evidence rather than rerunning
+the full suite; focused repros are for unresolved concrete findings only.
+Start the Codex correctness review alongside the cops on the same inputs.
+In Codex, perform that local review while the three agents work. Record elapsed
+time for verification and each review role separately; keep progress updates brief.
 
 ## Phase 3: CODEX CODE REVIEW
 
 Run a Codex code-review pass with a prompt covering correctness, behavior
 vs plan invariants, security, data integrity, and API stability. If an MCP
 review tool is available, use it; otherwise perform the review locally.
+Collect the pass started alongside the cops; do not start a second pass here.
 
 ## Phase 4: TRIAGE
 
@@ -135,7 +148,7 @@ Fix verification: <affected-check evidence for the reviewed head, or no fixes>
 Publication gate: <actual receipt state; caller must satisfy it before publishing>
 
 Cops:
-  coherence-cop:  [PASS|REJECT] (N findings)
+  dry-solid-cop:  [PASS|REJECT|NEEDS_EVIDENCE] (N findings)
   coverage-cop:   [PASS|REJECT] (N findings)
   simplicity-cop: [PASS|REJECT] (N findings)
 

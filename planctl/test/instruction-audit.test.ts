@@ -21,6 +21,7 @@ function tree(overrides: Record<string, string> = {}): string {
     "shared/skills/end-work/SKILL.md": "# End work\n\nClose the Delivery.\n",
     "shared/skills/bug/SKILL.md": "# Bug\n\nRed test first.\n",
     "claude/agents/coherence-cop.md": "# Coherence\n\nReuse.\n",
+    "claude/agents/dry-solid-cop.md": "# DRY/SOLID\n\nExisting owners.\n",
     "claude/agents/coverage-cop.md": "# Coverage\n\nTests.\n",
     "claude/agents/simplicity-cop.md": "# Simplicity\n\nLess.\n",
     "shared/code-production/vocabulary.md":
@@ -170,7 +171,7 @@ describe("the language guides and reviewers", () => {
       expect(body, file).not.toMatch(/\b(?:cargo|clippy|serde|TestCore)\b/);
       expect(body, file).not.toMatch(/bun run|tsc --|## (?:Verification|Tooling)/);
     }
-    for (const name of ["coherence", "coverage", "simplicity"]) {
+    for (const name of ["coherence", "dry-solid", "coverage", "simplicity"]) {
       const file = `claude/agents/${name}-cop.md`;
       const body = readFileSync(join(root, file), "utf8");
       expect(body.trimEnd().split("\n").length, file).toBeLessThan(80);

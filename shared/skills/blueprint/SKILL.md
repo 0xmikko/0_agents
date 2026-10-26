@@ -18,6 +18,9 @@ tool schemas for arguments. Project package.json agent:* scripts define checks.
    otherwise call `init`. Create a feature worktree only when isolation is
    needed. Commit a draft when useful; it remains SPEC_DRAFT until approved.
 2. Read `vocabulary` and inspect only the code needed for one coherent flow.
+   Read the project's reuse map when supplied. For a proposed configuration
+   path, store, client or abstraction, inspect its existing owner before adding
+   another mechanism. State a concrete unmet requirement when reuse cannot fit.
    Explain what happens, then show its complete final TypeScript data and API
    types beside that explanation. Explain significant fields and relevant
    operations or failures so the owner can reason about the types and flow.

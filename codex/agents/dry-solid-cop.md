@@ -1,0 +1,1 @@
+../../claude/agents/dry-solid-cop.md

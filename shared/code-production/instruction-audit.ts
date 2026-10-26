@@ -33,6 +33,7 @@ export const THE_SET: readonly string[] = [
   "shared/skills/end-work/SKILL.md",
   "shared/skills/bug/SKILL.md",
   "claude/agents/coherence-cop.md",
+  "claude/agents/dry-solid-cop.md",
   "claude/agents/coverage-cop.md",
   "claude/agents/simplicity-cop.md",
 ];
