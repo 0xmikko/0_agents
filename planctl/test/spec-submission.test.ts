@@ -29,7 +29,11 @@ function repository(): string {
   return root;
 }
 
-const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8").replace("Reduce invalid changes from three per release to zero.", "Ship one observable result.");
+// Submission/state tests preserve authored Markdown without requiring Chromium.
+// Real render/cache/readability behavior is exercised by tst_unit_planctl_diagram_001.
+const spec = readFileSync(join(import.meta.dir, "fixtures/plan-lint.md"), "utf8")
+  .replace("Reduce invalid changes from three per release to zero.", "Ship one observable result.")
+  .replace("```mermaid", "```text");
 
 describe("submit_spec", () => {
   /**
@@ -84,9 +88,7 @@ describe("submit_spec", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  // Submission now renders real diagrams: bounded browser launch and render
-  // each allow five seconds, so the test needs more than Bun's default five.
-  }, 30_000);
+  });
 
   /**
    * @test-id: tst_unit_planctl_spec_submission_002
@@ -112,5 +114,5 @@ describe("submit_spec", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  }, 30_000);
+  });
 });
