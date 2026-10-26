@@ -241,7 +241,7 @@ describe("focused authoring feedback", () => {
  * @deterministic: yes
  * @invariant: an actual browser renders valid input, rejects syntax errors and detects unreadably scaled labels.
  */
-it.skipIf(!Bun.which("chromium") && !Bun.which("google-chrome"))("tst_unit_planctl_diagram_001 renders, caches and measures actual diagrams", async () => {
+it.skipIf(!process.env.PLANCTL_CHROMIUM_PATH && !Bun.which("chromium") && !Bun.which("google-chrome"))("tst_unit_planctl_diagram_001 renders, caches and measures actual diagrams", async () => {
   const root = mkdtempSync(join(tmpdir(), "diagram-check-"));
   try {
     const content = "No contracts change.\n```mermaid\nflowchart TD\n A[Input] --> B[Result]\n```";
